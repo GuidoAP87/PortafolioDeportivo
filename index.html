@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nacho Lingua | Fotografía</title>
+    
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    
+    <link rel="stylesheet" href="styles.css">
+
+    </head>
+<body>
+
+    <nav id="navbar">
+        <div class="nav-brand">NL</div>
+        
+        <ul class="nav-links">
+            <li><a href="#hero" class="active">Inicio</a></li>
+            <li><a href="#portfolio">Galerías</a></li>
+            <li><a href="#contact">Contacto</a></li>
+        </ul>
+        
+        <button id="btn-add-album" class="nav-action-btn" title="Crear Nuevo Álbum">
+            <i class="fa-solid fa-plus"></i> Nuevo Álbum
+        </button>
+    </nav>
+
+    <header id="hero">
+        <div id="hero-collage" class="collage-background"></div>
+
+        <div class="hero-overlay"></div>
+
+        <div class="hero-content">
+            <p class="hero-subtitle">CAPTURING MOMENTS</p>
+            <h1 class="hero-title">NACHO LINGUA<br><span class="highlight">FOTOGRAFÍA</span></h1>
+            <div class="hero-divider"></div>
+            <a href="#portfolio" class="hero-btn">VER PORTAFOLIO</a>
+        </div>
+    </header>
+
+    <main id="portfolio">
+        <div class="section-header">
+            <h2>Últimos Trabajos</h2>
+            <p>Selecciona una categoría para explorar</p>
+        </div>
+
+        <div id="category-filters" class="filters">
+            <button class="filter-btn active" data-filter="all">Todos</button>
+            <button class="filter-btn" data-filter="futbol">Fútbol</button>
+            <button class="filter-btn" data-filter="basquet">Básquet</button>
+            <button class="filter-btn" data-filter="social">Social</button>
+        </div>
+
+        <div id="gallery-grid" class="gallery-container">
+            <div class="empty-state">
+                <p>Aún no hay galerías. Usa el botón "Nuevo Álbum" arriba para comenzar.</p>
+            </div>
+        </div>
+    </main>
+
+    <footer id="contact">
+        <div class="footer-content">
+            <h3>Nacho Lingua</h3>
+            <p>Córdoba, Argentina</p>
+            
+            <div class="social-icons">
+                <a href="#" aria-label="Instagram"><i class="fa-brands fa-instagram"></i></a>
+                <a href="#" aria-label="Twitter"><i class="fa-brands fa-twitter"></i></a>
+                <a href="#" aria-label="Email"><i class="fa-solid fa-envelope"></i></a>
+            </div>
+            
+            <p class="copyright">&copy; 2026 Nacho Lingua Fotografía. Todos los derechos reservados.</p>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>

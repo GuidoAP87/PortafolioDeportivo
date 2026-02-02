@@ -1,0 +1,13 @@
+# Ignorar entorno virtual de Python
+venv/
+env/
+
+# Ignorar archivos compilados de Python
+__pycache__/
+*.pyc
+
+# Ignorar base de datos local (si usaras una)
+*.sqlite3
+
+# Opcional: Si tienes carpetas de fotos originales muy pesadas que no quieres subir
+# seguridad/originales/
