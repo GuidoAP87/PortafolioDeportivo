@@ -11,3 +11,5 @@ __pycache__/
 
 # Opcional: Si tienes carpetas de fotos originales muy pesadas que no quieres subir
 # seguridad/originales/
+
+*.db
