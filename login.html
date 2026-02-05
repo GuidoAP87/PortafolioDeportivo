@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Acceso Admin | Nacho Lingua</title>
+    <link href="https://fonts.googleapis.com/css2?family=Lato&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background-color: #050505;
+            color: #f0f0f0;
+            font-family: 'Lato', sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+        .login-box {
+            text-align: center;
+            padding: 40px;
+            border: 1px solid #333;
+            background: #111;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5);
+        }
+        h2 { font-family: 'Playfair Display', serif; margin-bottom: 30px; letter-spacing: 1px;}
+        input {
+            padding: 10px;
+            width: 200px;
+            background: #222;
+            border: 1px solid #444;
+            color: #fff;
+            text-align: center;
+            margin-bottom: 20px;
+        }
+        button {
+            padding: 10px 20px;
+            background: #c6a87c;
+            border: none;
+            color: #000;
+            font-weight: bold;
+            cursor: pointer;
+            transition: 0.3s;
+        }
+        button:hover { background: #fff; }
+        .error { color: #ff6b6b; font-size: 12px; margin-top: 10px; display: none; }
+    </style>
+</head>
+<body>
+    <div class="login-box">
+        <h2>ACCESO RESTRINGIDO</h2>
+        <input type="password" id="password" placeholder="Contraseña">
+        <br>
+        <button onclick="intentarLogin()">INGRESAR</button>
+        <p id="error-msg" class="error">Contraseña Incorrecta</p>
+    </div>
+
+    <script>
+        async function intentarLogin() {
+            const pass = document.getElementById('password').value;
+            const res = await fetch('http://localhost:5000/login', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ password: pass }),
+                credentials: 'include' // IMPORTANTE: Para guardar la cookie
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                window.location.href = 'index.html'; // Redirigir al portafolio
+            } else {
+                document.getElementById('error-msg').style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>

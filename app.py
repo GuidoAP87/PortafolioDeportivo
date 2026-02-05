@@ -3,7 +3,12 @@ import sqlite3
 from flask import Flask, request, send_from_directory, jsonify
 from flask_cors import CORS # Importante para evitar errores de conexión
 from PIL import Image, ImageDraw, ImageFont
+# ... tus imports actuales ...
+from flask import session # AGREGAR ESTO
 
+app = Flask(__name__)
+app.secret_key = 'tu_secreto_super_seguro' # NECESARIO PARA LAS SESIONES
+CORS(app, supports_credentials=True) # IMPORTANTE: Permite cookies de sesión
 app = Flask(__name__)
 CORS(app) # Permite que el navegador confíe en el servidor local
 
@@ -147,6 +152,49 @@ def obtener_datos():
 @app.route('/galeria/<filename>')
 def ver_foto(filename):
     return send_from_directory(CARPETA_PUBLICAS, filename)
+
+# --- SISTEMA DE LOGIN ---
+
+# 1. Iniciar Sesión
+@app.route('/login', methods=['POST'])
+def login():
+    data = request.json
+    password = data.get('password')
+    
+    # AQUÍ CONFIGURAS TU CONTRASEÑA DE ADMIN
+    if password == "maradona10": 
+        session['admin'] = True
+        return jsonify({"success": True, "mensaje": "Bienvenido Nacho"})
+    else:
+        return jsonify({"success": False, "error": "Contraseña incorrecta"}), 401
+
+# 2. Verificar si estoy logueado (Para el Frontend)
+@app.route('/check-auth', methods=['GET'])
+def check_auth():
+    es_admin = session.get('admin', False)
+    return jsonify({"isAdmin": es_admin})
+
+# 3. Cerrar Sesión
+@app.route('/logout', methods=['POST'])
+def logout():
+    session.pop('admin', None)
+    return jsonify({"success": True})
+
+# --- PROTECCIÓN DE RUTAS (Modificar las existentes) ---
+
+# Modifica tu función 'crear_album' agregando esto al principio:
+@app.route('/crear-album', methods=['POST'])
+def crear_album():
+    if not session.get('admin'):
+        return jsonify({"error": "No autorizado"}), 403
+    # ... resto del código ...
+
+# Modifica tu función 'subir_foto' agregando esto al principio:
+@app.route('/subir-foto', methods=['POST'])
+def subir_foto():
+    if not session.get('admin'):
+        return jsonify({"error": "No autorizado"}), 403
+    # ... resto del código ...
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
