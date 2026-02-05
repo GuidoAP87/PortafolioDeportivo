@@ -1,18 +1,17 @@
 import os
 import sqlite3
-from flask import Flask, request, send_from_directory, jsonify
-from flask_cors import CORS # Importante para evitar errores de conexión
+from flask import Flask, request, send_from_directory, jsonify, session
+from flask_cors import CORS
 from PIL import Image, ImageDraw, ImageFont
-# ... tus imports actuales ...
-from flask import session # AGREGAR ESTO
 
-app = Flask(__name__)
-app.secret_key = 'tu_secreto_super_seguro' # NECESARIO PARA LAS SESIONES
-CORS(app, supports_credentials=True) # IMPORTANTE: Permite cookies de sesión
-app = Flask(__name__)
-CORS(app) # Permite que el navegador confíe en el servidor local
+# --- CONFIGURACIÓN DE LA APP ---
+# static_folder='.' permite que Flask encuentre tu index.html y styles.css en la carpeta raíz
+app = Flask(__name__, static_folder='.', static_url_path='')
 
-# --- CONFIGURACIÓN ---
+app.secret_key = 'maradona10' # Tu clave secreta para el login
+CORS(app, supports_credentials=True) # Permite cookies de sesión y conexión segura
+
+# --- CONFIGURACIÓN DE CARPETAS ---
 CARPETA_ORIGINALES = 'seguridad/originales'
 CARPETA_PUBLICAS = 'maradona/watermarked'
 DB_NAME = 'datos.db'
@@ -20,36 +19,37 @@ DB_NAME = 'datos.db'
 os.makedirs(CARPETA_ORIGINALES, exist_ok=True)
 os.makedirs(CARPETA_PUBLICAS, exist_ok=True)
 
+# --- RUTA PRINCIPAL (CRÍTICA PARA RENDER) ---
+@app.route('/')
+def index():
+    # Cuando entres a la web, muestra el archivo index.html
+    return send_from_directory('.', 'index.html')
+
 # --- BASE DE DATOS ---
 def init_db():
-    """Crea las tablas si no existen"""
     conn = sqlite3.connect(DB_NAME)
     c = conn.cursor()
-    # Tabla Álbumes
     c.execute('''CREATE TABLE IF NOT EXISTS albumes 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, titulo TEXT, categoria TEXT)''')
-    # Tabla Fotos
     c.execute('''CREATE TABLE IF NOT EXISTS fotos 
                  (id INTEGER PRIMARY KEY AUTOINCREMENT, album_id INTEGER, filename TEXT)''')
     conn.commit()
     conn.close()
 
-# Iniciamos la DB al arrancar el programa
 init_db()
 
 def conectar_db():
     conn = sqlite3.connect(DB_NAME)
-    conn.row_factory = sqlite3.Row # Para acceder a los datos por nombre
+    conn.row_factory = sqlite3.Row
     return conn
 
-# --- LÓGICA DE MARCA DE AGUA (Igual que antes) ---
+# --- LÓGICA DE MARCA DE AGUA ---
 def aplicar_marca_agua(input_path, output_path, texto="NACHO LINGUA"):
     try:
         base = Image.open(input_path).convert("RGBA")
         txt_layer = Image.new("RGBA", base.size, (255, 255, 255, 0))
         draw = ImageDraw.Draw(txt_layer)
         
-        # Intentamos cargar una fuente del sistema, sino la default
         try:
             font = ImageFont.truetype("arial.ttf", size=int(base.width / 12))
         except:
@@ -62,7 +62,7 @@ def aplicar_marca_agua(input_path, output_path, texto="NACHO LINGUA"):
         x = (base.width - text_width) / 2
         y = (base.height - text_height) / 2
 
-        draw.text((x, y), texto, font=font, fill=(255, 255, 255, 100)) # Transparencia
+        draw.text((x, y), texto, font=font, fill=(255, 255, 255, 100))
 
         watermarked = Image.alpha_composite(base, txt_layer)
         watermarked = watermarked.convert("RGB")
@@ -70,11 +70,15 @@ def aplicar_marca_agua(input_path, output_path, texto="NACHO LINGUA"):
     except Exception as e:
         print(f"Error procesando imagen: {e}")
 
-# --- RUTAS (API) ---
+# --- RUTAS DE LA API ---
 
-# 1. Crear un Nuevo Álbum
+# 1. Crear Álbum (CON SEGURIDAD)
 @app.route('/crear-album', methods=['POST'])
 def crear_album():
+    # Verificación de seguridad: ¿Es admin?
+    if not session.get('admin'):
+        return jsonify({"error": "No autorizado"}), 403
+
     data = request.json
     titulo = data.get('titulo')
     categoria = data.get('categoria')
@@ -83,60 +87,63 @@ def crear_album():
     c = conn.cursor()
     c.execute("INSERT INTO albumes (titulo, categoria) VALUES (?, ?)", (titulo, categoria))
     conn.commit()
-    nuevo_id = c.lastrowid # Python nos dice qué ID le asignó la base de datos
+    nuevo_id = c.lastrowid
     conn.close()
     
     return jsonify({"id": nuevo_id, "mensaje": "Álbum creado"})
 
-# 2. Subir Foto a un Álbum específico
+# 2. Subir Foto (CON SEGURIDAD)
 @app.route('/subir-foto', methods=['POST'])
 def subir_foto():
+    # Verificación de seguridad: ¿Es admin?
+    if not session.get('admin'):
+        return jsonify({"error": "No autorizado"}), 403
+
     if 'foto' not in request.files:
         return jsonify({"error": "No hay archivo"}), 400
     
     archivo = request.files['foto']
-    album_id = request.form.get('album_id') # Ahora recibimos el ID del álbum
+    album_id = request.form.get('album_id')
     
     if not album_id:
         return jsonify({"error": "Falta el ID del álbum"}), 400
 
     nombre = archivo.filename
     
-    # Guardar en disco
+    # Guardar original y generar marca de agua
     ruta_original = os.path.join(CARPETA_ORIGINALES, nombre)
     archivo.save(ruta_original)
     
     ruta_publica = os.path.join(CARPETA_PUBLICAS, nombre)
     aplicar_marca_agua(ruta_original, ruta_publica)
     
-    # Guardar en Base de Datos
+    # Guardar en BD
     conn = conectar_db()
     c = conn.cursor()
     c.execute("INSERT INTO fotos (album_id, filename) VALUES (?, ?)", (album_id, nombre))
     conn.commit()
     conn.close()
     
-    # Devolvemos la URL para que el Frontend la muestre
-    url_publica = f"http://localhost:5000/galeria/{nombre}"
+    # Usamos ruta relativa para que funcione en Render y Localhost
+    url_publica = f"/galeria/{nombre}"
     return jsonify({"mensaje": "Foto procesada", "url": url_publica})
 
-# 3. Obtener TODO (Para recargar la página y no perder nada)
+# 3. Obtener Datos
 @app.route('/obtener-datos', methods=['GET'])
 def obtener_datos():
     conn = conectar_db()
     c = conn.cursor()
     
-    # Traemos todos los álbumes
     c.execute("SELECT * FROM albumes ORDER BY id DESC")
     albumes_raw = c.fetchall()
     
     lista_albumes = []
     
     for album in albumes_raw:
-        # Para cada álbum, buscamos sus fotos
         c.execute("SELECT filename FROM fotos WHERE album_id = ?", (album['id'],))
         fotos_raw = c.fetchall()
-        fotos = [f"http://localhost:5000/galeria/{f['filename']}" for f in fotos_raw]
+        # Ruta relativa
+        fotos = [f"/galeria/{f['filename']}" for f in fotos_raw]
         
         lista_albumes.append({
             "id": album['id'],
@@ -148,53 +155,34 @@ def obtener_datos():
     conn.close()
     return jsonify(lista_albumes)
 
-# Rutas de Archivos Estáticos
+# 4. Servir imágenes
 @app.route('/galeria/<filename>')
 def ver_foto(filename):
     return send_from_directory(CARPETA_PUBLICAS, filename)
 
 # --- SISTEMA DE LOGIN ---
 
-# 1. Iniciar Sesión
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
     password = data.get('password')
     
-    # AQUÍ CONFIGURAS TU CONTRASEÑA DE ADMIN
+    # CONTRASEÑA DE ADMIN
     if password == "maradona10": 
         session['admin'] = True
         return jsonify({"success": True, "mensaje": "Bienvenido Nacho"})
     else:
         return jsonify({"success": False, "error": "Contraseña incorrecta"}), 401
 
-# 2. Verificar si estoy logueado (Para el Frontend)
 @app.route('/check-auth', methods=['GET'])
 def check_auth():
     es_admin = session.get('admin', False)
     return jsonify({"isAdmin": es_admin})
 
-# 3. Cerrar Sesión
 @app.route('/logout', methods=['POST'])
 def logout():
     session.pop('admin', None)
     return jsonify({"success": True})
-
-# --- PROTECCIÓN DE RUTAS (Modificar las existentes) ---
-
-# Modifica tu función 'crear_album' agregando esto al principio:
-@app.route('/crear-album', methods=['POST'])
-def crear_album():
-    if not session.get('admin'):
-        return jsonify({"error": "No autorizado"}), 403
-    # ... resto del código ...
-
-# Modifica tu función 'subir_foto' agregando esto al principio:
-@app.route('/subir-foto', methods=['POST'])
-def subir_foto():
-    if not session.get('admin'):
-        return jsonify({"error": "No autorizado"}), 403
-    # ... resto del código ...
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
