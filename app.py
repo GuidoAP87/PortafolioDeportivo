@@ -4,24 +4,26 @@ from datetime import timedelta
 from flask import Flask, request, send_from_directory, jsonify, session
 from flask_cors import CORS
 from PIL import Image, ImageDraw, ImageFont
-from werkzeug.middleware.proxy_fix import ProxyFix # <--- SOLUCIÓN AL PROBLEMA
+# IMPORTANTE: Esta librería arregla el problema de desconexión en Render
+from werkzeug.middleware.proxy_fix import ProxyFix 
 
 # --- CONFIGURACIÓN DE LA APP ---
 app = Flask(__name__, static_folder='.', static_url_path='')
 
-# 1. CLAVE SECRETA (No la cambies)
+# 1. CLAVE SECRETA
 app.secret_key = 'maradona10'
 
-# 2. PROXY FIX (CRÍTICO PARA RENDER)
-# Esto le dice a Flask: "Confía en que Render está manejando el HTTPS"
+# 2. PROXY FIX (LA SOLUCIÓN CRÍTICA)
+# Esto le dice a Flask que confíe en que Render está manejando la seguridad HTTPS.
+# Sin esto, las cookies se borran inmediatamente.
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
 # 3. CONFIGURACIÓN DE COOKIES BLINDADA
 app.config.update(
-    SESSION_COOKIE_SECURE=True,       # Solo viaja por HTTPS (Render)
-    SESSION_COOKIE_HTTPONLY=True,     # JavaScript no puede robarla
-    SESSION_COOKIE_SAMESITE='Lax',    # 'Lax' es más compatible que 'None'
-    PERMANENT_SESSION_LIFETIME=timedelta(days=7) # Dura 7 días
+    SESSION_COOKIE_SECURE=True,       # La cookie solo viaja por canales seguros (HTTPS)
+    SESSION_COOKIE_HTTPONLY=True,     # JavaScript no puede robar la cookie (Seguridad extra)
+    SESSION_COOKIE_SAMESITE='Lax',    # 'Lax' es la configuración más estable para evitar bloqueos
+    PERMANENT_SESSION_LIFETIME=timedelta(days=7) # La sesión durará 7 días
 )
 
 CORS(app, supports_credentials=True)
@@ -167,7 +169,7 @@ def login():
     password = data.get('password')
     
     if password == "maradona10": 
-        session.permanent = True  # Mantiene la sesión viva
+        session.permanent = True  # Mantiene la sesión viva por 7 días
         session['admin'] = True
         return jsonify({"success": True, "mensaje": "Bienvenido Nacho"})
     else:
@@ -175,9 +177,7 @@ def login():
 
 @app.route('/check-auth', methods=['GET'])
 def check_auth():
-    # Depuración: imprime en los logs de Render quién está entrando
     es_admin = session.get('admin', False)
-    print(f"Verificando Auth: {es_admin}") 
     return jsonify({"isAdmin": es_admin})
 
 @app.route('/logout', methods=['POST'])
