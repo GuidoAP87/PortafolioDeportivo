@@ -5,7 +5,11 @@ const btnAdd = document.getElementById('btn-add-album');
 const galleryGrid = document.getElementById('gallery-grid');
 const navbar = document.getElementById('navbar');
 const collageContainer = document.getElementById('hero-collage');
-const API_URL = 'http://localhost:5000'; // Dirección de tu Backend
+
+// --- CORRECCIÓN CRÍTICA ---
+// Dejamos esto VACÍO para que funcione en Render (La Nube)
+// El navegador usará automáticamente la dirección de tu web.
+const API_URL = ''; 
 
 // Variable para saber si el usuario es el dueño (Admin)
 let ES_ADMIN = false;
