@@ -2,14 +2,20 @@ import os
 import sqlite3
 from flask import Flask, request, send_from_directory, jsonify, session
 from flask_cors import CORS
+from datetime import timedelta
 from PIL import Image, ImageDraw, ImageFont
 
 # --- CONFIGURACIÓN DE LA APP ---
-# static_folder='.' permite que Flask encuentre tu index.html y styles.css en la carpeta raíz
 app = Flask(__name__, static_folder='.', static_url_path='')
 
-app.secret_key = 'maradona10' # Tu clave secreta para el login
-CORS(app, supports_credentials=True) # Permite cookies de sesión y conexión segura
+app.secret_key = 'maradona10' 
+
+# CONFIGURACIÓN DE SESIÓN (SOLUCIÓN AL PROBLEMA)
+app.permanent_session_lifetime = timedelta(days=7) # La sesión durará 7 días
+app.config['SESSION_COOKIE_SECURE'] = True         # Obligatorio para Render (HTTPS)
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'     # Evita que el navegador bloquee la cookie
+
+CORS(app, supports_credentials=True)
 
 # --- CONFIGURACIÓN DE CARPETAS ---
 CARPETA_ORIGINALES = 'seguridad/originales'
@@ -167,8 +173,8 @@ def login():
     data = request.json
     password = data.get('password')
     
-    # CONTRASEÑA DE ADMIN
     if password == "maradona10": 
+        session.permanent = True  # <--- AGREGAR ESTO: Activa los 7 días
         session['admin'] = True
         return jsonify({"success": True, "mensaje": "Bienvenido Nacho"})
     else:
