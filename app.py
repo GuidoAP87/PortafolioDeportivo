@@ -1,19 +1,28 @@
 import os
 import sqlite3
+from datetime import timedelta
 from flask import Flask, request, send_from_directory, jsonify, session
 from flask_cors import CORS
-from datetime import timedelta
 from PIL import Image, ImageDraw, ImageFont
+from werkzeug.middleware.proxy_fix import ProxyFix # <--- SOLUCIÓN AL PROBLEMA
 
 # --- CONFIGURACIÓN DE LA APP ---
 app = Flask(__name__, static_folder='.', static_url_path='')
 
-app.secret_key = 'maradona10' 
+# 1. CLAVE SECRETA (No la cambies)
+app.secret_key = 'maradona10'
 
-# CONFIGURACIÓN DE SESIÓN (SOLUCIÓN AL PROBLEMA)
-app.permanent_session_lifetime = timedelta(days=7) # La sesión durará 7 días
-app.config['SESSION_COOKIE_SECURE'] = True         # Obligatorio para Render (HTTPS)
-app.config['SESSION_COOKIE_SAMESITE'] = 'None'     # Evita que el navegador bloquee la cookie
+# 2. PROXY FIX (CRÍTICO PARA RENDER)
+# Esto le dice a Flask: "Confía en que Render está manejando el HTTPS"
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
+# 3. CONFIGURACIÓN DE COOKIES BLINDADA
+app.config.update(
+    SESSION_COOKIE_SECURE=True,       # Solo viaja por HTTPS (Render)
+    SESSION_COOKIE_HTTPONLY=True,     # JavaScript no puede robarla
+    SESSION_COOKIE_SAMESITE='Lax',    # 'Lax' es más compatible que 'None'
+    PERMANENT_SESSION_LIFETIME=timedelta(days=7) # Dura 7 días
+)
 
 CORS(app, supports_credentials=True)
 
@@ -25,10 +34,9 @@ DB_NAME = 'datos.db'
 os.makedirs(CARPETA_ORIGINALES, exist_ok=True)
 os.makedirs(CARPETA_PUBLICAS, exist_ok=True)
 
-# --- RUTA PRINCIPAL (CRÍTICA PARA RENDER) ---
+# --- RUTA PRINCIPAL ---
 @app.route('/')
 def index():
-    # Cuando entres a la web, muestra el archivo index.html
     return send_from_directory('.', 'index.html')
 
 # --- BASE DE DATOS ---
@@ -78,10 +86,8 @@ def aplicar_marca_agua(input_path, output_path, texto="NACHO LINGUA"):
 
 # --- RUTAS DE LA API ---
 
-# 1. Crear Álbum (CON SEGURIDAD)
 @app.route('/crear-album', methods=['POST'])
 def crear_album():
-    # Verificación de seguridad: ¿Es admin?
     if not session.get('admin'):
         return jsonify({"error": "No autorizado"}), 403
 
@@ -98,10 +104,8 @@ def crear_album():
     
     return jsonify({"id": nuevo_id, "mensaje": "Álbum creado"})
 
-# 2. Subir Foto (CON SEGURIDAD)
 @app.route('/subir-foto', methods=['POST'])
 def subir_foto():
-    # Verificación de seguridad: ¿Es admin?
     if not session.get('admin'):
         return jsonify({"error": "No autorizado"}), 403
 
@@ -115,53 +119,42 @@ def subir_foto():
         return jsonify({"error": "Falta el ID del álbum"}), 400
 
     nombre = archivo.filename
-    
-    # Guardar original y generar marca de agua
     ruta_original = os.path.join(CARPETA_ORIGINALES, nombre)
     archivo.save(ruta_original)
     
     ruta_publica = os.path.join(CARPETA_PUBLICAS, nombre)
     aplicar_marca_agua(ruta_original, ruta_publica)
     
-    # Guardar en BD
     conn = conectar_db()
     c = conn.cursor()
     c.execute("INSERT INTO fotos (album_id, filename) VALUES (?, ?)", (album_id, nombre))
     conn.commit()
     conn.close()
     
-    # Usamos ruta relativa para que funcione en Render y Localhost
     url_publica = f"/galeria/{nombre}"
     return jsonify({"mensaje": "Foto procesada", "url": url_publica})
 
-# 3. Obtener Datos
 @app.route('/obtener-datos', methods=['GET'])
 def obtener_datos():
     conn = conectar_db()
     c = conn.cursor()
-    
     c.execute("SELECT * FROM albumes ORDER BY id DESC")
     albumes_raw = c.fetchall()
     
     lista_albumes = []
-    
     for album in albumes_raw:
         c.execute("SELECT filename FROM fotos WHERE album_id = ?", (album['id'],))
         fotos_raw = c.fetchall()
-        # Ruta relativa
         fotos = [f"/galeria/{f['filename']}" for f in fotos_raw]
-        
         lista_albumes.append({
             "id": album['id'],
             "titulo": album['titulo'],
             "categoria": album['categoria'],
             "fotos": fotos
         })
-        
     conn.close()
     return jsonify(lista_albumes)
 
-# 4. Servir imágenes
 @app.route('/galeria/<filename>')
 def ver_foto(filename):
     return send_from_directory(CARPETA_PUBLICAS, filename)
@@ -174,7 +167,7 @@ def login():
     password = data.get('password')
     
     if password == "maradona10": 
-        session.permanent = True  # <--- AGREGAR ESTO: Activa los 7 días
+        session.permanent = True  # Mantiene la sesión viva
         session['admin'] = True
         return jsonify({"success": True, "mensaje": "Bienvenido Nacho"})
     else:
@@ -182,7 +175,9 @@ def login():
 
 @app.route('/check-auth', methods=['GET'])
 def check_auth():
+    # Depuración: imprime en los logs de Render quién está entrando
     es_admin = session.get('admin', False)
+    print(f"Verificando Auth: {es_admin}") 
     return jsonify({"isAdmin": es_admin})
 
 @app.route('/logout', methods=['POST'])
