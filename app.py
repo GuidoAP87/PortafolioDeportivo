@@ -185,5 +185,16 @@ def logout():
     session.pop('admin', None)
     return jsonify({"success": True})
 
+# --- RUTA DE EMERGENCIA (Bórrame después de usar) ---
+@app.route('/resetear-base-de-datos-secreta')
+def reset_db():
+    # ⚠️ PELIGRO: Esto borra toda la base de datos y la crea de cero
+    try:
+        db.drop_all()   # Borra lo viejo (que está dando error)
+        db.create_all() # Crea lo nuevo (compatible con Cloudinary)
+        return "¡LISTO! Base de datos reseteada. Ya puedes subir fotos."
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
