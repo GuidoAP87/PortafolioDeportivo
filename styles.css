@@ -319,3 +319,43 @@ footer {
 .social-icons a { color: #666; margin: 0 10px; font-size: 18px; transition: 0.3s; }
 .social-icons a:hover { color: var(--accent-gold); }
 .copyright { margin-top: 20px; font-size: 11px; color: #444; }
+
+/* --- ARREGLO DE GALERÍA DE ÁLBUMES --- */
+
+/* 1. El contenedor de las fotos (La caja invisible) */
+.album-photos {
+    display: grid;
+    /* Esto crea columnas automáticas de mínimo 120px */
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); 
+    gap: 10px; /* Espacio entre fotos */
+    padding: 10px;
+    background-color: #111; /* Un fondo sutil para diferenciar la zona de fotos */
+    border-radius: 8px;
+    margin-top: 15px;
+    max-height: 400px; /* Altura máxima del álbum antes de hacer scroll */
+    overflow-y: auto;  /* Si hay muchas fotos, aparece barra de scroll dentro del álbum */
+}
+
+/* 2. Las fotos individuales (Miniaturas) */
+.photo-thumb {
+    width: 100%;
+    height: 120px; /* Altura fija para que todas sean iguales */
+    object-fit: cover; /* Recorta la imagen para que no se deforme */
+    border-radius: 4px;
+    cursor: pointer;
+    transition: transform 0.2s ease, opacity 0.3s;
+    border: 1px solid #333;
+}
+
+/* Efecto al pasar el mouse por encima */
+.photo-thumb:hover {
+    transform: scale(1.05);
+    border-color: #d4af37; /* Borde dorado al tocar */
+    z-index: 2;
+}
+
+/* Animación de entrada suave cuando subes una foto */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}

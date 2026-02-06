@@ -13,7 +13,36 @@
     
     <link rel="stylesheet" href="styles.css">
 
-    </head>
+    <style>
+        .album-photos {
+            display: grid !important;
+            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)) !important;
+            gap: 10px !important;
+            padding: 15px !important;
+            background: #111 !important;
+            max-height: 500px !important;
+            overflow-y: auto !important;
+            border-radius: 8px !important;
+        }
+
+        .photo-thumb {
+            width: 100% !important;
+            height: 100px !important; /* Altura fija para que sean cuadraditos */
+            object-fit: cover !important; /* Recorta la foto para que no se deforme */
+            border-radius: 4px !important;
+            border: 2px solid transparent !important;
+            transition: all 0.2s !important;
+        }
+
+        .photo-thumb:hover {
+            transform: scale(1.05) !important;
+            border-color: #d4af37 !important;
+            z-index: 10;
+            cursor: pointer;
+        }
+    </style>
+
+</head>
 <body>
 
     <nav id="navbar">
