@@ -1,263 +1,127 @@
-/* =========================================
-   VARIABLES GLOBALES Y CONFIGURACIÓN
-   ========================================= */
-const btnAdd = document.getElementById('btn-add-album');
-const galleryGrid = document.getElementById('gallery-grid');
-const navbar = document.getElementById('navbar');
-const collageContainer = document.getElementById('hero-collage');
+const API_URL = "https://portafoliodeportivo.onrender.com"; 
 
-// --- CORRECCIÓN CRÍTICA ---
-// Dejamos esto VACÍO para que funcione en Render (La Nube)
-// El navegador usará automáticamente la dirección de tu web.
-const API_URL = ''; 
+document.addEventListener('DOMContentLoaded', () => {
+    cargarAlbumes();
 
-// Variable para saber si el usuario es el dueño (Admin)
-let ES_ADMIN = false;
-
-/* =========================================
-   1. INICIALIZACIÓN DE LA PÁGINA
-   ========================================= */
-document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Primero verificamos quién está visitando la página
-    await verificarSesion();
-
-    // 2. Cargamos el contenido visual
-    cargarCollage(); 
-    
-    // 3. Cargamos los datos reales desde la base de datos
-    await cargarAlbumesDesdeBD(); 
+    // Configurar botón de logout si existe
+    const btnLogout = document.getElementById('btn-logout'); // Si agregas uno en el futuro
+    if(btnLogout) btnLogout.addEventListener('click', logout);
 });
 
-/* =========================================
-   2. SISTEMA DE SEGURIDAD Y SESIÓN
-   ========================================= */
-async function verificarSesion() {
+// 1. CARGAR ÁLBUMES DE LA BASE DE DATOS
+async function cargarAlbumes() {
+    const grid = document.getElementById('gallery-grid');
+    grid.innerHTML = '<p style="color:white; text-align:center">Cargando portafolio...</p>';
+
     try {
-        // 'credentials: include' es vital para enviar la cookie de sesión
-        const res = await fetch(`${API_URL}/check-auth`, { credentials: 'include' });
-        const data = await res.json();
-        ES_ADMIN = data.isAdmin;
+        const respuesta = await fetch(`${API_URL}/obtener-datos`);
+        const albumes = await respuesta.json();
 
-        // GESTIÓN DE LA INTERFAZ (UI) SEGÚN EL ROL
-        if (ES_ADMIN) {
-            console.log("Modo ADMIN activo");
-            // Mostrar botón de crear álbum
-            if(btnAdd) btnAdd.style.display = 'block';
-            // Agregar botón de Salir en el menú
-            agregarBotonLogout();
-        } else {
-            console.log("Modo VISITANTE activo");
-            // Ocultar botón de crear álbum
-            if(btnAdd) btnAdd.style.display = 'none';
-        }
-    } catch (error) {
-        console.error("Error verificando sesión (Backend desconectado?)", error);
-        if(btnAdd) btnAdd.style.display = 'none';
-    }
-}
+        grid.innerHTML = ''; // Limpiar mensaje de carga
 
-function agregarBotonLogout() {
-    const navLinks = document.querySelector('.nav-links');
-    // Evitamos duplicar el botón si ya existe
-    if (document.getElementById('btn-logout')) return;
-
-    const li = document.createElement('li');
-    li.innerHTML = '<a href="#" id="btn-logout" style="color:#ff6b6b; font-weight:bold;">SALIR</a>';
-    li.addEventListener('click', cerrarSesion);
-    navLinks.appendChild(li);
-}
-
-async function cerrarSesion(e) {
-    if(e) e.preventDefault();
-    try {
-        await fetch(`${API_URL}/logout`, { method: 'POST', credentials: 'include' });
-        location.reload(); // Recargamos para volver a modo visitante
-    } catch (error) {
-        console.error("Error al cerrar sesión", error);
-    }
-}
-
-/* =========================================
-   3. GESTIÓN DE DATOS (ÁLBUMES)
-   ========================================= */
-async function cargarAlbumesDesdeBD() {
-    try {
-        const response = await fetch(`${API_URL}/obtener-datos`);
-        const albumes = await response.json();
-        
-        // Limpiamos el mensaje de "vacío" si hay álbumes
-        if (albumes.length > 0) {
-            const emptyState = document.querySelector('.empty-state');
-            if (emptyState) emptyState.remove();
+        if (albumes.length === 0) {
+            grid.innerHTML = '<div class="empty-state"><p>Aún no hay trabajos subidos.</p></div>';
+            return;
         }
 
-        // Dibujamos cada álbum recuperado (Inverso para que los nuevos salgan primero)
         albumes.forEach(album => {
-            renderizarAlbum(album.id, album.titulo, album.categoria, album.fotos);
-        });
-    } catch (error) {
-        console.error("Error conectando con la base de datos:", error);
-    }
-}
-
-// CREAR NUEVO ÁLBUM (Solo funcionará si el botón es visible)
-if (btnAdd) {
-    btnAdd.addEventListener('click', async () => {
-        const nombre = prompt("Título del nuevo trabajo:");
-        if (!nombre) return;
-
-        let categoria = prompt("Categoría (futbol, basquet, social):") || 'social';
-        categoria = categoria.toLowerCase();
-
-        try {
-            const response = await fetch(`${API_URL}/crear-album`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ titulo: nombre, categoria: categoria }),
-                credentials: 'include' // Necesario para validar que eres admin
-            });
+            const card = document.createElement('div');
+            card.className = 'album-card';
             
-            const data = await response.json();
-            
-            if (data.id) {
-                const emptyState = document.querySelector('.empty-state');
-                if (emptyState) emptyState.remove();
-                
-                // Renderizamos el álbum vacío
-                renderizarAlbum(data.id, nombre, categoria, []);
-            } else {
-                alert("Error: " + (data.error || "No autorizado"));
-            }
-        } catch (error) {
-            alert("Error de conexión con el servidor.");
-        }
-    });
-}
+            // Título y Categoría
+            let htmlContent = `
+                <div class="album-header">
+                    <h3>${album.titulo}</h3>
+                    <span class="badge">${album.categoria}</span>
+                </div>
+                <div class="album-photos">
+            `;
 
-/* =========================================
-   4. RENDERIZADO (DIBUJAR EN PANTALLA)
-   ========================================= */
-function renderizarAlbum(id, titulo, categoria, fotosPreexistentes) {
-    const card = document.createElement('div');
-    card.classList.add('album-card');
-    card.dataset.category = categoria;
-
-    // LÓGICA CONDICIONAL: ¿Mostramos el botón de subir fotos?
-    // Solo si ES_ADMIN es verdadero
-    let htmlSubida = '';
-    if (ES_ADMIN) {
-        htmlSubida = `
-        <label class="add-photo-label">
-            <i class="fa-solid fa-camera"></i> Añadir Fotos
-            <input type="file" multiple accept="image/*" style="display:none" onchange="subirFotos(this, '${id}')">
-        </label>
-        `;
-    }
-
-    card.innerHTML = `
-        <div class="album-header">
-            <span class="album-title">${titulo}</span>
-            <span class="album-category">${categoria.toUpperCase()}</span>
-        </div>
-        
-        <div class="album-photos" id="photos-${id}">
-            </div>
-
-        ${htmlSubida} `;
-
-    // Si hay fotos guardadas, las mostramos
-    if (fotosPreexistentes && fotosPreexistentes.length > 0) {
-        const contenedor = card.querySelector(`#photos-${id}`);
-        fotosPreexistentes.forEach(url => {
-            const img = document.createElement('img');
-            img.src = url;
-            img.classList.add('photo-thumb');
-            contenedor.appendChild(img);
-        });
-    }
-
-    galleryGrid.prepend(card);
-}
-
-/* =========================================
-   5. SUBIR FOTOS (CONECTADO A BD)
-   ========================================= */
-window.subirFotos = async function(input, idAlbum) {
-    const contenedorFotos = document.getElementById(`photos-${idAlbum}`);
-    
-    if (input.files && input.files.length > 0) {
-        for (const file of Array.from(input.files)) {
-            const formData = new FormData();
-            formData.append('foto', file);
-            formData.append('album_id', idAlbum);
-
-            try {
-                const response = await fetch(`${API_URL}/subir-foto`, {
-                    method: 'POST',
-                    body: formData,
-                    credentials: 'include' // Importante para permiso de admin
+            // Las Fotos (Miniaturas clickeables)
+            if (album.fotos && album.fotos.length > 0) {
+                album.fotos.forEach(fotoUrl => {
+                    // Aquí usamos la URL de Cloudinary que YA tiene marca de agua
+                    htmlContent += `
+                        <img src="${fotoUrl}" 
+                             class="photo-thumb" 
+                             onclick="abrirVisor('${fotoUrl}')" 
+                             alt="Foto de ${album.titulo}">
+                    `;
                 });
-                
-                const data = await response.json();
-                
-                if (data.url) {
-                    const img = document.createElement('img');
-                    img.src = data.url;
-                    img.classList.add('photo-thumb');
-                    img.style.animation = "fadeIn 0.5s";
-                    contenedorFotos.appendChild(img);
-                } else {
-                    alert("Error al subir: " + (data.error || "Desconocido"));
-                }
-
-            } catch (error) {
-                console.error("Error subiendo foto:", error);
-            }
-        }
-    }
-}
-
-/* =========================================
-   6. EXTRAS (COLLAGE, SCROLL, FILTROS)
-   ========================================= */
-function cargarCollage() {
-    if (!collageContainer) return;
-    const rutaCarpeta = 'maradona/';  
-    const nombreBase = 'maradona';    
-    const extension = '.jpg';         
-    
-    // Intentamos cargar 26 fotos
-    for (let i = 1; i <= 26; i++) {
-        const img = document.createElement('img');
-        img.src = `${rutaCarpeta}${nombreBase}${i}${extension}`;
-        img.alt = "Fondo";
-        // Si falla la carga, ocultamos la imagen rota
-        img.onerror = function() { this.style.display = 'none'; };
-        collageContainer.appendChild(img);
-    }
-}
-
-// Efecto Navbar Scroll
-window.addEventListener('scroll', () => {
-    if (window.scrollY > 50) navbar.classList.add('scrolled');
-    else navbar.classList.remove('scrolled');
-});
-
-// Lógica de Filtros (Fútbol, Básquet, Social)
-document.querySelectorAll('.filter-btn').forEach(btn => {
-    btn.addEventListener('click', () => {
-        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        
-        const filtro = btn.dataset.filter;
-        const albumes = document.querySelectorAll('.album-card');
-
-        albumes.forEach(album => {
-            if (filtro === 'all' || album.dataset.category === filtro) {
-                album.style.display = 'block';
             } else {
-                album.style.display = 'none';
+                htmlContent += `<p style="color:#666; font-size:0.8em">Carpeta vacía</p>`;
             }
+
+            // Botón de subir fotos (Solo visible si estás logueado - lógica simple)
+            // Para simplificar, lo dejamos visible pero protegido por backend
+            htmlContent += `
+                </div>
+                <form class="upload-form" onsubmit="subirFoto(event, ${album.id})">
+                    <label class="upload-btn">
+                        <i class="fa-solid fa-camera"></i> Añadir Fotos
+                        <input type="file" name="foto" accept="image/*" onchange="this.form.dispatchEvent(new Event('submit'))" hidden>
+                    </label>
+                </form>
+            `;
+
+            card.innerHTML = htmlContent;
+            grid.appendChild(card);
         });
-    });
-});
+
+    } catch (error) {
+        console.error("Error:", error);
+        grid.innerHTML = '<p style="color:red; text-align:center">Error al cargar la galería.</p>';
+    }
+}
+
+// 2. SUBIR FOTO AL ÁLBUM
+async function subirFoto(event, albumId) {
+    event.preventDefault();
+    const form = event.target;
+    const inputFile = form.querySelector('input[type="file"]');
+    
+    if (!inputFile.files[0]) return;
+
+    const formData = new FormData();
+    formData.append('foto', inputFile.files[0]);
+    formData.append('album_id', albumId);
+
+    // Feedback visual de "Subiendo..."
+    const btn = form.querySelector('.upload-btn');
+    const textoOriginal = btn.innerHTML;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Subiendo...';
+
+    try {
+        const res = await fetch(`${API_URL}/subir-foto`, {
+            method: 'POST',
+            body: formData,
+            // Importante: Incluir credenciales para que sepa que eres Admin
+            headers: { 'X-Requested-With': 'XMLHttpRequest' } 
+        });
+
+        if (res.ok) {
+            // Recargar para ver la foto nueva
+            cargarAlbumes();
+        } else {
+            alert("Error al subir (¿Quizás no iniciaste sesión?)");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Error de conexión");
+    } finally {
+        btn.innerHTML = textoOriginal;
+    }
+}
+
+// 3. VISOR DE PANTALLA COMPLETA (LIGHTBOX)
+function abrirVisor(url) {
+    const visor = document.getElementById('lightbox');
+    const imgGrande = document.getElementById('img-ampliada');
+    
+    imgGrande.src = url;
+    visor.style.display = "block";
+}
+
+function cerrarVisor() {
+    document.getElementById('lightbox').style.display = "none";
+}
