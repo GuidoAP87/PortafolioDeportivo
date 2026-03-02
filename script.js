@@ -8,7 +8,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if(btnLogout) btnLogout.addEventListener('click', logout);
 });
 
-// 1. CARGAR ÁLBUMES
+// 1. CARGAR ÁLBUMES Y COLLAGE
 async function cargarAlbumes() {
     const grid = document.getElementById('gallery-grid');
     grid.innerHTML = '<p style="color:white; text-align:center">Cargando portafolio...</p>';
@@ -18,9 +18,11 @@ async function cargarAlbumes() {
         const albumes = await respuesta.json();
 
         grid.innerHTML = ''; 
+        let todasLasFotos = []; // Aquí guardaremos tus fotos para el fondo
 
         if (albumes.length === 0) {
             grid.innerHTML = '<div class="empty-state"><p>Aún no hay trabajos subidos.</p></div>';
+            crearCollage([]); // Llamamos al collage aunque esté vacío
             return;
         }
 
@@ -28,8 +30,6 @@ async function cargarAlbumes() {
             const card = document.createElement('div');
             card.className = 'album-card';
             
-            // --- TRUCO PRO: Etiquetamos la tarjeta con su categoría ---
-            // Le quitamos las mayúsculas y las tildes para que coincida perfecto con el botón
             const categoriaLimpia = album.categoria.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
             card.setAttribute('data-categoria', categoriaLimpia);
             
@@ -43,6 +43,7 @@ async function cargarAlbumes() {
 
             if (album.fotos && album.fotos.length > 0) {
                 album.fotos.forEach(fotoUrl => {
+                    todasLasFotos.push(fotoUrl); // Guardamos la foto para usarla en la portada
                     htmlContent += `
                         <img src="${fotoUrl}" 
                              class="photo-thumb" 
@@ -68,13 +69,42 @@ async function cargarAlbumes() {
             grid.appendChild(card);
         });
 
-        // --- ENCENDEMOS LOS FILTROS UNA VEZ QUE CARGARON LAS FOTOS ---
+        // Activamos los filtros y armamos tu fondo personalizado
         configurarFiltros();
+        crearCollage(todasLasFotos); 
 
     } catch (error) {
         console.error("Error:", error);
         grid.innerHTML = '<p style="color:red; text-align:center">Error al cargar la galería.</p>';
     }
+}
+
+// --- NUEVA FUNCIÓN: EL COLLAGE DINÁMICO ---
+function crearCollage(fotos) {
+    const collage = document.getElementById('hero-collage');
+    collage.innerHTML = ''; // Limpiamos por si acaso
+
+    let fotosParaFondo = [...fotos]; // Copiamos tu galería
+
+    // Si aún tienes pocas fotos, rellenamos con unas imágenes por defecto para que no quede negro
+    if (fotosParaFondo.length < 10) {
+        const fotosRelleno = [
+            "https://images.unsplash.com/photo-1518605368461-1ee7e53f5eb5?q=80&w=500&auto=format&fit=crop", // fútbol
+            "https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?q=80&w=500&auto=format&fit=crop", // rock
+            "https://images.unsplash.com/photo-1504450758481-7338eba7524a?q=80&w=500&auto=format&fit=crop", // basket
+            "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=500&auto=format&fit=crop", // música
+            "https://images.unsplash.com/photo-1522778119026-d647f0596c20?q=80&w=500&auto=format&fit=crop", // estadio
+        ];
+        // Mezclamos las tuyas con el relleno
+        fotosParaFondo = [...fotosParaFondo, ...fotosRelleno, ...fotosRelleno]; 
+    }
+
+    // Agarramos las primeras 15 fotos y las pegamos en el fondo
+    fotosParaFondo.slice(0, 15).forEach(url => {
+        const img = document.createElement('img');
+        img.src = url;
+        collage.appendChild(img);
+    });
 }
 
 // --- LA MAGIA DE LOS FILTROS ---
@@ -84,21 +114,17 @@ function configurarFiltros() {
 
     botones.forEach(boton => {
         boton.addEventListener('click', () => {
-            // 1. Efecto visual: Resaltamos el botón que acabas de tocar
             botones.forEach(b => b.classList.remove('active'));
             boton.classList.add('active');
 
-            // 2. Leemos qué filtro elegiste (ej: 'futbol', 'social', 'all')
             const filtroElegido = boton.getAttribute('data-filter');
 
-            // 3. Mostramos u ocultamos cada álbum según corresponda
             tarjetas.forEach(tarjeta => {
                 const categoriaTarjeta = tarjeta.getAttribute('data-categoria');
-                
                 if (filtroElegido === 'all' || filtroElegido === categoriaTarjeta) {
-                    tarjeta.style.display = 'block'; // Lo mostramos
+                    tarjeta.style.display = 'block'; 
                 } else {
-                    tarjeta.style.display = 'none';  // Lo escondemos
+                    tarjeta.style.display = 'none';  
                 }
             });
         });
