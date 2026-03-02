@@ -4,11 +4,11 @@ document.addEventListener('DOMContentLoaded', () => {
     cargarAlbumes();
 
     // Configurar botón de logout si existe
-    const btnLogout = document.getElementById('btn-logout'); // Si agregas uno en el futuro
+    const btnLogout = document.getElementById('btn-logout'); 
     if(btnLogout) btnLogout.addEventListener('click', logout);
 });
 
-// 1. CARGAR ÁLBUMES DE LA BASE DE DATOS
+// 1. CARGAR ÁLBUMES
 async function cargarAlbumes() {
     const grid = document.getElementById('gallery-grid');
     grid.innerHTML = '<p style="color:white; text-align:center">Cargando portafolio...</p>';
@@ -17,7 +17,7 @@ async function cargarAlbumes() {
         const respuesta = await fetch(`${API_URL}/obtener-datos`);
         const albumes = await respuesta.json();
 
-        grid.innerHTML = ''; // Limpiar mensaje de carga
+        grid.innerHTML = ''; 
 
         if (albumes.length === 0) {
             grid.innerHTML = '<div class="empty-state"><p>Aún no hay trabajos subidos.</p></div>';
@@ -28,7 +28,11 @@ async function cargarAlbumes() {
             const card = document.createElement('div');
             card.className = 'album-card';
             
-            // Título y Categoría
+            // --- TRUCO PRO: Etiquetamos la tarjeta con su categoría ---
+            // Le quitamos las mayúsculas y las tildes para que coincida perfecto con el botón
+            const categoriaLimpia = album.categoria.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            card.setAttribute('data-categoria', categoriaLimpia);
+            
             let htmlContent = `
                 <div class="album-header">
                     <h3>${album.titulo}</h3>
@@ -37,10 +41,8 @@ async function cargarAlbumes() {
                 <div class="album-photos">
             `;
 
-            // Las Fotos (Miniaturas clickeables)
             if (album.fotos && album.fotos.length > 0) {
                 album.fotos.forEach(fotoUrl => {
-                    // Aquí usamos la URL de Cloudinary que YA tiene marca de agua
                     htmlContent += `
                         <img src="${fotoUrl}" 
                              class="photo-thumb" 
@@ -52,8 +54,6 @@ async function cargarAlbumes() {
                 htmlContent += `<p style="color:#666; font-size:0.8em">Carpeta vacía</p>`;
             }
 
-            // Botón de subir fotos (Solo visible si estás logueado - lógica simple)
-            // Para simplificar, lo dejamos visible pero protegido por backend
             htmlContent += `
                 </div>
                 <form class="upload-form" onsubmit="subirFoto(event, ${album.id})">
@@ -68,10 +68,41 @@ async function cargarAlbumes() {
             grid.appendChild(card);
         });
 
+        // --- ENCENDEMOS LOS FILTROS UNA VEZ QUE CARGARON LAS FOTOS ---
+        configurarFiltros();
+
     } catch (error) {
         console.error("Error:", error);
         grid.innerHTML = '<p style="color:red; text-align:center">Error al cargar la galería.</p>';
     }
+}
+
+// --- LA MAGIA DE LOS FILTROS ---
+function configurarFiltros() {
+    const botones = document.querySelectorAll('.filter-btn');
+    const tarjetas = document.querySelectorAll('.album-card');
+
+    botones.forEach(boton => {
+        boton.addEventListener('click', () => {
+            // 1. Efecto visual: Resaltamos el botón que acabas de tocar
+            botones.forEach(b => b.classList.remove('active'));
+            boton.classList.add('active');
+
+            // 2. Leemos qué filtro elegiste (ej: 'futbol', 'social', 'all')
+            const filtroElegido = boton.getAttribute('data-filter');
+
+            // 3. Mostramos u ocultamos cada álbum según corresponda
+            tarjetas.forEach(tarjeta => {
+                const categoriaTarjeta = tarjeta.getAttribute('data-categoria');
+                
+                if (filtroElegido === 'all' || filtroElegido === categoriaTarjeta) {
+                    tarjeta.style.display = 'block'; // Lo mostramos
+                } else {
+                    tarjeta.style.display = 'none';  // Lo escondemos
+                }
+            });
+        });
+    });
 }
 
 // 2. SUBIR FOTO AL ÁLBUM
@@ -86,7 +117,6 @@ async function subirFoto(event, albumId) {
     formData.append('foto', inputFile.files[0]);
     formData.append('album_id', albumId);
 
-    // Feedback visual de "Subiendo..."
     const btn = form.querySelector('.upload-btn');
     const textoOriginal = btn.innerHTML;
     btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Subiendo...';
@@ -95,12 +125,10 @@ async function subirFoto(event, albumId) {
         const res = await fetch(`${API_URL}/subir-foto`, {
             method: 'POST',
             body: formData,
-            // Importante: Incluir credenciales para que sepa que eres Admin
             headers: { 'X-Requested-With': 'XMLHttpRequest' } 
         });
 
         if (res.ok) {
-            // Recargar para ver la foto nueva
             cargarAlbumes();
         } else {
             alert("Error al subir (¿Quizás no iniciaste sesión?)");
@@ -113,7 +141,7 @@ async function subirFoto(event, albumId) {
     }
 }
 
-// 3. VISOR DE PANTALLA COMPLETA (LIGHTBOX)
+// 3. VISOR DE PANTALLA COMPLETA
 function abrirVisor(url) {
     const visor = document.getElementById('lightbox');
     const imgGrande = document.getElementById('img-ampliada');
