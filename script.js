@@ -107,7 +107,7 @@ function crearCollage(fotos) {
     });
 }
 
-// --- LA MAGIA DE LOS FILTROS ---
+// --- FILTROS ---
 function configurarFiltros() {
     const botones = document.querySelectorAll('.filter-btn');
     const tarjetas = document.querySelectorAll('.album-card');

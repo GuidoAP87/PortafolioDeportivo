@@ -1,6 +1,6 @@
 import os
 from datetime import timedelta
-from flask import Flask, request, send_from_directory, jsonify, session
+from flask import Flask, request, send_from_directory, jsonify, session, send_file
 from flask_cors import CORS
 from PIL import Image, ImageDraw, ImageFont
 from werkzeug.middleware.proxy_fix import ProxyFix
