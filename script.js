@@ -2,13 +2,10 @@ const API_URL = "https://portafoliodeportivo.onrender.com";
 
 document.addEventListener('DOMContentLoaded', () => {
     cargarAlbumes();
-
-    // Configurar botón de logout si existe
     const btnLogout = document.getElementById('btn-logout'); 
     if(btnLogout) btnLogout.addEventListener('click', logout);
 });
 
-// 1. CARGAR ÁLBUMES Y COLLAGE
 async function cargarAlbumes() {
     const grid = document.getElementById('gallery-grid');
     grid.innerHTML = '<p style="color:white; text-align:center">Cargando portafolio...</p>';
@@ -18,11 +15,9 @@ async function cargarAlbumes() {
         const albumes = await respuesta.json();
 
         grid.innerHTML = ''; 
-        let todasLasFotos = []; // Aquí guardaremos tus fotos para el fondo
 
         if (albumes.length === 0) {
             grid.innerHTML = '<div class="empty-state"><p>Aún no hay trabajos subidos.</p></div>';
-            crearCollage([]); // Llamamos al collage aunque esté vacío
             return;
         }
 
@@ -30,25 +25,32 @@ async function cargarAlbumes() {
             const card = document.createElement('div');
             card.className = 'album-card';
             
-            const categoriaLimpia = album.categoria.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            const categoriaReal = album.categoria || "general";
+            const categoriaLimpia = categoriaReal.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+            
             card.setAttribute('data-categoria', categoriaLimpia);
             
+            // --- ACÁ AGREGAMOS EL BOTÓN DE BORRAR (Tachito Rojo) ---
             let htmlContent = `
-                <div class="album-header">
-                    <h3>${album.titulo}</h3>
-                    <span class="badge">${album.categoria}</span>
+                <div class="album-header" style="display: flex; justify-content: space-between; align-items: center;">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <h3>${album.titulo}</h3>
+                        <span class="badge">${categoriaReal}</span>
+                    </div>
+                    <button onclick="borrarAlbum(${album.id})" style="background: transparent; border: none; color: #ff4444; cursor: pointer; font-size: 14px; transition: 0.3s;" title="Eliminar Álbum">
+                        <i class="fa-solid fa-trash"></i>
+                    </button>
                 </div>
                 <div class="album-photos">
             `;
 
             if (album.fotos && album.fotos.length > 0) {
                 album.fotos.forEach(fotoUrl => {
-                    todasLasFotos.push(fotoUrl); // Guardamos la foto para usarla en la portada
                     htmlContent += `
                         <img src="${fotoUrl}" 
                              class="photo-thumb" 
                              onclick="abrirVisor('${fotoUrl}')" 
-                             alt="Foto de ${album.titulo}">
+                             alt="Foto">
                     `;
                 });
             } else {
@@ -69,9 +71,7 @@ async function cargarAlbumes() {
             grid.appendChild(card);
         });
 
-        // Activamos los filtros y armamos tu fondo personalizado
         configurarFiltros();
-        crearCollage(todasLasFotos); 
 
     } catch (error) {
         console.error("Error:", error);
@@ -79,35 +79,6 @@ async function cargarAlbumes() {
     }
 }
 
-// --- NUEVA FUNCIÓN: EL COLLAGE DINÁMICO ---
-function crearCollage(fotos) {
-    const collage = document.getElementById('hero-collage');
-    collage.innerHTML = ''; // Limpiamos por si acaso
-
-    let fotosParaFondo = [...fotos]; // Copiamos tu galería
-
-    // Si aún tienes pocas fotos, rellenamos con unas imágenes por defecto para que no quede negro
-    if (fotosParaFondo.length < 10) {
-        const fotosRelleno = [
-            "https://images.unsplash.com/photo-1518605368461-1ee7e53f5eb5?q=80&w=500&auto=format&fit=crop", // fútbol
-            "https://images.unsplash.com/photo-1498038432885-c6f3f1b912ee?q=80&w=500&auto=format&fit=crop", // rock
-            "https://images.unsplash.com/photo-1504450758481-7338eba7524a?q=80&w=500&auto=format&fit=crop", // basket
-            "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?q=80&w=500&auto=format&fit=crop", // música
-            "https://images.unsplash.com/photo-1522778119026-d647f0596c20?q=80&w=500&auto=format&fit=crop", // estadio
-        ];
-        // Mezclamos las tuyas con el relleno
-        fotosParaFondo = [...fotosParaFondo, ...fotosRelleno, ...fotosRelleno]; 
-    }
-
-    // Agarramos las primeras 15 fotos y las pegamos en el fondo
-    fotosParaFondo.slice(0, 15).forEach(url => {
-        const img = document.createElement('img');
-        img.src = url;
-        collage.appendChild(img);
-    });
-}
-
-// --- FILTROS ---
 function configurarFiltros() {
     const botones = document.querySelectorAll('.filter-btn');
     const tarjetas = document.querySelectorAll('.album-card');
@@ -131,7 +102,6 @@ function configurarFiltros() {
     });
 }
 
-// 2. SUBIR FOTO AL ÁLBUM
 async function subirFoto(event, albumId) {
     event.preventDefault();
     const form = event.target;
@@ -157,7 +127,7 @@ async function subirFoto(event, albumId) {
         if (res.ok) {
             cargarAlbumes();
         } else {
-            alert("Error al subir (¿Quizás no iniciaste sesión?)");
+            alert("Error al subir.");
         }
     } catch (e) {
         console.error(e);
@@ -167,11 +137,33 @@ async function subirFoto(event, albumId) {
     }
 }
 
-// 3. VISOR DE PANTALLA COMPLETA
+// --- NUEVA FUNCIÓN: BORRAR ÁLBUM ---
+async function borrarAlbum(albumId) {
+    // 1. Mensaje de seguridad por si tocaste sin querer
+    const seguro = confirm("⚠️ ¿Estás seguro de que querés borrar este álbum y TODAS sus fotos? Esta acción no se puede deshacer.");
+    if (!seguro) return; // Si ponés cancelar, no hace nada
+
+    try {
+        // 2. Le mandamos la orden a Python (la ruta que creaste antes)
+        const res = await fetch(`${API_URL}/borrar-album/${albumId}`, {
+            method: 'DELETE',
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+
+        if (res.ok) {
+            cargarAlbumes(); // 3. Recargamos la galería para que desaparezca
+        } else {
+            alert("Error al borrar (¿Estás seguro de que iniciaste sesión como administrador?)");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Error de conexión al intentar borrar.");
+    }
+}
+
 function abrirVisor(url) {
     const visor = document.getElementById('lightbox');
     const imgGrande = document.getElementById('img-ampliada');
-    
     imgGrande.src = url;
     visor.style.display = "block";
 }

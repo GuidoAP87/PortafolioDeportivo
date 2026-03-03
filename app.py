@@ -50,6 +50,7 @@ class Album(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     titulo = db.Column(db.String(100), nullable=False)
     categoria = db.Column(db.String(50), nullable=False)
+    # El cascade="all, delete-orphan" hace que al borrar el álbum, se borren sus fotos de la base de datos
     fotos = db.relationship('Foto', backref='album', lazy=True, cascade="all, delete-orphan")
 
 class Foto(db.Model):
@@ -92,11 +93,9 @@ def procesar_imagen(ruta_entrada, ruta_salida, texto="NACHO LINGUA"):
 def index():
     return send_from_directory('.', 'index.html')
 
-# 👇👇👇 AQUÍ ESTÁ LA RUTA QUE TE FALTABA 👇👇👇
 @app.route('/nacho_lingua.jpg')
 def mostrar_foto_fondo():
     return send_file('nacho_lingua.jpg')
-# 👆👆👆 ================================== 👆👆👆
 
 @app.route('/crear-album', methods=['POST'])
 def crear_album():
@@ -161,6 +160,24 @@ def obtener_datos():
         })
         
     return jsonify(lista_respuesta)
+
+# --- RUTA PARA BORRAR UN ÁLBUM COMPLETO ---
+@app.route('/borrar-album/<int:album_id>', methods=['DELETE'])
+def borrar_album(album_id):
+    if not session.get('admin'):
+        return jsonify({"error": "No autorizado"}), 403
+
+    album_a_borrar = Album.query.get(album_id)
+    
+    if album_a_borrar:
+        try:
+            db.session.delete(album_a_borrar)
+            db.session.commit()
+            return jsonify({"mensaje": "Álbum eliminado correctamente"})
+        except Exception as e:
+            return jsonify({"error": f"Error al borrar: {str(e)}"}), 500
+    else:
+        return jsonify({"error": "El álbum no existe"}), 404
 
 # --- LOGIN ---
 @app.route('/login', methods=['POST'])
