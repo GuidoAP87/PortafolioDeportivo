@@ -54,7 +54,6 @@ class Album(db.Model):
 
 class Foto(db.Model):
     id = db.Column(db.Integer, primary_key=True)
-    # AHORA guardamos la URL completa de Cloudinary, no solo el nombre
     url_foto = db.Column(db.String(500), nullable=False) 
     album_id = db.Column(db.Integer, db.ForeignKey('album.id'), nullable=False)
 
@@ -68,7 +67,6 @@ def procesar_imagen(ruta_entrada, ruta_salida, texto="NACHO LINGUA"):
         txt_layer = Image.new("RGBA", base.size, (255, 255, 255, 0))
         draw = ImageDraw.Draw(txt_layer)
         
-        # Tamaño de fuente dinámico
         fontsize = int(base.width / 12)
         try:
             font = ImageFont.truetype("arial.ttf", size=fontsize)
@@ -79,7 +77,6 @@ def procesar_imagen(ruta_entrada, ruta_salida, texto="NACHO LINGUA"):
         w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
         x, y = (base.width - w) / 2, (base.height - h) / 2
         
-        # Color blanco semi-transparente
         draw.text((x, y), texto, font=font, fill=(255, 255, 255, 100))
         
         watermarked = Image.alpha_composite(base, txt_layer).convert("RGB")
@@ -94,6 +91,12 @@ def procesar_imagen(ruta_entrada, ruta_salida, texto="NACHO LINGUA"):
 @app.route('/')
 def index():
     return send_from_directory('.', 'index.html')
+
+# 👇👇👇 AQUÍ ESTÁ LA RUTA QUE TE FALTABA 👇👇👇
+@app.route('/nacho_lingua.jpg')
+def mostrar_foto_fondo():
+    return send_file('nacho_lingua.jpg')
+# 👆👆👆 ================================== 👆👆👆
 
 @app.route('/crear-album', methods=['POST'])
 def crear_album():
@@ -115,31 +118,25 @@ def subir_foto():
     archivo = request.files['foto']
     album_id = request.form.get('album_id')
 
-    # 1. Guardar temporalmente en el servidor
     filename = archivo.filename
     ruta_temp_original = os.path.join(CARPETA_TEMP, 'orig_' + filename)
     ruta_temp_final = os.path.join(CARPETA_TEMP, 'final_' + filename)
     archivo.save(ruta_temp_original)
 
-    # 2. Aplicar marca de agua
     exito = procesar_imagen(ruta_temp_original, ruta_temp_final)
     
     if exito:
-        # 3. SUBIR A CLOUDINARY (La Bóveda)
         try:
-            # Subimos la foto ya marcada
             respuesta_cloud = cloudinary.uploader.upload(
                 ruta_temp_final, 
                 folder=f"portafolio/album_{album_id}"
             )
             url_segura = respuesta_cloud['secure_url']
 
-            # 4. Guardar el LINK en la base de datos
             nueva_foto = Foto(url_foto=url_segura, album_id=album_id)
             db.session.add(nueva_foto)
             db.session.commit()
 
-            # 5. Borrar archivos temporales (Limpieza)
             os.remove(ruta_temp_original)
             os.remove(ruta_temp_final)
 
@@ -160,7 +157,6 @@ def obtener_datos():
             "id": album.id,
             "titulo": album.titulo,
             "categoria": album.categoria,
-            # Ahora 'f.url_foto' ya es el link completo de internet
             "fotos": [f.url_foto for f in album.fotos] 
         })
         
@@ -188,10 +184,9 @@ def logout():
 # --- RUTA DE EMERGENCIA (Bórrame después de usar) ---
 @app.route('/resetear-base-de-datos-secreta')
 def reset_db():
-    # ⚠️ PELIGRO: Esto borra toda la base de datos y la crea de cero
     try:
-        db.drop_all()   # Borra lo viejo (que está dando error)
-        db.create_all() # Crea lo nuevo (compatible con Cloudinary)
+        db.drop_all()   
+        db.create_all() 
         return "¡LISTO! Base de datos reseteada. Ya puedes subir fotos."
     except Exception as e:
         return f"Error: {str(e)}"
