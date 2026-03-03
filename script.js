@@ -2,9 +2,44 @@ const API_URL = "https://portafoliodeportivo.onrender.com";
 
 document.addEventListener('DOMContentLoaded', () => {
     cargarAlbumes();
+    
+    // --- BOTÓN CERRAR SESIÓN ---
     const btnLogout = document.getElementById('btn-logout'); 
     if(btnLogout) btnLogout.addEventListener('click', logout);
+
+    // --- BOTÓN NUEVO ÁLBUM (¡Recuperado!) ---
+    const btnAddAlbum = document.getElementById('btn-add-album');
+    if(btnAddAlbum) btnAddAlbum.addEventListener('click', crearAlbum);
 });
+
+// --- FUNCIÓN PARA CREAR ÁLBUM ---
+async function crearAlbum() {
+    const titulo = prompt("Ingresa el título del nuevo álbum (Ej: Final Talleres vs Belgrano):");
+    if (!titulo) return; // Si cancela, no hacemos nada
+
+    const categoria = prompt("Ingresa la categoría (escribe: futbol, basquet, o social):");
+    if (!categoria) return;
+
+    try {
+        const res = await fetch(`${API_URL}/crear-album`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({ titulo: titulo, categoria: categoria.toLowerCase().trim() })
+        });
+
+        if (res.ok) {
+            cargarAlbumes(); // Recargamos para ver el álbum nuevo
+        } else {
+            alert("Acceso denegado. ¿Te olvidaste de iniciar sesión como administrador?");
+        }
+    } catch (e) {
+        console.error(e);
+        alert("Error de conexión al intentar crear el álbum.");
+    }
+}
 
 async function cargarAlbumes() {
     const grid = document.getElementById('gallery-grid');
@@ -30,7 +65,6 @@ async function cargarAlbumes() {
             
             card.setAttribute('data-categoria', categoriaLimpia);
             
-            // --- ACÁ AGREGAMOS EL BOTÓN DE BORRAR (Tachito Rojo) ---
             let htmlContent = `
                 <div class="album-header" style="display: flex; justify-content: space-between; align-items: center;">
                     <div style="display: flex; align-items: center; gap: 10px;">
@@ -137,21 +171,18 @@ async function subirFoto(event, albumId) {
     }
 }
 
-// --- NUEVA FUNCIÓN: BORRAR ÁLBUM ---
 async function borrarAlbum(albumId) {
-    // 1. Mensaje de seguridad por si tocaste sin querer
     const seguro = confirm("⚠️ ¿Estás seguro de que querés borrar este álbum y TODAS sus fotos? Esta acción no se puede deshacer.");
-    if (!seguro) return; // Si ponés cancelar, no hace nada
+    if (!seguro) return; 
 
     try {
-        // 2. Le mandamos la orden a Python (la ruta que creaste antes)
         const res = await fetch(`${API_URL}/borrar-album/${albumId}`, {
             method: 'DELETE',
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
 
         if (res.ok) {
-            cargarAlbumes(); // 3. Recargamos la galería para que desaparezca
+            cargarAlbumes(); 
         } else {
             alert("Error al borrar (¿Estás seguro de que iniciaste sesión como administrador?)");
         }
@@ -170,4 +201,12 @@ function abrirVisor(url) {
 
 function cerrarVisor() {
     document.getElementById('lightbox').style.display = "none";
+}
+
+function logout() {
+    fetch(`${API_URL}/logout`, { method: 'POST' })
+        .then(() => {
+            alert("Sesión cerrada");
+            window.location.reload();
+        });
 }
