@@ -117,7 +117,7 @@ function verAlbumDetalle(albumId) {
 
             <form class="upload-form" onsubmit="subirFoto(event, ${album.id})" style="margin-bottom: 30px;">
                 <label class="upload-btn" style="display: inline-block; padding: 12px 25px; background: #222; border: 1px dashed #d4af37; color: #d4af37; cursor: pointer; border-radius: 4px; transition: 0.3s;">
-                    <i class="fa-solid fa-cloud-arrow-up"></i> Añadir fotos a este álbum (Puedes seleccionar varias)
+                    <i class="fa-solid fa-bolt"></i> Añadir fotos (Subida Rápida)
                     <input type="file" name="foto" accept="image/*" multiple onchange="this.form.dispatchEvent(new Event('submit'))" hidden>
                 </label>
             </form>
@@ -173,7 +173,44 @@ function configurarFiltros() {
     });
 }
 
-// --- FASE 3: SUBIDA MASIVA EN FILA (Nuevo Cerebro) ---
+// --- NUEVO MOTOR DE COMPRESIÓN DE IMÁGENES ---
+function comprimirImagen(file, maxWidth = 1920, quality = 0.8) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = event => {
+            const img = new Image();
+            img.src = event.target.result;
+            img.onload = () => {
+                const canvas = document.createElement('canvas');
+                let width = img.width;
+                let height = img.height;
+
+                // Calculamos el nuevo tamaño manteniendo la proporción
+                if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // Convertimos el canvas de nuevo a un archivo JPG liviano
+                canvas.toBlob((blob) => {
+                    const newFile = new File([blob], file.name, {
+                        type: 'image/jpeg',
+                        lastModified: Date.now()
+                    });
+                    resolve(newFile);
+                }, 'image/jpeg', quality);
+            };
+            img.onerror = error => reject(error);
+        };
+    });
+}
+
 async function subirFoto(event, albumId) {
     event.preventDefault();
     const form = event.target;
@@ -188,12 +225,15 @@ async function subirFoto(event, albumId) {
     let subidasExitosas = 0;
 
     try {
-        // Hacemos un bucle para enviar foto por foto
         for (let i = 0; i < cantidadFotos; i++) {
+            // Avisamos que estamos comprimiendo (esto toma milisegundos)
+            btn.innerHTML = `<i class="fa-solid fa-compress"></i> Optimizando foto ${i + 1}...`;
+            const archivoComprimido = await comprimirImagen(inputFile.files[i]);
+
             btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Subiendo foto ${i + 1} de ${cantidadFotos}...`;
             
             const formData = new FormData();
-            formData.append('foto', inputFile.files[i]);
+            formData.append('foto', archivoComprimido); // Subimos el archivo liviano
             formData.append('album_id', albumId);
 
             const res = await fetch(`${API_URL}/subir-foto`, {
@@ -210,7 +250,6 @@ async function subirFoto(event, albumId) {
         }
 
         if (subidasExitosas > 0) {
-            // Cuando termine el bucle, recargamos el álbum
             const respuesta = await fetch(`${API_URL}/obtener-datos`);
             albumesData = await respuesta.json();
             verAlbumDetalle(albumId);
@@ -223,7 +262,7 @@ async function subirFoto(event, albumId) {
         alert("Error de conexión durante la subida.");
     } finally {
         if(btn) btn.innerHTML = textoOriginal;
-        form.reset(); // Limpia la selección de archivos
+        form.reset(); 
     }
 }
 
