@@ -1,5 +1,5 @@
 const API_URL = "https://portafoliodeportivo.onrender.com"; 
-let albumesData = []; // Guardamos los datos acá para que la página sea ultra rápida
+let albumesData = []; 
 
 document.addEventListener('DOMContentLoaded', () => {
     cargarAlbumes();
@@ -46,19 +46,17 @@ async function cargarAlbumes() {
     try {
         const respuesta = await fetch(`${API_URL}/obtener-datos`);
         albumesData = await respuesta.json(); 
-        renderizarCarpetas(); // Mostramos el menú principal de álbumes
+        renderizarCarpetas(); 
     } catch (error) {
         console.error("Error:", error);
         grid.innerHTML = '<p style="color:red; text-align:center">Error al cargar la galería.</p>';
     }
 }
 
-// --- FASE 1: DIBUJAR LAS "CARPETAS" (PORTADAS) ---
 function renderizarCarpetas() {
     const grid = document.getElementById('gallery-grid');
     grid.innerHTML = ''; 
 
-    // Mostramos los filtros
     document.getElementById('category-filters').style.display = 'flex';
 
     if (albumesData.length === 0) {
@@ -69,14 +67,13 @@ function renderizarCarpetas() {
     albumesData.forEach(album => {
         const card = document.createElement('div');
         card.className = 'album-card';
-        card.style.cursor = 'pointer'; // Manito al pasar por encima
-        card.onclick = () => verAlbumDetalle(album.id); // Al tocar, abre el álbum
+        card.style.cursor = 'pointer'; 
+        card.onclick = () => verAlbumDetalle(album.id); 
         
         const categoriaReal = album.categoria || "general";
         const categoriaLimpia = categoriaReal.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
         card.setAttribute('data-categoria', categoriaLimpia);
         
-        // La primera foto es la portada. Si no hay, fondo gris.
         const portadaUrl = (album.fotos && album.fotos.length > 0) ? album.fotos[0] : 'https://via.placeholder.com/400x300/222/555?text=Carpeta+Vacia';
         const cantidad = album.fotos ? album.fotos.length : 0;
 
@@ -96,20 +93,15 @@ function renderizarCarpetas() {
     configurarFiltros();
 }
 
-// --- FASE 2: VISTA INMERSIVA DE UN ÁLBUM COMPLETO ---
 function verAlbumDetalle(albumId) {
     const album = albumesData.find(a => a.id === albumId);
     if(!album) return;
 
     const grid = document.getElementById('gallery-grid');
-    
-    // Escondemos los filtros porque estamos dentro del álbum
     document.getElementById('category-filters').style.display = 'none';
 
-    // Armamos la pantalla completa del álbum
     let htmlContent = `
         <div style="grid-column: 1 / -1; margin-bottom: 30px;">
-            
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 20px; margin-bottom: 20px;">
                 <div style="display: flex; align-items: center; gap: 20px;">
                     <button onclick="renderizarCarpetas()" style="background: transparent; color: #d4af37; border: 1px solid #d4af37; padding: 10px 20px; border-radius: 4px; cursor: pointer; transition: 0.3s;">
@@ -125,8 +117,8 @@ function verAlbumDetalle(albumId) {
 
             <form class="upload-form" onsubmit="subirFoto(event, ${album.id})" style="margin-bottom: 30px;">
                 <label class="upload-btn" style="display: inline-block; padding: 12px 25px; background: #222; border: 1px dashed #d4af37; color: #d4af37; cursor: pointer; border-radius: 4px; transition: 0.3s;">
-                    <i class="fa-solid fa-cloud-arrow-up"></i> Añadir fotos a este álbum
-                    <input type="file" name="foto" accept="image/*" onchange="this.form.dispatchEvent(new Event('submit'))" hidden>
+                    <i class="fa-solid fa-cloud-arrow-up"></i> Añadir fotos a este álbum (Puedes seleccionar varias)
+                    <input type="file" name="foto" accept="image/*" multiple onchange="this.form.dispatchEvent(new Event('submit'))" hidden>
                 </label>
             </form>
 
@@ -181,42 +173,57 @@ function configurarFiltros() {
     });
 }
 
+// --- FASE 3: SUBIDA MASIVA EN FILA (Nuevo Cerebro) ---
 async function subirFoto(event, albumId) {
     event.preventDefault();
     const form = event.target;
     const inputFile = form.querySelector('input[type="file"]');
     
-    if (!inputFile.files[0]) return;
-
-    const formData = new FormData();
-    formData.append('foto', inputFile.files[0]);
-    formData.append('album_id', albumId);
+    const cantidadFotos = inputFile.files.length;
+    if (cantidadFotos === 0) return;
 
     const btn = form.querySelector('.upload-btn');
     const textoOriginal = btn.innerHTML;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Subiendo a la nube...';
+    
+    let subidasExitosas = 0;
 
     try {
-        const res = await fetch(`${API_URL}/subir-foto`, {
-            method: 'POST',
-            body: formData,
-            headers: { 'X-Requested-With': 'XMLHttpRequest' } 
-        });
+        // Hacemos un bucle para enviar foto por foto
+        for (let i = 0; i < cantidadFotos; i++) {
+            btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Subiendo foto ${i + 1} de ${cantidadFotos}...`;
+            
+            const formData = new FormData();
+            formData.append('foto', inputFile.files[i]);
+            formData.append('album_id', albumId);
 
-        if (res.ok) {
-            // Recargamos los datos invisibles...
+            const res = await fetch(`${API_URL}/subir-foto`, {
+                method: 'POST',
+                body: formData,
+                headers: { 'X-Requested-With': 'XMLHttpRequest' } 
+            });
+
+            if (res.ok) {
+                subidasExitosas++;
+            } else {
+                console.error("Error subiendo una de las fotos");
+            }
+        }
+
+        if (subidasExitosas > 0) {
+            // Cuando termine el bucle, recargamos el álbum
             const respuesta = await fetch(`${API_URL}/obtener-datos`);
             albumesData = await respuesta.json();
-            // ... y refrescamos solo este álbum (¡sin volver al inicio!)
             verAlbumDetalle(albumId);
         } else {
-            alert("Error al subir.");
+            alert("Error al subir las fotos.");
         }
+
     } catch (e) {
         console.error(e);
-        alert("Error de conexión");
+        alert("Error de conexión durante la subida.");
     } finally {
         if(btn) btn.innerHTML = textoOriginal;
+        form.reset(); // Limpia la selección de archivos
     }
 }
 
@@ -231,7 +238,7 @@ async function borrarAlbum(albumId) {
         });
 
         if (res.ok) {
-            cargarAlbumes(); // Volvemos al inicio general
+            cargarAlbumes(); 
         } else {
             alert("Error al borrar (¿Iniciaste sesión?)");
         }
