@@ -1,8 +1,10 @@
 const API_URL = "https://portafoliodeportivo.onrender.com"; 
 let albumesData = []; 
+let isAdmin = false; // NUEVA VARIABLE: Guarda el estado de tu sesión
 
-document.addEventListener('DOMContentLoaded', () => {
-    cargarAlbumes();
+document.addEventListener('DOMContentLoaded', async () => {
+    await verificarSesion(); // 1. Primero averiguamos si sos el dueño
+    cargarAlbumes();         // 2. Luego cargamos las galerías
     
     const btnLogout = document.getElementById('btn-logout'); 
     if(btnLogout) btnLogout.addEventListener('click', logout);
@@ -10,6 +12,24 @@ document.addEventListener('DOMContentLoaded', () => {
     const btnAddAlbum = document.getElementById('btn-add-album');
     if(btnAddAlbum) btnAddAlbum.addEventListener('click', crearAlbum);
 });
+
+// --- NUEVO MOTOR DE SEGURIDAD VISUAL ---
+async function verificarSesion() {
+    try {
+        const res = await fetch(`${API_URL}/check-auth`);
+        const data = await res.json();
+        isAdmin = data.isAdmin;
+
+        // Si es administrador (o sea, vos), encendemos el botón del menú
+        const btnAddAlbum = document.getElementById('btn-add-album');
+        if (isAdmin && btnAddAlbum) {
+            btnAddAlbum.style.display = 'inline-block';
+        }
+    } catch (e) {
+        console.error("Error verificando sesión", e);
+        isAdmin = false;
+    }
+}
 
 async function crearAlbum() {
     const titulo = prompt("Ingresa el título del nuevo álbum (Ej: Final Talleres vs Belgrano):");
@@ -100,6 +120,27 @@ function verAlbumDetalle(albumId) {
     const grid = document.getElementById('gallery-grid');
     document.getElementById('category-filters').style.display = 'none';
 
+    // Ocultamos los botones sensibles a los usuarios normales
+    let botonesAdminHeader = '';
+    let botonSubirFotos = '';
+
+    if (isAdmin) {
+        botonesAdminHeader = `
+            <button onclick="borrarAlbum(${album.id})" style="background: transparent; border: none; color: #ff4444; cursor: pointer; font-size: 20px;" title="Eliminar Álbum Completo">
+                <i class="fa-solid fa-trash"></i>
+            </button>
+        `;
+        
+        botonSubirFotos = `
+            <form class="upload-form" onsubmit="subirFoto(event, ${album.id})" style="margin-bottom: 30px;">
+                <label class="upload-btn" style="display: inline-block; padding: 12px 25px; background: #222; border: 1px dashed #d4af37; color: #d4af37; cursor: pointer; border-radius: 4px; transition: 0.3s;">
+                    <i class="fa-solid fa-bolt"></i> Añadir fotos (Subida Rápida)
+                    <input type="file" name="foto" accept="image/*" multiple onchange="this.form.dispatchEvent(new Event('submit'))" hidden>
+                </label>
+            </form>
+        `;
+    }
+
     let htmlContent = `
         <div style="grid-column: 1 / -1; margin-bottom: 30px;">
             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #333; padding-bottom: 20px; margin-bottom: 20px;">
@@ -110,17 +151,10 @@ function verAlbumDetalle(albumId) {
                     <h2 style="margin: 0; font-family: 'Playfair Display', serif; font-size: 2.5em; color: white;">${album.titulo}</h2>
                 </div>
                 
-                <button onclick="borrarAlbum(${album.id})" style="background: transparent; border: none; color: #ff4444; cursor: pointer; font-size: 20px;" title="Eliminar Álbum Completo">
-                    <i class="fa-solid fa-trash"></i>
-                </button>
+                ${botonesAdminHeader}
             </div>
 
-            <form class="upload-form" onsubmit="subirFoto(event, ${album.id})" style="margin-bottom: 30px;">
-                <label class="upload-btn" style="display: inline-block; padding: 12px 25px; background: #222; border: 1px dashed #d4af37; color: #d4af37; cursor: pointer; border-radius: 4px; transition: 0.3s;">
-                    <i class="fa-solid fa-bolt"></i> Añadir fotos (Subida Rápida)
-                    <input type="file" name="foto" accept="image/*" multiple onchange="this.form.dispatchEvent(new Event('submit'))" hidden>
-                </label>
-            </form>
+            ${botonSubirFotos}
 
             <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 15px;">
     `;
@@ -173,7 +207,6 @@ function configurarFiltros() {
     });
 }
 
-// --- NUEVO MOTOR DE COMPRESIÓN DE IMÁGENES ---
 function comprimirImagen(file, maxWidth = 1920, quality = 0.8) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -186,7 +219,6 @@ function comprimirImagen(file, maxWidth = 1920, quality = 0.8) {
                 let width = img.width;
                 let height = img.height;
 
-                // Calculamos el nuevo tamaño manteniendo la proporción
                 if (width > maxWidth) {
                     height = Math.round((height * maxWidth) / width);
                     width = maxWidth;
@@ -197,7 +229,6 @@ function comprimirImagen(file, maxWidth = 1920, quality = 0.8) {
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
 
-                // Convertimos el canvas de nuevo a un archivo JPG liviano
                 canvas.toBlob((blob) => {
                     const newFile = new File([blob], file.name, {
                         type: 'image/jpeg',
@@ -226,14 +257,13 @@ async function subirFoto(event, albumId) {
 
     try {
         for (let i = 0; i < cantidadFotos; i++) {
-            // Avisamos que estamos comprimiendo (esto toma milisegundos)
             btn.innerHTML = `<i class="fa-solid fa-compress"></i> Optimizando foto ${i + 1}...`;
             const archivoComprimido = await comprimirImagen(inputFile.files[i]);
 
             btn.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Subiendo foto ${i + 1} de ${cantidadFotos}...`;
             
             const formData = new FormData();
-            formData.append('foto', archivoComprimido); // Subimos el archivo liviano
+            formData.append('foto', archivoComprimido); 
             formData.append('album_id', albumId);
 
             const res = await fetch(`${API_URL}/subir-foto`, {
