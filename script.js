@@ -259,7 +259,7 @@ function configurarFiltros() {
     });
 }
 
-// --- NUEVO MOTOR DE COMPRESIÓN CON MARCA DE AGUA ---
+// --- NUEVO MOTOR DE COMPRESIÓN CON PATRÓN DE MOSAICO AGRESIVO ---
 function comprimirImagen(file, maxWidth = 1920, quality = 0.8) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -284,37 +284,58 @@ function comprimirImagen(file, maxWidth = 1920, quality = 0.8) {
                 // 1. Dibujamos la foto original
                 ctx.drawImage(img, 0, 0, width, height);
 
-                // --- 2. INICIO MARCA DE AGUA PROFESIONAL ---
+                // --- 2. INICIO MARCA DE AGUA EN MOSAICO AGRESIVO ---
+                // Primero creamos un "sello" individual en memoria
+                const patternCanvas = document.createElement('canvas');
+                const pCtx = patternCanvas.getContext('2d');
+                
+                // Tamaño dinámico del sello basado en el ancho de la foto
+                // Hacemos el texto un poco más chico para que entre muchas veces
+                const fontSize = Math.floor(width / 20); 
+                pCtx.font = `bold ${fontSize}px Arial`;
+                
+                const texto = "NACHO LINGUA FOTOGRAFÍA ";
+                const textWidth = pCtx.measureText(texto).width;
+                
+                // Definimos el tamaño del cuadrado del patrón (con aire alrededor)
+                patternCanvas.width = textWidth + (fontSize * 2); 
+                patternCanvas.height = fontSize * 5; 
+
+                // Configuramos el estilo del texto en el sello
+                pCtx.font = `bold ${fontSize}px Arial`;
+                pCtx.textAlign = "center";
+                pCtx.textBaseline = "middle";
+
+                // --- EL CAMBIO CLAVE: OPACIDAD ALTA (85%) ---
+                pCtx.fillStyle = "rgba(255, 255, 255, 0.85)"; 
+                
+                // Sombra para que se lea en fondos blancos
+                pCtx.shadowColor = "rgba(0, 0, 0, 0.9)";
+                pCtx.shadowBlur = 4;
+
+                // Dibujamos el texto centrado en el sello
+                pCtx.fillText(texto, patternCanvas.width / 2, patternCanvas.height / 2);
+
+                // --- APLICAMOS EL MOSAICO A LA FOTO ---
                 ctx.save();
-                // Movemos el "pincel" al centro exacto de la foto
+                
+                // Creamos el patrón repetitivo
+                const pattern = ctx.createPattern(patternCanvas, 'repeat');
+                ctx.fillStyle = pattern;
+                
+                // Rotamos todo el lienzo para que el mosaico sea diagonal
+                // Nos movemos al centro para rotar
                 ctx.translate(width / 2, height / 2);
-                // Inclinamos el texto en diagonal (-30 grados)
-                ctx.rotate(-Math.PI / 6); 
-
-                // Tamaño dinámico: el texto crece si la foto es más grande
-                const fontSize = Math.floor(width / 12);
-                ctx.font = `bold ${fontSize}px Arial`;
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-
-                // Color blanco con 40% de opacidad (semi-transparente)
-                ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
-
-                // Sombra negra (el truco para que se lea en fondos blancos)
-                ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
-                ctx.shadowBlur = 8;
-                ctx.shadowOffsetX = 3;
-                ctx.shadowOffsetY = 3;
-
-                // Escribimos el nombre principal
-                ctx.fillText("NACHO LINGUA", 0, 0);
-
-                // (Opcional) Escribimos "FOTOGRAFÍA" más chiquito abajo
-                ctx.font = `bold ${fontSize / 2.5}px Arial`;
-                ctx.fillText("FOTOGRAFÍA", 0, fontSize);
-
+                ctx.rotate(-Math.PI / 8); // Diagonal más suave (-22.5 grados) para que se lea más
+                
+                // Volvemos a estirar el lienzo para cubrir las esquinas que quedaron afuera al rotar
+                ctx.translate(-width, -height); 
+                
+                // Dibujamos un rectángulo gigante con el patrón de mosaico (cubriendo el doble del área)
+                ctx.fillRect(0, 0, width * 2, height * 2);
+                
                 ctx.restore();
-                // --- FIN MARCA DE AGUA ---
+                // --- FIN MARCA DE AGUA AGRESIVA ---
 
                 // 3. Convertimos el resultado a JPG liviano
                 canvas.toBlob((blob) => {
