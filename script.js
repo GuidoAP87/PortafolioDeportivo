@@ -31,31 +31,83 @@ async function verificarSesion() {
     }
 }
 
+// --- NUEVO SISTEMA PARA CREAR ÁLBUMES (MODAL PROFESIONAL SWEETALERT2) ---
 async function crearAlbum() {
-    const titulo = prompt("Ingresa el título del nuevo álbum (Ej: Final Talleres vs Belgrano):");
-    if (!titulo) return;
-
-    const categoria = prompt("Ingresa la categoría (escribe: futbol, basquet, o social):");
-    if (!categoria) return;
-
-    try {
-        const res = await fetch(`${API_URL}/crear-album`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify({ titulo: titulo, categoria: categoria.toLowerCase().trim() })
-        });
-
-        if (res.ok) {
-            cargarAlbumes();
-        } else {
-            alert("Acceso denegado. ¿Iniciaste sesión?");
+    const { value: formValues } = await Swal.fire({
+        title: 'Crear Nuevo Álbum',
+        background: '#111', // Fondo oscuro para que combine
+        color: '#fff',      // Texto blanco
+        html: `
+            <input id="album-titulo" class="swal2-input" placeholder="Título (Ej: Final Talleres vs Belgrano)" style="background: #222; color: white; border: 1px solid #333; margin-bottom: 15px; width: 80%;">
+            <select id="album-categoria" class="swal2-select" style="background: #222; color: white; border: 1px solid #333; width: 80%; padding: 15px; font-size: 1em; margin: 0 auto; display: block; border-radius: 4px;">
+                <option value="" disabled selected>Selecciona una categoría...</option>
+                <option value="futbol">Fútbol</option>
+                <option value="basquet">Básquet</option>
+                <option value="social">Social</option>
+            </select>
+        `,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Crear Álbum',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#d4af37', // Tu color dorado
+        cancelButtonColor: '#ff4444',
+        preConfirm: () => {
+            const titulo = document.getElementById('album-titulo').value.trim();
+            const categoria = document.getElementById('album-categoria').value;
+            if (!titulo || !categoria) {
+                Swal.showValidationMessage('Por favor completa ambos campos');
+                return false;
+            }
+            return { titulo: titulo, categoria: categoria };
         }
-    } catch (e) {
-        console.error(e);
-        alert("Error de conexión");
+    });
+
+    if (formValues) {
+        try {
+            const res = await fetch(`${API_URL}/crear-album`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({ titulo: formValues.titulo, categoria: formValues.categoria })
+            });
+
+            if (res.ok) {
+                cargarAlbumes();
+                // Cartelito de éxito lindo
+                Swal.fire({
+                    title: '¡Listo!',
+                    text: 'Álbum creado exitosamente',
+                    icon: 'success',
+                    background: '#111',
+                    color: '#fff',
+                    confirmButtonColor: '#d4af37',
+                    timer: 2000,
+                    showConfirmButton: false
+                });
+            } else {
+                Swal.fire({
+                    title: 'Error',
+                    text: 'Acceso denegado. ¿Iniciaste sesión?',
+                    icon: 'error',
+                    background: '#111',
+                    color: '#fff',
+                    confirmButtonColor: '#d4af37'
+                });
+            }
+        } catch (e) {
+            console.error(e);
+            Swal.fire({
+                title: 'Error de conexión',
+                text: 'No se pudo contactar al servidor',
+                icon: 'error',
+                background: '#111',
+                color: '#fff',
+                confirmButtonColor: '#d4af37'
+            });
+        }
     }
 }
 
