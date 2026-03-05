@@ -207,6 +207,7 @@ function configurarFiltros() {
     });
 }
 
+// --- NUEVO MOTOR DE COMPRESIÓN CON MARCA DE AGUA ---
 function comprimirImagen(file, maxWidth = 1920, quality = 0.8) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -227,8 +228,43 @@ function comprimirImagen(file, maxWidth = 1920, quality = 0.8) {
                 canvas.width = width;
                 canvas.height = height;
                 const ctx = canvas.getContext('2d');
+                
+                // 1. Dibujamos la foto original
                 ctx.drawImage(img, 0, 0, width, height);
 
+                // --- 2. INICIO MARCA DE AGUA PROFESIONAL ---
+                ctx.save();
+                // Movemos el "pincel" al centro exacto de la foto
+                ctx.translate(width / 2, height / 2);
+                // Inclinamos el texto en diagonal (-30 grados)
+                ctx.rotate(-Math.PI / 6); 
+
+                // Tamaño dinámico: el texto crece si la foto es más grande
+                const fontSize = Math.floor(width / 12);
+                ctx.font = `bold ${fontSize}px Arial`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+
+                // Color blanco con 40% de opacidad (semi-transparente)
+                ctx.fillStyle = "rgba(255, 255, 255, 0.4)";
+
+                // Sombra negra (el truco para que se lea en fondos blancos)
+                ctx.shadowColor = "rgba(0, 0, 0, 0.7)";
+                ctx.shadowBlur = 8;
+                ctx.shadowOffsetX = 3;
+                ctx.shadowOffsetY = 3;
+
+                // Escribimos el nombre principal
+                ctx.fillText("NACHO LINGUA", 0, 0);
+
+                // (Opcional) Escribimos "FOTOGRAFÍA" más chiquito abajo
+                ctx.font = `bold ${fontSize / 2.5}px Arial`;
+                ctx.fillText("FOTOGRAFÍA", 0, fontSize);
+
+                ctx.restore();
+                // --- FIN MARCA DE AGUA ---
+
+                // 3. Convertimos el resultado a JPG liviano
                 canvas.toBlob((blob) => {
                     const newFile = new File([blob], file.name, {
                         type: 'image/jpeg',
