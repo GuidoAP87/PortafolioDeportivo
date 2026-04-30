@@ -294,7 +294,7 @@ function abrirEvento(eventoId) {
         ${adminUpload}
         <div class="photos-grid">${fotosHTML}</div>`;
 
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: document.getElementById('event-view').offsetTop - 68, behavior: 'smooth' });
     actualizarCarritoBar();
 }
 
@@ -787,13 +787,6 @@ async function marcarLeida(id) {
     document.getElementById(`msg-${id}`)?.querySelector('.admin-action-btn')?.remove();
 }
 
-// ─── LOGOUT ───────────────────────────────────────────────────────────────────
-async function logout() {
-    await fetch('/logout', { method:'POST', credentials:'include' });
-    isAdmin = false; toggleAdminUI(false); cerrarAdminPanel();
-    Swal.fire({ icon:'success', title:'Sesión cerrada', timer:1500, showConfirmButton:false, background:'var(--ink-2)', color:'var(--text)' });
-}
-
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 function shakear(elId) {
     const el = document.querySelector(`.${elId}`) || document.getElementById(elId);
@@ -801,3 +794,26 @@ function shakear(elId) {
     el.classList.add('shake');
     setTimeout(() => el.classList.remove('shake'), 500);
 }
+
+// ─── NAVEGACIÓN INTELIGENTE ───────────────────────────────────────────────────
+document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+    anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const targetId = this.getAttribute('href');
+
+        // Si tocamos "Galerías" en el menú y estamos adentro de un evento, lo cerramos
+        if (eventoActual && targetId === '#portfolio') {
+            cerrarEvento(); 
+            return;
+        }
+
+        // Hacemos scroll suave compensando los 68px del navbar
+        const targetEl = document.querySelector(targetId);
+        if (targetEl) {
+            window.scrollTo({
+                top: targetEl.offsetTop - 68,
+                behavior: 'smooth'
+            });
+        }
+    });
+});
