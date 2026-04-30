@@ -3,327 +3,334 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Nacho Lingua Fotografía — Fotógrafo deportivo y social en Córdoba, Argentina.">
+    <meta name="description" content="Nacho Lingua Fotografía — Comprá fotos deportivas en alta resolución. Fútbol y básquet en Córdoba, Argentina.">
     <meta property="og:title" content="Nacho Lingua Fotografía">
-    <meta property="og:description" content="Fotografía deportiva y social premium en Córdoba, Argentina.">
+    <meta property="og:description" content="Fotografía deportiva premium. Comprá tus fotos en alta resolución.">
     <meta property="og:image" content="nacho_lingua.jpg">
     <title>Nacho Lingua | Fotografía Deportiva · Córdoba</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11" defer></script>
 </head>
 <body>
 
-<!-- LOADING SCREEN -->
+<!-- ══════════════════════════ LOADING SCREEN ══════════════════════════════ -->
 <div id="loading-screen">
-    <div class="loading-logo">NL</div>
-    <div class="loading-bar"></div>
+    <div class="ls-brand">NL</div>
+    <div class="ls-sub">Nacho Lingua Fotografía</div>
+    <div class="ls-bar"></div>
 </div>
 
-<!-- NAVBAR -->
+<!-- ══════════════════════════ NAVBAR ══════════════════════════════════════ -->
 <nav id="navbar">
-    <a href="#hero" class="nav-brand">NL</a>
-    <ul class="nav-links">
-        <li><a href="#hero"      class="active">Inicio</a></li>
-        <li><a href="#portfolio">Portfolio</a></li>
-        <li><a href="#paquetes">Paquetes</a></li>
-        <li><a href="#contact">Contacto</a></li>
-    </ul>
+    <a href="#hero" class="nav-brand">
+        <span>NL</span>
+        <div class="nav-brand-dot"></div>
+    </a>
+
+    <div class="nav-center">
+        <a href="#hero"      class="nav-link active">Inicio</a>
+        <a href="#portfolio" class="nav-link">Galerías</a>
+        <a href="#about"     class="nav-link">Contacto</a>
+    </div>
+
     <div class="nav-right">
-        <button id="btn-admin-panel" class="nav-action-btn admin-panel" style="display:none;">
-            <i class="fa-solid fa-chart-simple"></i> Panel
+        <!-- Solo visibles como admin -->
+        <button id="btn-admin-panel" class="nav-btn" style="display:none">
+            <i class="fa-solid fa-gauge-simple-high"></i> Panel
         </button>
-        <button id="btn-add-album" class="nav-action-btn" style="display:none;">
-            <i class="fa-solid fa-plus"></i> Álbum
+        <button id="btn-add-evento" class="nav-btn gold" style="display:none">
+            <i class="fa-solid fa-plus"></i> Evento
         </button>
-        <button id="btn-logout" class="nav-action-btn danger" style="display:none;" title="Cerrar sesión">
+        <button id="btn-logout" class="nav-btn danger" style="display:none" title="Cerrar sesión">
             <i class="fa-solid fa-right-from-bracket"></i>
         </button>
     </div>
 </nav>
 
-<!-- HERO -->
+<!-- ══════════════════════════ HERO ════════════════════════════════════════ -->
 <header id="hero">
-    <div id="fondo-estatico" aria-hidden="true"></div>
-    <div class="hero-overlay" aria-hidden="true"></div>
+    <div id="hero-bg"></div>
+    <div class="hero-gradient"></div>
+
     <div class="hero-content">
-        <p class="hero-subtitle">CÓRDOBA, ARGENTINA</p>
-        <h1 class="hero-title">NACHO LINGUA<br><span class="highlight">FOTOGRAFÍA</span></h1>
-        <div class="hero-divider"></div>
-        <a href="#portfolio" class="hero-btn">VER PORTFOLIO &nbsp;↓</a>
+        <p class="hero-eyebrow">Fotografía Deportiva · Córdoba, Argentina</p>
+        <h1 class="hero-title">
+            NACHO<br>
+            <em>LINGUA</em>
+        </h1>
+        <p class="hero-description">
+            Momentos irrepetibles del fútbol y básquet capturados en alta resolución.
+            Explorá las galerías y comprá tus fotos — las recibís en tu email al instante.
+        </p>
+        <a href="#portfolio" class="hero-cta">
+            <i class="fa-solid fa-images"></i>
+            Explorar galerías
+        </a>
     </div>
+
+    <div class="hero-scroll-hint">Scroll</div>
 </header>
 
-<!-- STATS -->
+<!-- ══════════════════════════ STATS ═══════════════════════════════════════ -->
 <section id="stats">
     <div class="stat-item reveal">
         <span class="stat-number" data-target="200" data-suffix="+">0</span>
         <span class="stat-label">Eventos cubiertos</span>
     </div>
     <div class="stat-item reveal reveal-delay-1">
-        <span class="stat-number" data-target="5000" data-suffix="+">0</span>
-        <span class="stat-label">Fotos entregadas</span>
+        <span class="stat-number" data-target="8000" data-suffix="+">0</span>
+        <span class="stat-label">Fotos disponibles</span>
     </div>
     <div class="stat-item reveal reveal-delay-2">
         <span class="stat-number" data-target="3" data-suffix=" años">0</span>
         <span class="stat-label">De experiencia</span>
     </div>
     <div class="stat-item reveal reveal-delay-3">
-        <span class="stat-number" data-target="150" data-suffix="+">0</span>
-        <span class="stat-label">Clientes satisfechos</span>
+        <span class="stat-number" data-target="500" data-suffix="+">0</span>
+        <span class="stat-label">Fotos vendidas</span>
     </div>
 </section>
 
-<!-- PORTFOLIO -->
-<main id="portfolio">
+<!-- ══════════════════════════ PORTFOLIO ═══════════════════════════════════ -->
+<section id="portfolio" class="section">
     <div class="section-header reveal">
-        <span class="section-tag">Trabajos</span>
-        <h2>Portfolio</h2>
-        <p>Explorá las galerías por categoría</p>
-        <div class="section-divider"></div>
+        <div class="section-eyebrow">Galerías</div>
+        <h2 class="section-title">ELEGÍ TU EVENTO</h2>
+        <p class="section-sub">
+            Seleccioná el evento, elegí las fotos que querés y pagá solo por las que te gustan.
+            Las recibís en alta resolución directamente en tu email.
+        </p>
     </div>
-    <div id="category-filters" class="filters">
-        <button class="filter-btn active" data-filter="all">Todos</button>
-        <button class="filter-btn" data-filter="futbol">Fútbol</button>
-        <button class="filter-btn" data-filter="basquet">Básquet</button>
-        <button class="filter-btn" data-filter="social">Social</button>
-        <button class="filter-btn" data-filter="otro">Otro</button>
-    </div>
-    <div id="gallery-grid" class="gallery-container">
-        <div class="empty-state"><p>Cargando portfolio...</p></div>
-    </div>
-</main>
 
-<!-- PAQUETES -->
-<section id="paquetes">
-    <div class="section-header reveal">
-        <span class="section-tag">Servicios</span>
-        <h2>Paquetes de Fotografía</h2>
-        <p>Elegí el paquete que mejor se adapte a tu evento</p>
-        <div class="section-divider"></div>
+    <!-- Filtros de deporte -->
+    <div class="sport-filters reveal">
+        <button class="sport-btn active" data-filter="all">Todos</button>
+        <button class="sport-btn" data-filter="futbol">⚽ Fútbol</button>
+        <button class="sport-btn" data-filter="basquet">🏀 Básquet</button>
+        <button class="sport-btn" data-filter="otro">📷 Otro</button>
     </div>
-    <div class="paquetes-grid">
-        <div class="pack-card reveal reveal-delay-1">
-            <p class="pack-name">Básico</p>
-            <div class="pack-price">
-                <span class="pack-currency">$</span>
-                <span class="pack-amount">80.000</span>
-                <span class="pack-period">ARS</span>
-            </div>
-            <div class="pack-divider"></div>
-            <ul class="pack-features">
-                <li>Cobertura de 1 evento deportivo</li>
-                <li>50 fotos editadas en alta resolución</li>
-                <li>Entrega en 72 horas</li>
-                <li>Galería digital de descarga</li>
-                <li>Marca de agua en preview</li>
-            </ul>
-            <button class="pack-btn" onclick="contratarPaquete('basico','Pack Básico')">Contratar</button>
-        </div>
-        <div class="pack-card featured reveal reveal-delay-2">
-            <div class="pack-featured-badge">Más elegido</div>
-            <p class="pack-name">Profesional</p>
-            <div class="pack-price">
-                <span class="pack-currency">$</span>
-                <span class="pack-amount">150.000</span>
-                <span class="pack-period">ARS</span>
-            </div>
-            <div class="pack-divider"></div>
-            <ul class="pack-features">
-                <li>Cobertura de 1 evento completo</li>
-                <li>150 fotos editadas en alta resolución</li>
-                <li>Galería privada online compartible</li>
-                <li>Entrega en 48 horas</li>
-                <li>Fotos sin marca de agua</li>
-                <li>1 revisión de selección incluida</li>
-            </ul>
-            <button class="pack-btn" onclick="contratarPaquete('profesional','Pack Profesional')">Contratar</button>
-        </div>
-        <div class="pack-card reveal reveal-delay-3">
-            <p class="pack-name">Premium</p>
-            <div class="pack-price">
-                <span class="pack-currency">$</span>
-                <span class="pack-amount">280.000</span>
-                <span class="pack-period">ARS</span>
-            </div>
-            <div class="pack-divider"></div>
-            <ul class="pack-features">
-                <li>Cobertura de 2 eventos completos</li>
-                <li>Fotos ilimitadas, todas editadas</li>
-                <li>Galería privada online compartible</li>
-                <li>Entrega prioritaria en 24 horas</li>
-                <li>Fotos sin marca de agua</li>
-                <li>Coordinación personalizada</li>
-                <li>Print digital de portada del evento</li>
-            </ul>
-            <button class="pack-btn" onclick="contratarPaquete('premium','Pack Premium')">Contratar</button>
-        </div>
+
+    <!-- Grid de eventos -->
+    <div id="gallery-grid">
+        <div class="empty-state">Cargando galerías...</div>
     </div>
-    <p class="pack-nota reveal">
-        ¿Tenés un requerimiento especial? <a href="#contact">Escribinos</a> y armamos un paquete a medida.
-    </p>
 </section>
 
-<!-- CONTACTO -->
-<section id="contact">
-    <div class="section-header reveal">
-        <span class="section-tag">Contacto</span>
-        <h2>Hablemos</h2>
-        <p>Contame sobre tu evento y te respondo a la brevedad</p>
-        <div class="section-divider"></div>
-    </div>
-    <div class="contact-grid">
-        <div class="contact-info reveal">
-            <h3>Nacho Lingua<br>Fotografía</h3>
-            <p>Fotógrafo especializado en eventos deportivos y sociales en Córdoba. Cada foto es un momento irrepetible capturado con precisión y pasión.</p>
-            <div class="contact-detail">
-                <div class="contact-detail-icon"><i class="fa-solid fa-location-dot"></i></div>
+<!-- ══════════════════════════ VISTA DE EVENTO ═════════════════════════════ -->
+<div id="event-view"></div>
+
+<!-- ══════════════════════════ ABOUT / CONTACTO ═══════════════════════════ -->
+<section id="about" class="section">
+    <div class="about-grid">
+        <div class="about-photo reveal">
+            <img src="nacho_lingua.jpg" alt="Nacho Lingua fotógrafo deportivo">
+        </div>
+        <div class="about-info reveal reveal-delay-1">
+            <div class="section-eyebrow">El fotógrafo</div>
+            <h2 class="section-title" style="font-size:clamp(28px,4vw,44px)">NACHO<br>LINGUA</h2>
+            <p>
+                Fotógrafo deportivo especializado en fútbol y básquet en Córdoba, Argentina.
+                Con más de 3 años de experiencia cubriendo eventos de primer nivel,
+                cada imagen captura la emoción y la intensidad del deporte en su estado puro.
+            </p>
+            <p>
+                Las fotos se entregan en alta resolución sin marca de agua,
+                directamente en tu email minutos después de la compra.
+            </p>
+
+            <!-- ⚠ Reemplazá con tus datos reales -->
+            <div class="contact-link-row">
+                <div class="contact-link-icon"><i class="fa-brands fa-whatsapp"></i></div>
+                <a href="https://wa.me/5493510000000" target="_blank">+54 9 351 000-0000</a>
+            </div>
+            <div class="contact-link-row">
+                <div class="contact-link-icon"><i class="fa-solid fa-envelope"></i></div>
+                <a href="mailto:nacho@nachofotografia.com">nacho@nachofotografia.com</a>
+            </div>
+            <div class="contact-link-row">
+                <div class="contact-link-icon"><i class="fa-solid fa-location-dot"></i></div>
                 <span>Córdoba, Argentina</span>
             </div>
-            <div class="contact-detail">
-                <div class="contact-detail-icon"><i class="fa-brands fa-whatsapp"></i></div>
-                <a href="https://wa.me/5493510000000" target="_blank" class="contact-link">+54 9 351 000-0000</a>
+
+            <div class="social-row">
+                <!-- ⚠ Reemplazá con tus redes reales -->
+                <a href="https://instagram.com/nacholingua" target="_blank" class="social-icon" title="Instagram">
+                    <i class="fa-brands fa-instagram"></i>
+                </a>
+                <a href="https://twitter.com/nacholingua" target="_blank" class="social-icon" title="Twitter/X">
+                    <i class="fa-brands fa-x-twitter"></i>
+                </a>
+                <a href="https://wa.me/5493510000000" target="_blank" class="social-icon" title="WhatsApp">
+                    <i class="fa-brands fa-whatsapp"></i>
+                </a>
             </div>
-            <div class="contact-detail">
-                <div class="contact-detail-icon"><i class="fa-solid fa-envelope"></i></div>
-                <a href="mailto:nacho@nachofotografia.com" class="contact-link">nacho@nachofotografia.com</a>
-            </div>
-            <div class="contact-social">
-                <a href="https://instagram.com/nacholingua" target="_blank" class="social-btn" title="Instagram"><i class="fa-brands fa-instagram"></i></a>
-                <a href="https://twitter.com/nacholingua"   target="_blank" class="social-btn" title="Twitter"><i class="fa-brands fa-x-twitter"></i></a>
-                <a href="https://wa.me/5493510000000"       target="_blank" class="social-btn" title="WhatsApp"><i class="fa-brands fa-whatsapp"></i></a>
-            </div>
-        </div>
-        <div class="contact-form reveal reveal-delay-1">
-            <form id="contact-form" novalidate>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="c-nombre">Nombre *</label>
-                        <input id="c-nombre" name="nombre" type="text" placeholder="Tu nombre" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="c-email">Email *</label>
-                        <input id="c-email" name="email" type="email" placeholder="tu@email.com" required>
-                    </div>
-                </div>
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="c-telefono">WhatsApp</label>
-                        <input id="c-telefono" name="telefono" type="tel" placeholder="+54 9 351...">
-                    </div>
-                    <div class="form-group">
-                        <label for="c-tipo">Tipo de evento</label>
-                        <select id="c-tipo" name="tipo_evento">
-                            <option value="" disabled selected>Seleccioná...</option>
-                            <option>Fútbol</option><option>Básquet</option>
-                            <option>Evento social</option><option>Otro deporte</option><option>Otro</option>
-                        </select>
-                    </div>
-                </div>
-                <div class="form-group">
-                    <label for="c-fecha">Fecha tentativa del evento</label>
-                    <input id="c-fecha" name="fecha_evento" type="date">
-                </div>
-                <div class="form-group">
-                    <label for="c-mensaje">Mensaje</label>
-                    <textarea id="c-mensaje" name="mensaje" rows="4" placeholder="Contame sobre tu evento, club, institución..."></textarea>
-                </div>
-                <button type="submit" class="form-submit-btn">Enviar consulta</button>
-            </form>
         </div>
     </div>
 </section>
 
-<!-- FOOTER -->
+<!-- ══════════════════════════ FOOTER ══════════════════════════════════════ -->
 <footer>
-    <div class="footer-logo">NACHO LINGUA</div>
-    <p class="footer-tagline">Fotografía Deportiva · Córdoba, Argentina</p>
-    <div class="footer-links">
-        <a href="#hero">Inicio</a>
-        <a href="#portfolio">Portfolio</a>
-        <a href="#paquetes">Paquetes</a>
-        <a href="#contact">Contacto</a>
+    <div class="footer-inner">
+        <div>
+            <div class="footer-brand">NACHO LINGUA</div>
+            <div class="footer-tagline">Fotografía Deportiva · Córdoba, Argentina</div>
+        </div>
+        <div class="footer-links">
+            <a href="#hero"      class="footer-link">Inicio</a>
+            <a href="#portfolio" class="footer-link">Galerías</a>
+            <a href="#about"     class="footer-link">Contacto</a>
+        </div>
     </div>
-    <div class="footer-divider"></div>
-    <p class="copyright">
-        &copy; 2026 Nacho Lingua Fotografía · Todos los derechos reservados · Córdoba, Argentina
-    </p>
-    <!--
-        ACCESO ADMIN: Hacé clic 3 veces seguidas en el copyright para abrir el login.
-        También podés ir directamente a /login
-    -->
-    <span id="admin-trigger" style="display:inline-block;cursor:default;user-select:none;color:transparent;font-size:8px;">·</span>
+    <div class="footer-bottom">
+        <p class="footer-copy">
+            &copy; 2026 Nacho Lingua Fotografía · Todos los derechos reservados
+        </p>
+        <!-- Trigger admin secreto: clic 3 veces para abrir login | o Ctrl+Shift+A -->
+        <span id="admin-trigger">·</span>
+    </div>
 </footer>
 
-<!-- LIGHTBOX -->
-<div id="lightbox" role="dialog" aria-modal="true">
-    <button class="lightbox-close" onclick="cerrarVisor()">&times;</button>
-    <button class="lightbox-nav lightbox-prev" id="lb-prev" onclick="lightboxPrev()"><i class="fa-solid fa-chevron-left"></i></button>
-    <img class="lightbox-content" id="img-ampliada" alt="Foto ampliada">
-    <button class="lightbox-nav lightbox-next" id="lb-next" onclick="lightboxNext()"><i class="fa-solid fa-chevron-right"></i></button>
-    <span class="lightbox-counter" id="lightbox-counter"></span>
+<!-- ══════════════════════════ LIGHTBOX ════════════════════════════════════ -->
+<div id="lightbox">
+    <button class="lb-close" onclick="cerrarLightbox()">&times;</button>
+    <button class="lb-nav" id="lb-prev" onclick="lbPrev()"><i class="fa-solid fa-chevron-left"></i></button>
+    <img class="lb-img" id="lb-img" alt="Foto deportiva">
+    <button class="lb-nav" id="lb-next" onclick="lbNext()"><i class="fa-solid fa-chevron-right"></i></button>
+    <span class="lb-counter" id="lb-counter"></span>
+    <button class="lb-cart-btn" id="lb-cart-btn" onclick="lbToggleCart()">+ Agregar al carrito</button>
 </div>
 
-<!-- MODAL LOGIN -->
-<div id="login-modal" role="dialog" aria-modal="true">
-    <div class="login-modal-box" onclick="event.stopPropagation()">
-        <div class="login-modal-logo">NL</div>
-        <h2 class="login-modal-title">Acceso Admin</h2>
-        <p class="login-modal-sub">Ingresá tu contraseña para gestionar el portfolio</p>
+<!-- ══════════════════════════ CARRITO FLOTANTE ═══════════════════════════ -->
+<div id="cart-bar">
+    <div class="cart-bar-info">
+        <span class="cart-bar-count" id="cart-count">0</span>
+        <span class="cart-bar-label">foto<span id="cart-plural">s</span> seleccionada<span id="cart-plural2">s</span></span>
+    </div>
+    <span class="cart-bar-total" id="cart-total">$0 ARS</span>
+    <button class="cart-bar-btn" onclick="abrirCheckout()">
+        <i class="fa-solid fa-bolt"></i> Comprar
+    </button>
+    <button class="cart-clear-btn" onclick="limpiarCarrito()" title="Vaciar selección">
+        <i class="fa-solid fa-xmark"></i>
+    </button>
+</div>
+
+<!-- ══════════════════════════ CHECKOUT MODAL ══════════════════════════════ -->
+<div id="checkout-modal">
+    <div class="checkout-box">
+        <div class="checkout-header">
+            <div>
+                <h2>Tu pedido</h2>
+                <p>Completá tus datos para recibir las fotos por email</p>
+            </div>
+            <button class="checkout-close" onclick="cerrarCheckout()">&times;</button>
+        </div>
+        <div class="checkout-body">
+            <!-- Resumen de fotos -->
+            <div class="checkout-summary">
+                <div id="checkout-resumen"></div>
+                <div class="checkout-summary-total">
+                    <span>Total</span>
+                    <span class="checkout-total-amount" id="checkout-total-amount">$0</span>
+                </div>
+            </div>
+
+            <!-- Datos del comprador -->
+            <div class="co-group">
+                <label for="co-nombre">Tu nombre</label>
+                <input id="co-nombre" type="text" placeholder="Juan García"
+                       autocomplete="name" onkeydown="if(event.key==='Enter')document.getElementById('co-email').focus()">
+            </div>
+            <div class="co-group">
+                <label for="co-email">Email para recibir las fotos *</label>
+                <input id="co-email" type="email" placeholder="tu@email.com"
+                       autocomplete="email" onkeydown="if(event.key==='Enter')procesarPago()">
+            </div>
+
+            <!-- CTA pago -->
+            <button class="checkout-pay-btn" id="checkout-pay-btn" onclick="procesarPago()">
+                <i class="fa-solid fa-credit-card"></i> Pagar con MercadoPago
+            </button>
+
+            <div class="checkout-divider">o</div>
+
+            <!-- Alternativa WhatsApp -->
+            <button class="checkout-wa-btn" onclick="coordinarWA()">
+                <i class="fa-brands fa-whatsapp"></i> Coordinar pago por WhatsApp
+            </button>
+
+            <p style="text-align:center;font-size:11px;color:var(--text-dim);margin-top:16px;line-height:1.6">
+                <i class="fa-solid fa-shield-halved" style="color:var(--gold);margin-right:4px"></i>
+                Pago seguro · Las fotos en alta resolución se envían automáticamente a tu email al confirmar el pago
+            </p>
+        </div>
+    </div>
+</div>
+
+<!-- ══════════════════════════ LOGIN MODAL ═════════════════════════════════ -->
+<div id="login-modal">
+    <div class="login-box">
+        <div class="login-logo">NL</div>
+        <div class="login-subtitle">Acceso Administrador</div>
+
         <div class="login-input-wrap">
-            <i class="fa-solid fa-lock login-input-icon"></i>
-            <input type="password" id="admin-password" placeholder="Contraseña"
-                   class="login-password-input" autocomplete="current-password"
+            <i class="fa-solid fa-lock login-icon"></i>
+            <input type="password" id="admin-password" class="login-input"
+                   placeholder="Contraseña" autocomplete="current-password"
                    onkeydown="if(event.key==='Enter')ejecutarLogin()">
-            <button type="button" class="login-eye-btn" onclick="togglePasswordVis()" title="Ver contraseña">
+            <button class="login-eye" onclick="togglePasswordVis()" type="button">
                 <i class="fa-solid fa-eye" id="toggle-icon"></i>
             </button>
         </div>
-        <p id="login-error" class="login-error">
-            <i class="fa-solid fa-circle-exclamation"></i> Contraseña incorrecta
-        </p>
+
+        <div id="login-error" class="login-error">
+            <i class="fa-solid fa-circle-exclamation"></i>
+            <span> Contraseña incorrecta</span>
+        </div>
+
         <button id="login-submit-btn" class="login-submit" onclick="ejecutarLogin()">Ingresar</button>
         <button class="login-cancel" onclick="cerrarLoginModal()">Cancelar</button>
     </div>
 </div>
 
-<!-- PANEL ADMIN -->
-<div id="admin-modal" role="dialog" aria-modal="true">
+<!-- ══════════════════════════ ADMIN PANEL ═════════════════════════════════ -->
+<div id="admin-modal">
     <div class="admin-panel">
-        <div class="admin-panel-header">
+        <div class="admin-panel-hdr">
             <div>
                 <h3>Panel de Administración</h3>
-                <p style="font-size:11px;color:var(--text-muted);margin-top:3px;">Nacho Lingua Fotografía</p>
             </div>
-            <button onclick="cerrarAdminPanel()" class="admin-close-btn">&times;</button>
+            <button class="admin-close" onclick="cerrarAdminPanel()">&times;</button>
         </div>
         <div class="admin-tabs">
-            <button class="admin-tab active" data-tab="consultas" onclick="switchAdminTab('consultas')">
+            <button class="admin-tab active" data-tab="compras" onclick="switchAdminTab('compras')">
+                <i class="fa-solid fa-bag-shopping"></i> Compras
+                <span id="badge-compras" class="admin-badge" style="display:none">!</span>
+            </button>
+            <button class="admin-tab" data-tab="consultas" onclick="switchAdminTab('consultas')">
                 <i class="fa-solid fa-envelope"></i> Consultas
-                <span id="badge-consultas" class="admin-badge" style="display:none"></span>
-            </button>
-            <button class="admin-tab" data-tab="pagos" onclick="switchAdminTab('pagos')">
-                <i class="fa-solid fa-credit-card"></i> Pagos
             </button>
         </div>
-        <div id="tab-consultas" class="admin-tab-content active">
-            <p class="admin-loading">Cargando...</p>
+        <div id="tab-compras" class="admin-tab-content active">
+            <p style="color:var(--text-dim);font-style:italic;padding:20px 0">Cargando...</p>
         </div>
-        <div id="tab-pagos" class="admin-tab-content">
-            <p class="admin-loading">Cargando...</p>
+        <div id="tab-consultas" class="admin-tab-content">
+            <p style="color:var(--text-dim);font-style:italic;padding:20px 0">Cargando...</p>
         </div>
     </div>
 </div>
 
-<!-- FLOATING -->
+<!-- ══════════════════════════ FLOATING BUTTONS ═══════════════════════════ -->
+<!-- ⚠ Cambiá el número por el tuyo real -->
 <a id="whatsapp-btn" href="https://wa.me/5493510000000" target="_blank" rel="noopener" title="WhatsApp">
     <i class="fa-brands fa-whatsapp"></i>
 </a>
-<button id="back-to-top" title="Volver arriba">
+<button id="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Volver arriba">
     <i class="fa-solid fa-chevron-up"></i>
 </button>
 

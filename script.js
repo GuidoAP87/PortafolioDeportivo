@@ -1,230 +1,138 @@
 /* ═══════════════════════════════════════════════════════════════
-   NACHO LINGUA FOTOGRAFÍA — SCRIPT PROFESIONAL 2026
-   ═══════════════════════════════════════════════════════════════
-   
-   ACCESO ADMIN:
-   ─ Hacé clic 3 veces seguidas sobre el punto "·" en el footer
-   ─ O presioná Ctrl + Shift + A en cualquier momento
-   ─ O ingresá directamente a /login
+   NACHO LINGUA FOTOGRAFÍA — SPORTS PHOTO MARKETPLACE 2026
    ═══════════════════════════════════════════════════════════════ */
 
-// ⚠ Cambiá por tu número de WhatsApp real (formato: 5493511234567)
-const WA_NUMBER = '5493510000000';
+// ⚠ Configuración — cambiar antes de publicar
+const WA_NUMBER   = '5493510000000';    // Número real de WhatsApp
+const PRECIO_BASE = 3500;               // Precio base por foto en ARS
 
-let albumesData  = [];
-let isAdmin      = false;
-let lightboxFotos= [];
-let lightboxIdx  = 0;
+// ─── ESTADO GLOBAL ───────────────────────────────────────────────────────────
+let eventosData   = [];
+let eventoActual  = null;
+let carrito       = new Map();          // id → { foto, evento }
+let isAdmin       = false;
+let lbFotos       = [];
+let lbIdx         = 0;
 let adminClickCount = 0;
 let adminClickTimer = null;
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    await Promise.all([verificarSesion(), cargarAlbumes()]);
+    await Promise.all([verificarSesion(), cargarEventos()]);
 
-    initScrollBehavior();
-    initRevealAnimations();
-    initNavActiveLinks();
+    initNavScroll();
+    initReveal();
+    initNavLinks();
     initStatsCounter();
     initBackToTop();
-    initLightboxKeyboard();
+    initLightboxKB();
     initAdminTriggers();
 
-    document.getElementById('btn-add-album')   ?.addEventListener('click', crearAlbum);
-    document.getElementById('btn-logout')       ?.addEventListener('click', logout);
-    document.getElementById('btn-admin-panel')  ?.addEventListener('click', abrirAdminPanel);
-    document.getElementById('contact-form')     ?.addEventListener('submit', enviarConsulta);
+    // Nav buttons
+    bindId('btn-admin-panel', abrirAdminPanel);
+    bindId('btn-add-evento',  crearEvento);
+    bindId('btn-logout',      logout);
 
-    // Cerrar modals al hacer clic en el fondo
-    document.getElementById('admin-modal') ?.addEventListener('click', e => { if(e.target.id==='admin-modal') cerrarAdminPanel(); });
-    document.getElementById('login-modal') ?.addEventListener('click', e => { if(e.target.id==='login-modal') cerrarLoginModal(); });
+    // Modals backdrop
+    bindBackdrop('checkout-modal', cerrarCheckout);
+    bindBackdrop('admin-modal',    cerrarAdminPanel);
+    bindBackdrop('login-modal',    cerrarLoginModal);
 
-    // Actualizar link de WhatsApp flotante
-    const waBtn = document.getElementById('whatsapp-btn');
-    if (waBtn) waBtn.href = `https://wa.me/${WA_NUMBER}`;
+    // WhatsApp float link
+    const wa = document.getElementById('whatsapp-btn');
+    if (wa) wa.href = `https://wa.me/${WA_NUMBER}`;
 
     setTimeout(() => document.getElementById('loading-screen')?.classList.add('hidden'), 1300);
 });
 
-// ─── TRIGGERS DE ACCESO ADMIN ────────────────────────────────────────────────
-// Tres formas de abrir el login:
-// 1. Clic triple en el "·" del footer
-// 2. Ctrl + Shift + A
-// 3. Ruta /login (mantiene compatibilidad)
-function initAdminTriggers() {
-    // Clic triple en el trigger del footer
-    const trigger = document.getElementById('admin-trigger');
-    if (trigger) {
-        trigger.addEventListener('click', () => {
-            adminClickCount++;
-            clearTimeout(adminClickTimer);
-            if (adminClickCount >= 3) {
-                adminClickCount = 0;
-                if (!isAdmin) abrirLoginModal();
-                else abrirAdminPanel();
-            }
-            adminClickTimer = setTimeout(() => { adminClickCount = 0; }, 1200);
-        });
-    }
+function bindId(id, fn) { document.getElementById(id)?.addEventListener('click', fn); }
+function bindBackdrop(id, fn) {
+    document.getElementById(id)?.addEventListener('click', e => { if (e.target.id === id) fn(); });
+}
 
-    // Ctrl + Shift + A
+// ─── ADMIN TRIGGERS ───────────────────────────────────────────────────────────
+function initAdminTriggers() {
+    // Clic triple en "·" del footer
+    document.getElementById('admin-trigger')?.addEventListener('click', () => {
+        adminClickCount++;
+        clearTimeout(adminClickTimer);
+        if (adminClickCount >= 3) {
+            adminClickCount = 0;
+            isAdmin ? abrirAdminPanel() : abrirLoginModal();
+        }
+        adminClickTimer = setTimeout(() => { adminClickCount = 0; }, 1400);
+    });
+    // Ctrl+Shift+A
     document.addEventListener('keydown', e => {
         if (e.ctrlKey && e.shiftKey && e.key === 'A') {
             e.preventDefault();
-            if (!isAdmin) abrirLoginModal();
-            else abrirAdminPanel();
+            isAdmin ? abrirAdminPanel() : abrirLoginModal();
         }
     });
 }
 
-// ─── MODAL DE LOGIN ───────────────────────────────────────────────────────────
-function abrirLoginModal() {
-    const modal = document.getElementById('login-modal');
-    if (!modal) return;
-    modal.style.display = 'flex';
-    requestAnimationFrame(() => modal.classList.add('open'));
-    document.body.style.overflow = 'hidden';
-    document.getElementById('login-error').style.display = 'none';
-    document.getElementById('admin-password').value = '';
-    setTimeout(() => document.getElementById('admin-password')?.focus(), 200);
-}
-
-function cerrarLoginModal() {
-    const modal = document.getElementById('login-modal');
-    if (!modal) return;
-    modal.classList.remove('open');
-    setTimeout(() => { modal.style.display = 'none'; }, 350);
-    document.body.style.overflow = '';
-}
-
-function togglePasswordVis() {
-    const input = document.getElementById('admin-password');
-    const icon  = document.getElementById('toggle-icon');
-    if (input.type === 'password') {
-        input.type = 'text';
-        icon.className = 'fa-solid fa-eye-slash';
-    } else {
-        input.type = 'password';
-        icon.className = 'fa-solid fa-eye';
-    }
-    input.focus();
-}
-
-async function ejecutarLogin() {
-    const pass  = document.getElementById('admin-password')?.value;
-    const btn   = document.getElementById('login-submit-btn');
-    const errEl = document.getElementById('login-error');
-    if (!pass) return;
-
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verificando...';
-    errEl.style.display = 'none';
-
-    try {
-        const res  = await fetch('/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ password: pass }),
-            credentials: 'include'
-        });
-        const data = await res.json();
-
-        if (data.success) {
-            isAdmin = true;
-            btn.innerHTML = '<i class="fa-solid fa-check"></i> Acceso concedido';
-            toggleAdminUI(true);
-            setTimeout(() => {
-                cerrarLoginModal();
-                btn.disabled = false;
-                btn.innerHTML = 'Ingresar';
-                // Auto-abre el panel admin
-                setTimeout(abrirAdminPanel, 400);
-            }, 700);
-        } else {
-            errEl.style.display = 'flex';
-            btn.disabled = false;
-            btn.innerHTML = 'Ingresar';
-            document.getElementById('admin-password').value = '';
-            document.getElementById('admin-password').focus();
-            // Sacude el modal
-            document.querySelector('.login-modal-box')?.classList.add('shake');
-            setTimeout(() => document.querySelector('.login-modal-box')?.classList.remove('shake'), 500);
-        }
-    } catch {
-        errEl.style.display = 'flex';
-        errEl.querySelector('span') && (errEl.querySelector('span').textContent = ' Error de conexión. Verificá que el servidor esté corriendo.');
-        btn.disabled = false;
-        btn.innerHTML = 'Ingresar';
-    }
-}
-
-// ─── SESIÓN ───────────────────────────────────────────────────────────────────
+// ─── SESSION ──────────────────────────────────────────────────────────────────
 async function verificarSesion() {
     try {
-        const res  = await fetch('/check-auth', { credentials: 'include' });
-        const data = await res.json();
-        isAdmin    = data.isAdmin;
+        const d = await (await fetch('/check-auth', { credentials:'include' })).json();
+        isAdmin = d.isAdmin;
         toggleAdminUI(isAdmin);
-    } catch {
-        isAdmin = false;
-    }
+    } catch { isAdmin = false; }
 }
-
 function toggleAdminUI(admin) {
-    ['btn-add-album','btn-logout','btn-admin-panel'].forEach(id => {
+    ['btn-admin-panel','btn-add-evento','btn-logout'].forEach(id => {
         const el = document.getElementById(id);
-        if (el) el.style.display = admin ? 'inline-flex' : 'none';
+        if (el) el.style.display = admin ? 'flex' : 'none';
     });
 }
 
-// ─── SCROLL ───────────────────────────────────────────────────────────────────
-function initScrollBehavior() {
-    const navbar = document.getElementById('navbar');
+// ─── NAVBAR ───────────────────────────────────────────────────────────────────
+function initNavScroll() {
     window.addEventListener('scroll', () => {
-        navbar?.classList.toggle('scrolled', window.scrollY > 60);
+        document.getElementById('navbar')?.classList.toggle('scrolled', window.scrollY > 80);
     }, { passive: true });
 }
-
-function initNavActiveLinks() {
-    const sections = document.querySelectorAll('section[id], header[id]');
-    const links    = document.querySelectorAll('.nav-links a[href^="#"]');
-    const obs = new IntersectionObserver(entries => {
-        entries.forEach(entry => {
-            if (entry.isIntersecting) {
-                const id = entry.target.id;
-                links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === `#${id}`));
+function initNavLinks() {
+    const sections = document.querySelectorAll('[id]');
+    const links    = document.querySelectorAll('.nav-link[href^="#"]');
+    new IntersectionObserver(entries => {
+        entries.forEach(e => {
+            if (e.isIntersecting) {
+                links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === `#${e.target.id}`));
             }
         });
-    }, { threshold: 0.4 });
-    sections.forEach(s => obs.observe(s));
+    }, { threshold: 0.4 }).observe && sections.forEach(s => {
+        new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting) {
+                links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === `#${entries[0].target.id}`));
+            }
+        }, { threshold: 0.35 }).observe(s);
+    });
 }
 
 // ─── REVEAL ANIMATIONS ────────────────────────────────────────────────────────
-function initRevealAnimations() {
-    const els = document.querySelectorAll('.reveal:not(.visible)');
+function initReveal() {
     const obs = new IntersectionObserver(entries => {
-        entries.forEach(e => {
-            if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); }
-        });
+        entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
     }, { threshold: 0.1, rootMargin: '0px 0px -30px 0px' });
-    els.forEach(el => obs.observe(el));
+    document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
 }
 
 // ─── STATS COUNTER ────────────────────────────────────────────────────────────
 function initStatsCounter() {
     const obs = new IntersectionObserver(entries => {
-        entries.forEach(entry => {
-            if (!entry.isIntersecting) return;
-            const el     = entry.target;
+        entries.forEach(e => {
+            if (!e.isIntersecting) return;
+            const el = e.target;
+            el.closest('.stat-item')?.classList.add('visible');
             const target = parseInt(el.dataset.target);
             const suffix = el.dataset.suffix || '';
-            let current  = 0;
-            const step   = Math.ceil(target / 55);
-            const timer  = setInterval(() => {
-                current += step;
-                if (current >= target) { current = target; clearInterval(timer); }
-                el.textContent = current.toLocaleString('es-AR') + suffix;
-            }, 22);
+            let cur = 0, step = Math.ceil(target / 50);
+            const t = setInterval(() => {
+                cur += step;
+                if (cur >= target) { cur = target; clearInterval(t); }
+                el.textContent = cur.toLocaleString('es-AR') + suffix;
+            }, 24);
             obs.unobserve(el);
         });
     }, { threshold: 0.5 });
@@ -235,524 +143,661 @@ function initStatsCounter() {
 function initBackToTop() {
     const btn = document.getElementById('back-to-top');
     if (!btn) return;
-    window.addEventListener('scroll', () => btn.classList.toggle('visible', window.scrollY > 400), { passive: true });
+    window.addEventListener('scroll', () => btn.classList.toggle('visible', window.scrollY > 500), { passive: true });
     btn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 }
 
-// ─── ÁLBUMES ─────────────────────────────────────────────────────────────────
-async function cargarAlbumes() {
+// ─── EVENTOS: CARGA ───────────────────────────────────────────────────────────
+async function cargarEventos() {
     const grid = document.getElementById('gallery-grid');
     if (!grid) return;
-    grid.innerHTML = '<div class="empty-state"><p>Cargando portfolio...</p></div>';
+    grid.innerHTML = '<div class="empty-state">Cargando...</div>';
     try {
-        const res   = await fetch('/obtener-datos');
-        albumesData = await res.json();
-        renderizarCarpetas();
+        const r     = await fetch('/obtener-eventos');
+        eventosData = await r.json();
+        renderEventos();
     } catch {
-        grid.innerHTML = '<div class="empty-state"><p>No se pudo cargar la galería.</p></div>';
+        grid.innerHTML = '<div class="empty-state">Error al cargar las galerías.</div>';
     }
 }
 
-function renderizarCarpetas() {
+function renderEventos(filtro = 'all') {
     const grid = document.getElementById('gallery-grid');
-    const filtersEl = document.getElementById('category-filters');
-    grid.innerHTML = '';
-    if (filtersEl) filtersEl.style.display = 'flex';
+    const data = filtro === 'all' ? eventosData : eventosData.filter(e =>
+        e.deporte.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'') === filtro
+    );
 
-    if (!albumesData.length) {
-        grid.innerHTML = '<div class="empty-state"><p>Próximamente nuevos trabajos.</p></div>';
+    if (!data.length) {
+        grid.innerHTML = '<div class="empty-state">No hay eventos en esta categoría aún.</div>';
         return;
     }
 
-    albumesData.forEach((album, i) => {
-        const cat   = (album.categoria || 'general').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-        const cover = album.fotos?.length ? album.fotos[0] : 'https://placehold.co/600x400/111/333?text=Sin+fotos';
-        const count = album.fotos?.length ?? 0;
-
-        const card = document.createElement('div');
-        card.className = 'album-card reveal';
-        card.style.transitionDelay = `${Math.min(i * 0.07, 0.5)}s`;
-        card.setAttribute('data-categoria', cat);
-        card.onclick = () => verAlbumDetalle(album.id);
-        card.setAttribute('role', 'button');
-        card.setAttribute('tabindex', '0');
-        card.onkeydown = e => { if (e.key === 'Enter') verAlbumDetalle(album.id); };
-
-        card.innerHTML = `
-            <div class="album-card-cover">
-                <img src="${cover}" alt="${album.titulo}" loading="lazy">
-                <div class="album-card-overlay"><span>Ver galería →</span></div>
-                <div class="album-badge">${album.categoria}</div>
-            </div>
-            <div class="album-card-info">
-                <h3>${album.titulo}</h3>
-                <p>${count} foto${count !== 1 ? 's' : ''}</p>
-            </div>`;
-
-        grid.appendChild(card);
-    });
-
-    initRevealAnimations();
-    configurarFiltros();
-}
-
-// ─── DETALLE ÁLBUM ────────────────────────────────────────────────────────────
-function verAlbumDetalle(albumId) {
-    const album = albumesData.find(a => a.id === albumId);
-    if (!album) return;
-
-    const grid = document.getElementById('gallery-grid');
-    document.getElementById('category-filters').style.display = 'none';
-
-    const adminControls = isAdmin ? `
-        <div style="display:flex;gap:10px;align-items:center;">
-            <form class="upload-drop-zone" id="upload-form-${album.id}" onsubmit="subirFoto(event,${album.id})">
-                <label style="cursor:pointer;display:flex;align-items:center;gap:10px;">
-                    <i class="fa-solid fa-cloud-arrow-up" style="font-size:20px;color:var(--gold)"></i>
-                    <div>
-                        <span id="upload-label-${album.id}" style="font-size:13px;color:var(--gold);">Subir fotos</span>
-                        <small style="display:block;font-size:11px;color:var(--text-dim);">Podés seleccionar múltiples</small>
-                    </div>
-                    <input type="file" name="foto" accept="image/*" multiple
-                        onchange="this.form.dispatchEvent(new Event('submit'))" hidden>
-                </label>
-            </form>
-            <button onclick="borrarAlbum(${album.id})"
-                style="background:transparent;border:1px solid #333;color:#e05252;padding:8px 14px;
-                       font-size:11px;cursor:pointer;letter-spacing:1px;transition:0.3s;"
-                onmouseover="this.style.background='rgba(224,82,82,0.1)'"
-                onmouseout="this.style.background='transparent'">
-                <i class="fa-solid fa-trash"></i> Borrar álbum
-            </button>
-        </div>
-        <div class="upload-progress" id="upload-progress-${album.id}">
-            <div class="upload-progress-bar" id="upload-bar-${album.id}"></div>
-        </div>` : '';
-
-    const fotos = album.fotos || [];
-    const fotosHTML = fotos.length
-        ? fotos.map((url, idx) => `
-            <div class="album-detail-photo" onclick="abrirVisor(${idx},[${fotos.map(f=>`'${f}'`).join(',')}])">
-                <img src="${url}" alt="Foto ${idx+1}" loading="lazy">
-            </div>`).join('')
-        : `<p style="color:var(--text-dim);padding:40px 0;text-align:center;font-style:italic;grid-column:1/-1">
-               Aún no hay fotos en este álbum.
-           </p>`;
-
-    grid.innerHTML = `
-        <div style="grid-column:1/-1">
-            <div class="album-detail-header">
-                <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
-                    <button onclick="renderizarCarpetas()"
-                        style="background:transparent;border:1px solid var(--gold-dim);color:var(--gold);
-                               padding:9px 18px;font-size:11px;letter-spacing:2px;cursor:pointer;
-                               text-transform:uppercase;transition:0.3s;font-family:inherit;"
-                        onmouseover="this.style.background='rgba(198,168,124,0.08)'"
-                        onmouseout="this.style.background='transparent'">
-                        <i class="fa-solid fa-arrow-left"></i> Volver
-                    </button>
-                    <h2 style="font-family:'Playfair Display',serif;font-size:clamp(20px,3vw,32px);font-weight:400;">${album.titulo}</h2>
-                    <span style="font-size:12px;color:var(--text-muted);">${fotos.length} foto${fotos.length !== 1 ? 's' : ''}</span>
+    grid.innerHTML = data.map((ev, i) => {
+        const cover  = ev.fotos?.[0]?.url_preview || 'https://placehold.co/800x600/0c0c12/1c1c24?text=Sin+fotos';
+        const count  = ev.fotos?.length ?? 0;
+        const delay  = Math.min(i * 0.06, 0.5);
+        return `
+        <div class="event-card reveal" style="transition-delay:${delay}s"
+             onclick="abrirEvento(${ev.id})" role="button" tabindex="0"
+             onkeydown="if(event.key==='Enter')abrirEvento(${ev.id})">
+            <img class="event-card-img" src="${cover}" alt="${ev.titulo}" loading="lazy">
+            <div class="event-card-overlay">
+                <div class="event-card-sport">${ev.deporte}</div>
+                <div class="event-card-title">${ev.titulo}</div>
+                <div class="event-card-meta">
+                    ${ev.fecha ? `<span><i class="fa-regular fa-calendar" style="margin-right:5px"></i>${ev.fecha}</span>` : ''}
+                    <span class="event-card-count">${count} foto${count!==1?'s':''}</span>
                 </div>
             </div>
-            ${adminControls}
-            <div class="album-detail-grid">${fotosHTML}</div>
+            <div class="event-card-enter">
+                <div class="event-card-enter-btn">Explorar galería →</div>
+            </div>
         </div>`;
+    }).join('');
 
-    window.scrollTo({ top: document.getElementById('portfolio').offsetTop - 80, behavior: 'smooth' });
+    initReveal();
+    configurarFiltros();
 }
 
 // ─── FILTROS ─────────────────────────────────────────────────────────────────
 function configurarFiltros() {
-    document.querySelectorAll('.filter-btn').forEach(btn => {
+    document.querySelectorAll('.sport-btn').forEach(btn => {
         btn.onclick = () => {
-            document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+            document.querySelectorAll('.sport-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
-            const filtro = btn.dataset.filter;
-            document.querySelectorAll('.album-card').forEach(card => {
-                const show = filtro === 'all' || filtro === card.dataset.categoria;
-                card.style.display = show ? '' : 'none';
-                if (show) { card.classList.remove('visible'); setTimeout(() => card.classList.add('visible'), 20); }
-            });
+            renderEventos(btn.dataset.filter);
         };
     });
 }
 
-// ─── CREAR ÁLBUM ─────────────────────────────────────────────────────────────
-async function crearAlbum() {
+// ─── VER EVENTO ───────────────────────────────────────────────────────────────
+function abrirEvento(eventoId) {
+    const ev = eventosData.find(e => e.id === eventoId);
+    if (!ev) return;
+    eventoActual = ev;
+
+    document.getElementById('portfolio')?.style.setProperty('display', 'none');
+    const view = document.getElementById('event-view');
+    view.style.display = 'block';
+
+    lbFotos = ev.fotos || [];
+
+    const adminUpload = isAdmin ? `
+        <div class="admin-upload-bar">
+            <form class="upload-zone" id="upload-form-${ev.id}" onsubmit="subirFotos(event,${ev.id})">
+                <label style="cursor:pointer;display:flex;align-items:center;gap:14px;width:100%">
+                    <span class="upload-zone-icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>
+                    <span>
+                        <div class="upload-zone-text" id="upload-label-${ev.id}">Subir fotos al evento</div>
+                        <div class="upload-zone-sub">Podés seleccionar múltiples archivos · Se sube original + preview con marca de agua</div>
+                    </span>
+                    <input type="file" name="foto" accept="image/*" multiple
+                        onchange="this.form.dispatchEvent(new Event('submit'))" hidden>
+                </label>
+            </form>
+            <button onclick="borrarEvento(${ev.id})"
+                style="height:72px;padding:0 20px;border:1px solid rgba(232,64,64,0.3);
+                       color:var(--red);font-size:11px;letter-spacing:1px;cursor:pointer;
+                       text-transform:uppercase;transition:0.3s;white-space:nowrap;background:none;"
+                onmouseover="this.style.background='rgba(232,64,64,0.07)'"
+                onmouseout="this.style.background='none'">
+                <i class="fa-solid fa-trash"></i><br>Borrar
+            </button>
+        </div>
+        <div class="upload-progress-wrap" id="uprogress-${ev.id}">
+            <div class="upload-progress-bar" id="upbar-${ev.id}"></div>
+        </div>` : '';
+
+    const fotosHTML = lbFotos.length ? lbFotos.map((f, idx) => {
+        const enCarrito = carrito.has(f.id);
+        return `
+        <div class="photo-item${enCarrito ? ' selected' : ''}" id="photo-${f.id}"
+             onclick="toggleFoto(${f.id})"
+             ondblclick="abrirLightbox(${idx})"
+             title="Clic para seleccionar · Doble clic para ampliar">
+            <img src="${f.url_preview}" alt="Foto deportiva" loading="lazy">
+            <div class="photo-item-overlay">
+                <div class="photo-select-icon">
+                    <i class="fa-solid ${enCarrito ? 'fa-check' : 'fa-cart-shopping'}"></i>
+                </div>
+                <div class="photo-price">$${Number(f.precio).toLocaleString('es-AR')}</div>
+            </div>
+            <div class="photo-check-badge"><i class="fa-solid fa-check"></i></div>
+            ${isAdmin ? `<button onclick="event.stopPropagation();borrarFoto(${f.id})"
+                style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.7);
+                       border:none;color:var(--red);width:28px;height:28px;border-radius:50%;
+                       font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+                <i class="fa-solid fa-xmark"></i></button>` : ''}
+        </div>`;
+    }).join('') : `<div class="empty-state" style="grid-column:1/-1">Aún no hay fotos en este evento.</div>`;
+
+    view.innerHTML = `
+        <div class="event-view-header">
+            <div class="event-view-nav">
+                <button class="back-btn" onclick="cerrarEvento()">
+                    <i class="fa-solid fa-arrow-left-long"></i> Todas las galerías
+                </button>
+                <span class="event-view-sport-tag">${ev.deporte}</span>
+                <div>
+                    <div class="event-view-title">${ev.titulo}</div>
+                    ${ev.fecha ? `<div class="event-view-date"><i class="fa-regular fa-calendar" style="margin-right:6px;color:var(--gold)"></i>${ev.fecha}</div>` : ''}
+                </div>
+                <div class="price-info" style="margin-left:auto">
+                    <div class="price-badge">$${PRECIO_BASE.toLocaleString('es-AR')} <span>ARS / foto</span></div>
+                </div>
+            </div>
+            <div class="selection-info">
+                <i class="fa-solid fa-circle-info"></i>
+                <span><strong>Clic</strong> en una foto para seleccionarla · <strong>Doble clic</strong> para ampliar · Seleccioná las que querés y comprá todas juntas</span>
+            </div>
+        </div>
+        ${adminUpload}
+        <div class="photos-grid">${fotosHTML}</div>`;
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+    actualizarCarritoBar();
+}
+
+function cerrarEvento() {
+    eventoActual = null;
+    document.getElementById('event-view').style.display = 'none';
+    document.getElementById('portfolio').style.removeProperty('display');
+    window.scrollTo({ top: document.getElementById('portfolio').offsetTop - 68, behavior: 'smooth' });
+}
+
+// ─── SELECCIÓN DE FOTOS ────────────────────────────────────────────────────────
+function toggleFoto(fotoId) {
+    if (!eventoActual) return;
+    const foto = eventoActual.fotos.find(f => f.id === fotoId);
+    if (!foto) return;
+
+    const el = document.getElementById(`photo-${fotoId}`);
+    if (carrito.has(fotoId)) {
+        carrito.delete(fotoId);
+        el?.classList.remove('selected');
+        const icon = el?.querySelector('.photo-select-icon i');
+        if (icon) { icon.className = 'fa-solid fa-cart-shopping'; }
+    } else {
+        carrito.set(fotoId, { foto, evento: eventoActual });
+        el?.classList.add('selected');
+        const icon = el?.querySelector('.photo-select-icon i');
+        if (icon) { icon.className = 'fa-solid fa-check'; }
+        // Micro-feedback
+        el?.animate([
+            { transform: 'scale(0.98)' },
+            { transform: 'scale(1.01)' },
+            { transform: 'scale(1)' }
+        ], { duration: 250, easing: 'ease' });
+    }
+    actualizarCarritoBar();
+}
+
+function limpiarCarrito() {
+    carrito.clear();
+    document.querySelectorAll('.photo-item.selected').forEach(el => {
+        el.classList.remove('selected');
+        const icon = el.querySelector('.photo-select-icon i');
+        if (icon) icon.className = 'fa-solid fa-cart-shopping';
+    });
+    actualizarCarritoBar();
+}
+
+// ─── CARRITO BAR ──────────────────────────────────────────────────────────────
+function actualizarCarritoBar() {
+    const bar   = document.getElementById('cart-bar');
+    const count = carrito.size;
+    const total = [...carrito.values()].reduce((s, { foto }) => s + foto.precio, 0);
+
+    if (!bar) return;
+    document.getElementById('cart-count').textContent = count;
+    document.getElementById('cart-total').textContent = `$${total.toLocaleString('es-AR')} ARS`;
+    bar.classList.toggle('visible', count > 0);
+
+    // Lightbox: actualizar botón si está abierto
+    if (document.getElementById('lightbox').classList.contains('open')) {
+        const lbBtn = document.getElementById('lb-cart-btn');
+        if (lbBtn) {
+            const fid = lbFotos[lbIdx]?.id;
+            lbBtn.textContent = carrito.has(fid) ? '✓ En el carrito' : '+ Agregar al carrito';
+            lbBtn.className   = `lb-cart-btn${carrito.has(fid) ? ' in-cart' : ''}`;
+        }
+    }
+}
+
+// ─── LIGHTBOX ────────────────────────────────────────────────────────────────
+function abrirLightbox(idx) {
+    lbIdx = idx;
+    const lb = document.getElementById('lightbox');
+    lb.style.display = 'flex';
+    requestAnimationFrame(() => lb.classList.add('open'));
+    document.body.style.overflow = 'hidden';
+    mostrarLbFoto();
+}
+
+function mostrarLbFoto() {
+    const foto = lbFotos[lbIdx];
+    if (!foto) return;
+    document.getElementById('lb-img').src = foto.url_preview;
+    document.getElementById('lb-counter').textContent =
+        lbFotos.length > 1 ? `${lbIdx + 1} / ${lbFotos.length}` : '';
+    const inCart = carrito.has(foto.id);
+    const lbBtn  = document.getElementById('lb-cart-btn');
+    if (lbBtn) {
+        lbBtn.textContent = inCart ? '✓ En el carrito' : '+ Agregar al carrito';
+        lbBtn.className   = `lb-cart-btn${inCart ? ' in-cart' : ''}`;
+    }
+    ['lb-prev','lb-next'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.style.opacity = lbFotos.length > 1 ? '1' : '0';
+    });
+}
+
+function cerrarLightbox() {
+    const lb = document.getElementById('lightbox');
+    lb.classList.remove('open');
+    setTimeout(() => { lb.style.display = 'none'; }, 280);
+    document.body.style.overflow = '';
+}
+
+function lbPrev() { lbIdx = (lbIdx - 1 + lbFotos.length) % lbFotos.length; mostrarLbFoto(); }
+function lbNext() { lbIdx = (lbIdx + 1) % lbFotos.length; mostrarLbFoto(); }
+
+function lbToggleCart() {
+    const foto = lbFotos[lbIdx];
+    if (!foto) return;
+    toggleFoto(foto.id);
+    mostrarLbFoto();
+}
+
+function initLightboxKB() {
+    document.addEventListener('keydown', e => {
+        if (!document.getElementById('lightbox').classList.contains('open')) return;
+        if (e.key === 'Escape')     cerrarLightbox();
+        if (e.key === 'ArrowLeft')  lbPrev();
+        if (e.key === 'ArrowRight') lbNext();
+    });
+}
+
+// ─── CHECKOUT ─────────────────────────────────────────────────────────────────
+function abrirCheckout() {
+    if (!carrito.size) return;
+
+    const items = [...carrito.values()];
+    const total = items.reduce((s, { foto }) => s + foto.precio, 0);
+
+    const resumenHTML = items.map(({ foto, evento }) => `
+        <div class="checkout-summary-row">
+            <span style="color:var(--text);font-size:12px">
+                ${evento.titulo}<br>
+                <span style="color:var(--text-dim);font-size:11px">Foto #${foto.id}</span>
+            </span>
+            <span style="color:var(--gold);font-weight:600">$${Number(foto.precio).toLocaleString('es-AR')}</span>
+        </div>`).join('');
+
+    document.getElementById('checkout-resumen').innerHTML = resumenHTML;
+    document.getElementById('checkout-total-amount').textContent =
+        `$${total.toLocaleString('es-AR')}`;
+
+    const modal = document.getElementById('checkout-modal');
+    modal.style.display = 'flex';
+    requestAnimationFrame(() => modal.classList.add('open'));
+    document.body.style.overflow = 'hidden';
+    setTimeout(() => document.getElementById('co-nombre')?.focus(), 300);
+}
+
+function cerrarCheckout() {
+    const m = document.getElementById('checkout-modal');
+    m.classList.remove('open');
+    setTimeout(() => { m.style.display = 'none'; }, 300);
+    document.body.style.overflow = '';
+}
+
+async function procesarPago() {
+    const nombre = document.getElementById('co-nombre')?.value.trim();
+    const email  = document.getElementById('co-email')?.value.trim();
+    if (!nombre || !email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        document.getElementById('co-email')?.focus();
+        shakear('checkout-box');
+        return;
+    }
+
+    const foto_ids = [...carrito.keys()];
+    const btn      = document.getElementById('checkout-pay-btn');
+    btn.disabled   = true;
+    btn.innerHTML  = '<i class="fa-solid fa-spinner fa-spin"></i> Procesando...';
+
+    try {
+        const res  = await fetch('/crear-orden', {
+            method: 'POST', credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ foto_ids, email, nombre })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.init_point) {
+            window.location.href = data.init_point;
+            return;
+        }
+
+        // MP no configurado — fallback WhatsApp
+        if (data.error === 'mp_no_configurado' || res.status === 503) {
+            cerrarCheckout();
+            const msg = encodeURIComponent(
+                `Hola Nacho! Quiero comprar ${foto_ids.length} foto${foto_ids.length>1?'s':''}.\n` +
+                `Total: $${data.total?.toLocaleString('es-AR') || ''} ARS\n` +
+                `Mi email: ${email}\n` +
+                `¿Cómo te puedo pagar?`
+            );
+            const { isConfirmed } = await Swal.fire({
+                icon: 'info',
+                title: 'Coordinar por WhatsApp',
+                html: `<p style="color:#999;font-size:14px;line-height:1.7">
+                    El sistema de pago online se está configurando.<br>
+                    Podés coordinar el pago directamente con Nacho por WhatsApp — te responde en minutos.
+                </p>`,
+                background: 'var(--ink-2)', color: 'var(--text)',
+                confirmButtonText: '<i class="fa-brands fa-whatsapp"></i>&nbsp; Ir a WhatsApp',
+                cancelButtonText: 'Cerrar',
+                showCancelButton: true,
+                confirmButtonColor: '#25D366', cancelButtonColor: '#333'
+            });
+            if (isConfirmed) window.open(`https://wa.me/${WA_NUMBER}?text=${msg}`, '_blank');
+        } else {
+            throw new Error(data.error || 'Error desconocido');
+        }
+    } catch (err) {
+        Swal.fire({
+            icon: 'error', title: 'Error al procesar',
+            html: `<p style="color:#999;font-size:14px">Intentá de nuevo o <a href="https://wa.me/${WA_NUMBER}" target="_blank" style="color:var(--gold)">contactanos por WhatsApp</a>.</p>`,
+            background: 'var(--ink-2)', color: 'var(--text)', confirmButtonColor: '#D4A843'
+        });
+    } finally {
+        btn.disabled  = false;
+        btn.innerHTML = '<i class="fa-solid fa-credit-card"></i> Pagar con MercadoPago';
+    }
+}
+
+// ─── CREAR EVENTO ─────────────────────────────────────────────────────────────
+async function crearEvento() {
     const { value: vals } = await Swal.fire({
-        title: 'Nuevo Álbum',
-        background: '#111', color: '#f0f0f0',
+        title: 'Nuevo Evento',
+        background: 'var(--ink-2)', color: 'var(--text)',
         html: `
-            <input id="a-titulo" class="swal2-input" placeholder="Nombre del álbum (ej: Final Talleres 2026)"
-                style="background:#1a1a1a;color:#fff;border:1px solid #333;width:85%;margin-bottom:10px;">
-            <select id="a-cat" style="background:#1a1a1a;color:#fff;border:1px solid #333;
-                width:85%;padding:12px;margin:0 auto;display:block;border-radius:3px;font-size:14px;">
-                <option value="" disabled selected>Seleccioná una categoría...</option>
-                <option value="futbol">⚽ Fútbol</option>
-                <option value="basquet">🏀 Básquet</option>
-                <option value="social">🎉 Social</option>
-                <option value="otro">📷 Otro</option>
-            </select>`,
+            <input id="ev-titulo" class="swal2-input" placeholder="Título (ej: Talleres vs Belgrano — Fecha 15)"
+                style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);width:88%;margin-bottom:10px">
+            <select id="ev-deporte" style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);
+                width:88%;padding:13px;margin:0 auto;display:block;border-radius:0;font-size:14px;margin-bottom:10px">
+                <option value="" disabled selected>Deporte...</option>
+                <option value="Fútbol">⚽ Fútbol</option>
+                <option value="Básquet">🏀 Básquet</option>
+                <option value="Otro">📷 Otro</option>
+            </select>
+            <input id="ev-fecha" type="date" class="swal2-input"
+                style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);width:88%;margin-bottom:10px">
+            <input id="ev-desc" class="swal2-input" placeholder="Descripción breve (opcional)"
+                style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);width:88%">`,
         focusConfirm: false, showCancelButton: true,
-        confirmButtonText: 'Crear álbum', cancelButtonText: 'Cancelar',
-        confirmButtonColor: '#c6a87c', cancelButtonColor: '#555',
+        confirmButtonText: 'Crear evento', cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#D4A843', cancelButtonColor: '#555',
         preConfirm: () => {
-            const titulo = document.getElementById('a-titulo').value.trim();
-            const cat    = document.getElementById('a-cat').value;
-            if (!titulo || !cat) { Swal.showValidationMessage('Completá ambos campos'); return false; }
-            return { titulo, categoria: cat };
+            const titulo   = document.getElementById('ev-titulo').value.trim();
+            const deporte  = document.getElementById('ev-deporte').value;
+            const fecha    = document.getElementById('ev-fecha').value;
+            const desc     = document.getElementById('ev-desc').value.trim();
+            if (!titulo || !deporte) { Swal.showValidationMessage('Título y deporte son requeridos'); return false; }
+            return { titulo, deporte, fecha, descripcion: desc };
         }
     });
-
     if (!vals) return;
-    const res = await fetch('/crear-album', {
+
+    const res = await fetch('/crear-evento', {
         method: 'POST', credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(vals)
     });
     if (res.ok) {
-        await cargarAlbumes();
-        Swal.fire({ icon:'success', title:'¡Álbum creado!', timer:1800,
-            showConfirmButton:false, background:'#111', color:'#fff' });
-    } else {
-        Swal.fire({ icon:'error', title:'Error', text:'No se pudo crear. ¿Estás logueado?',
-            background:'#111', color:'#fff', confirmButtonColor:'#c6a87c' });
+        await cargarEventos();
+        Swal.fire({ icon:'success', title:'Evento creado', timer:2000, showConfirmButton:false, background:'var(--ink-2)', color:'var(--text)' });
     }
 }
 
-// ─── COMPRIMIR + MARCA DE AGUA (CLIENTE) ─────────────────────────────────────
-function comprimirImagen(file, maxWidth = 1920, quality = 0.82) {
-    return new Promise((resolve, reject) => {
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
-        reader.onload = e => {
-            const img = new Image();
-            img.src = e.target.result;
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                let w = img.width, h = img.height;
-                if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
-                canvas.width = w; canvas.height = h;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, w, h);
-
-                // Marca de agua en mosaico diagonal
-                const pCanvas = document.createElement('canvas');
-                const pCtx    = pCanvas.getContext('2d');
-                const fs      = Math.floor(w / 20);
-                pCtx.font     = `bold ${fs}px Arial`;
-                const texto   = 'NACHO LINGUA FOTOGRAFÍA ';
-                const tw      = pCtx.measureText(texto).width;
-                pCanvas.width = tw + fs*2; pCanvas.height = fs*5;
-                pCtx.font     = `bold ${fs}px Arial`;
-                pCtx.textAlign = 'center'; pCtx.textBaseline = 'middle';
-                pCtx.fillStyle = 'rgba(255,255,255,0.85)';
-                pCtx.shadowColor = 'rgba(0,0,0,0.9)'; pCtx.shadowBlur = 4;
-                pCtx.fillText(texto, pCanvas.width/2, pCanvas.height/2);
-
-                ctx.save();
-                ctx.translate(w/2, h/2); ctx.rotate(-Math.PI/8); ctx.translate(-w, -h);
-                ctx.fillStyle = ctx.createPattern(pCanvas, 'repeat');
-                ctx.fillRect(0, 0, w*2, h*2);
-                ctx.restore();
-
-                canvas.toBlob(blob => resolve(new File([blob], file.name, { type:'image/jpeg', lastModified:Date.now() })), 'image/jpeg', quality);
-            };
-            img.onerror = reject;
-        };
-    });
-}
-
 // ─── SUBIR FOTOS ─────────────────────────────────────────────────────────────
-async function subirFoto(event, albumId) {
+async function subirFotos(event, eventoId) {
     event.preventDefault();
     const input = event.target.querySelector('input[type="file"]');
     if (!input?.files.length) return;
 
-    const files  = Array.from(input.files);
-    const progWrap = document.getElementById(`upload-progress-${albumId}`);
-    const progBar  = document.getElementById(`upload-bar-${albumId}`);
-    const label    = document.getElementById(`upload-label-${albumId}`);
+    const files   = Array.from(input.files);
+    const progWrap = document.getElementById(`uprogress-${eventoId}`);
+    const progBar  = document.getElementById(`upbar-${eventoId}`);
+    const label    = document.getElementById(`upload-label-${eventoId}`);
 
     if (progWrap) progWrap.style.display = 'block';
     let exitosas = 0;
 
     for (let i = 0; i < files.length; i++) {
-        if (label) label.textContent = `Optimizando ${i+1}/${files.length}...`;
-        try {
-            const compressed = await comprimirImagen(files[i]);
-            if (label) label.textContent = `Subiendo ${i+1}/${files.length}...`;
-            if (progBar) progBar.style.width = `${((i+0.5)/files.length)*100}%`;
+        if (label) label.textContent = `Subiendo ${i+1} de ${files.length}...`;
+        if (progBar) progBar.style.width = `${(i / files.length) * 100}%`;
 
-            const fd = new FormData();
-            fd.append('foto', compressed);
-            fd.append('album_id', albumId);
+        const fd = new FormData();
+        fd.append('foto',     files[i]);
+        fd.append('evento_id', eventoId);
+        fd.append('precio',    PRECIO_BASE);
+
+        try {
             const res = await fetch('/subir-foto', { method:'POST', body:fd, credentials:'include' });
             if (res.ok) exitosas++;
-            if (progBar) progBar.style.width = `${((i+1)/files.length)*100}%`;
-        } catch (err) { console.error(err); }
+        } catch {}
+        if (progBar) progBar.style.width = `${((i+1)/files.length)*100}%`;
     }
 
-    setTimeout(() => { if (progWrap) progWrap.style.display = 'none'; if (progBar) progBar.style.width = '0'; }, 800);
+    setTimeout(() => { if (progWrap) progWrap.style.display='none'; if (progBar) progBar.style.width='0'; }, 700);
+    if (label) label.textContent = 'Subir fotos al evento';
     event.target.reset();
-    if (label) label.textContent = 'Subir fotos';
 
     if (exitosas > 0) {
-        const res   = await fetch('/obtener-datos');
-        albumesData = await res.json();
-        verAlbumDetalle(albumId);
+        await cargarEventos();
+        abrirEvento(eventoId);
         Swal.fire({
             icon:'success',
-            title: exitosas === files.length ? `¡${exitosas} foto${exitosas>1?'s':''} subida${exitosas>1?'s':''}!` : `${exitosas} de ${files.length} subidas`,
-            timer:2500, showConfirmButton:false, background:'#111', color:'#fff'
+            title:`${exitosas} foto${exitosas>1?'s':''} subida${exitosas>1?'s':''}`,
+            text: 'Las fotos están disponibles en la galería.',
+            timer:2500, showConfirmButton:false, background:'var(--ink-2)', color:'var(--text)'
         });
     } else {
-        Swal.fire({ icon:'error', title:'Error al subir', text:'Verificá la conexión e intentá de nuevo.',
-            background:'#111', color:'#fff', confirmButtonColor:'#c6a87c' });
+        Swal.fire({ icon:'error', title:'Error al subir', background:'var(--ink-2)', color:'var(--text)', confirmButtonColor:'#D4A843' });
     }
 }
 
-// ─── BORRAR ÁLBUM ─────────────────────────────────────────────────────────────
-async function borrarAlbum(albumId) {
+// ─── BORRAR ───────────────────────────────────────────────────────────────────
+async function borrarEvento(id) {
     const { isConfirmed } = await Swal.fire({
-        title: '¿Borrar álbum?',
-        html: '<p style="color:#999;font-size:14px;">Esta acción eliminará el álbum y <strong style="color:#e05252">todas sus fotos</strong> permanentemente.</p>',
+        title: '¿Borrar este evento?',
+        html: '<p style="color:#999;font-size:14px">Se eliminarán el evento y <strong style="color:var(--red)">todas sus fotos</strong>. No se puede deshacer.</p>',
         icon: 'warning', showCancelButton: true,
-        confirmButtonText: 'Sí, borrar todo', cancelButtonText: 'Cancelar',
-        confirmButtonColor: '#e05252', cancelButtonColor: '#555',
-        background: '#111', color: '#fff'
+        confirmButtonText: 'Sí, borrar', cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#e84040', cancelButtonColor: '#555',
+        background: 'var(--ink-2)', color: 'var(--text)'
     });
     if (!isConfirmed) return;
+    const res = await fetch(`/borrar-evento/${id}`, { method:'DELETE', credentials:'include' });
+    if (res.ok) { cerrarEvento(); await cargarEventos(); }
+}
 
-    const res = await fetch(`/borrar-album/${albumId}`, { method:'DELETE', credentials:'include' });
+async function borrarFoto(id) {
+    const { isConfirmed } = await Swal.fire({
+        title: '¿Borrar esta foto?', icon:'warning',
+        showCancelButton:true, confirmButtonText:'Borrar', cancelButtonText:'Cancelar',
+        confirmButtonColor:'#e84040', cancelButtonColor:'#555',
+        background:'var(--ink-2)', color:'var(--text)'
+    });
+    if (!isConfirmed) return;
+    const res = await fetch(`/borrar-foto/${id}`, { method:'DELETE', credentials:'include' });
     if (res.ok) {
-        Swal.fire({ icon:'success', title:'Álbum eliminado', timer:1500, showConfirmButton:false, background:'#111', color:'#fff' });
-        cargarAlbumes();
-    } else {
-        Swal.fire({ icon:'error', title:'Error al borrar', background:'#111', color:'#fff' });
+        document.getElementById(`photo-${id}`)?.remove();
+        if (carrito.has(id)) { carrito.delete(id); actualizarCarritoBar(); }
+        if (eventoActual) {
+            eventoActual.fotos = eventoActual.fotos.filter(f => f.id !== id);
+            lbFotos = eventoActual.fotos;
+        }
     }
 }
 
-// ─── LIGHTBOX ────────────────────────────────────────────────────────────────
-function abrirVisor(idx, fotos) {
-    lightboxFotos = Array.isArray(fotos) ? fotos : [fotos];
-    lightboxIdx   = typeof idx === 'number' ? idx : 0;
-    mostrarFotoActual();
-    const lb = document.getElementById('lightbox');
-    lb.style.display = 'flex';
-    requestAnimationFrame(() => lb.classList.add('open'));
+// ─── LOGIN ───────────────────────────────────────────────────────────────────
+function abrirLoginModal() {
+    const m = document.getElementById('login-modal');
+    m.style.display = 'flex';
+    requestAnimationFrame(() => m.classList.add('open'));
     document.body.style.overflow = 'hidden';
+    document.getElementById('login-error').style.display = 'none';
+    document.getElementById('admin-password').value = '';
+    setTimeout(() => document.getElementById('admin-password')?.focus(), 200);
 }
-
-function mostrarFotoActual() {
-    document.getElementById('img-ampliada').src = lightboxFotos[lightboxIdx];
-    const counter = document.getElementById('lightbox-counter');
-    if (counter) counter.textContent = lightboxFotos.length > 1 ? `${lightboxIdx+1} / ${lightboxFotos.length}` : '';
-    const showNav = lightboxFotos.length > 1;
-    document.getElementById('lb-prev').style.opacity = showNav ? '1' : '0';
-    document.getElementById('lb-next').style.opacity = showNav ? '1' : '0';
-}
-
-function cerrarVisor() {
-    const lb = document.getElementById('lightbox');
-    lb.classList.remove('open');
-    setTimeout(() => { lb.style.display = 'none'; }, 300);
+function cerrarLoginModal() {
+    const m = document.getElementById('login-modal');
+    m.classList.remove('open');
+    setTimeout(() => { m.style.display='none'; }, 320);
     document.body.style.overflow = '';
 }
-
-function lightboxPrev() { lightboxIdx = (lightboxIdx-1+lightboxFotos.length) % lightboxFotos.length; mostrarFotoActual(); }
-function lightboxNext() { lightboxIdx = (lightboxIdx+1) % lightboxFotos.length; mostrarFotoActual(); }
-
-function initLightboxKeyboard() {
-    document.addEventListener('keydown', e => {
-        if (!document.getElementById('lightbox').classList.contains('open')) return;
-        if (e.key === 'Escape')     cerrarVisor();
-        if (e.key === 'ArrowLeft')  lightboxPrev();
-        if (e.key === 'ArrowRight') lightboxNext();
-    });
+function togglePasswordVis() {
+    const inp  = document.getElementById('admin-password');
+    const icon = document.getElementById('toggle-icon');
+    if (inp.type === 'password') { inp.type='text'; icon.className='fa-solid fa-eye-slash'; }
+    else { inp.type='password'; icon.className='fa-solid fa-eye'; }
+    inp.focus();
 }
+async function ejecutarLogin() {
+    const pass  = document.getElementById('admin-password')?.value;
+    const btn   = document.getElementById('login-submit-btn');
+    const errEl = document.getElementById('login-error');
+    if (!pass) return;
 
-// ─── PAQUETES / MERCADOPAGO ───────────────────────────────────────────────────
-async function contratarPaquete(paqueteId, nombrePaquete) {
-    const { value: email } = await Swal.fire({
-        title: nombrePaquete,
-        html: `<p style="color:#999;margin-bottom:16px;font-size:13px;">
-                  Ingresá tu email para coordinar la sesión y recibir la confirmación de pago.
-               </p>`,
-        input: 'email', inputPlaceholder: 'tu@email.com',
-        inputAttributes: { autocomplete: 'email' },
-        background: '#111', color: '#fff',
-        confirmButtonText: 'Ir al pago →', cancelButtonText: 'Cancelar',
-        showCancelButton: true,
-        confirmButtonColor: '#c6a87c', cancelButtonColor: '#555',
-        inputValidator: v => (!v || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) ? 'Ingresá un email válido' : null
-    });
-    if (!email) return;
-
-    Swal.fire({ title:'Preparando pago...', background:'#111', color:'#fff', allowOutsideClick:false,
-        didOpen: () => Swal.showLoading() });
+    btn.disabled  = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verificando...';
+    errEl.style.display = 'none';
 
     try {
-        const res  = await fetch('/crear-preferencia', {
-            method:'POST', credentials:'include',
-            headers:{ 'Content-Type':'application/json' },
-            body: JSON.stringify({ paquete: paqueteId, email })
+        const res  = await fetch('/login', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ password: pass }), credentials:'include'
         });
         const data = await res.json();
-        if (res.ok && data.init_point) {
-            Swal.close();
-            window.location.href = data.init_point;
-        } else { throw new Error(data.error || 'Sin init_point'); }
+        if (data.success) {
+            isAdmin = true; toggleAdminUI(true);
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> Acceso concedido';
+            setTimeout(() => { cerrarLoginModal(); btn.disabled=false; btn.innerHTML='Ingresar'; setTimeout(abrirAdminPanel, 400); }, 700);
+        } else {
+            errEl.style.display = 'flex';
+            btn.disabled=false; btn.innerHTML='Ingresar';
+            document.getElementById('admin-password').value='';
+            document.getElementById('admin-password').focus();
+            shakear('login-box');
+        }
     } catch {
-        const msg = encodeURIComponent(`Hola Nacho! Quiero contratar el *${nombrePaquete}*.\nMi email: ${email}\n¿Me podés ayudar con el pago?`);
-        Swal.fire({
-            icon:'info', title:'Contactar por WhatsApp',
-            html:`<p style="color:#999;font-size:14px;">El sistema de pago online está siendo configurado. Podés coordinar directamente con Nacho por WhatsApp.</p>`,
-            background:'#111', color:'#fff',
-            confirmButtonText:'<i class="fa-brands fa-whatsapp"></i>&nbsp; Ir a WhatsApp',
-            cancelButtonText:'Cerrar', showCancelButton:true,
-            confirmButtonColor:'#25D366', cancelButtonColor:'#555'
-        }).then(r => { if (r.isConfirmed) window.open(`https://wa.me/${WA_NUMBER}?text=${msg}`, '_blank'); });
+        errEl.style.display = 'flex';
+        btn.disabled=false; btn.innerHTML='Ingresar';
     }
 }
 
-// ─── FORMULARIO CONTACTO ─────────────────────────────────────────────────────
-async function enviarConsulta(event) {
-    event.preventDefault();
-    const form = event.target;
-    const btn  = form.querySelector('.form-submit-btn');
-    const data = {
-        nombre:       form.nombre?.value.trim(),
-        email:        form.email?.value.trim(),
-        telefono:     form.telefono?.value.trim(),
-        tipo_evento:  form.tipo_evento?.value,
-        fecha_evento: form.fecha_evento?.value,
-        mensaje:      form.mensaje?.value.trim()
-    };
-    if (!data.nombre || !data.email) {
-        Swal.fire({ icon:'warning', title:'Campos requeridos', text:'Por favor completá nombre y email.',
-            background:'#111', color:'#fff', confirmButtonColor:'#c6a87c' });
-        return;
-    }
-    btn.disabled = true; btn.textContent = 'Enviando...';
-    try {
-        const res = await fetch('/contacto', {
-            method:'POST', headers:{ 'Content-Type':'application/json' }, body: JSON.stringify(data)
-        });
-        if (res.ok) {
-            form.reset();
-            Swal.fire({ icon:'success', title:'¡Mensaje enviado!',
-                text:'Nacho te va a responder a la brevedad.', background:'#111', color:'#fff',
-                confirmButtonColor:'#c6a87c', timer:3500, showConfirmButton:false });
-        } else { throw new Error(); }
-    } catch {
-        Swal.fire({ icon:'error', title:'Error al enviar',
-            html:`<p style="font-size:14px;color:#999;">No se pudo enviar. <a href="https://wa.me/${WA_NUMBER}" target="_blank" style="color:var(--gold)">Escribinos por WhatsApp</a></p>`,
-            background:'#111', color:'#fff', confirmButtonColor:'#c6a87c' });
-    } finally {
-        btn.disabled = false; btn.textContent = 'Enviar consulta';
-    }
-}
-
-// ─── PANEL ADMIN ─────────────────────────────────────────────────────────────
+// ─── ADMIN PANEL ─────────────────────────────────────────────────────────────
 async function abrirAdminPanel() {
-    const modal = document.getElementById('admin-modal');
-    modal.style.display = 'flex';
-    requestAnimationFrame(() => modal.classList.add('open'));
-    document.body.style.overflow = 'hidden';
-    await Promise.all([cargarConsultas(), cargarPagos()]);
+    const m = document.getElementById('admin-modal');
+    m.style.display='flex';
+    requestAnimationFrame(() => m.classList.add('open'));
+    document.body.style.overflow='hidden';
+    await Promise.all([cargarCompras(), cargarConsultas()]);
 }
-
 function cerrarAdminPanel() {
-    const modal = document.getElementById('admin-modal');
-    modal.classList.remove('open');
-    setTimeout(() => { modal.style.display = 'none'; }, 350);
-    document.body.style.overflow = '';
+    const m = document.getElementById('admin-modal');
+    m.classList.remove('open');
+    setTimeout(() => { m.style.display='none'; }, 300);
+    document.body.style.overflow='';
 }
-
-function switchAdminTab(tabName) {
+function switchAdminTab(tab) {
     document.querySelectorAll('.admin-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.admin-tab-content').forEach(c => c.classList.remove('active'));
-    document.querySelector(`.admin-tab[data-tab="${tabName}"]`)?.classList.add('active');
-    document.getElementById(`tab-${tabName}`)?.classList.add('active');
+    document.querySelector(`.admin-tab[data-tab="${tab}"]`)?.classList.add('active');
+    document.getElementById(`tab-${tab}`)?.classList.add('active');
+}
+
+async function cargarCompras() {
+    const c = document.getElementById('tab-compras');
+    if (!c) return;
+    c.innerHTML = '<p style="color:var(--text-dim);font-style:italic;padding:20px 0">Cargando...</p>';
+    try {
+        const lista = await (await fetch('/admin/compras', { credentials:'include' })).json();
+        c.innerHTML = lista.length ? lista.map(p => {
+            const cls = p.estado==='approved'?'badge-approved':p.estado==='rejected'?'badge-rejected':'badge-pendiente';
+            const emailCls = p.email_enviado ? 'badge-approved' : 'badge-pendiente';
+            return `<div class="admin-item">
+                <div class="admin-item-hdr">
+                    <div>
+                        <strong>${p.nombre||p.email} &nbsp;<span class="badge ${cls}">${p.estado}</span>&nbsp;<span class="badge ${emailCls}">${p.email_enviado?'✓ Email enviado':'Email pendiente'}</span></strong>
+                        <br><span style="font-size:12px;color:var(--text-dim)">${p.email}</span>
+                    </div>
+                    <div style="text-align:right">
+                        <span class="admin-item-date">${p.fecha}</span><br>
+                        <strong style="color:var(--gold);font-size:14px">$${Number(p.total).toLocaleString('es-AR')}</strong>
+                    </div>
+                </div>
+                <div class="admin-item-body">
+                    ${p.foto_ids.length} foto${p.foto_ids.length>1?'s':''} &nbsp;·&nbsp; IDs: [${p.foto_ids.join(', ')}]
+                    ${p.estado==='approved'&&!p.email_enviado ? `<br><button class="admin-action-btn" onclick="reenviarEmail(${p.id})" style="margin-top:8px"><i class="fa-solid fa-paper-plane"></i> Reenviar email</button>` : ''}
+                </div>
+            </div>`;
+        }).join('')
+        : '<p style="color:var(--text-dim);font-style:italic;padding:20px 0">Sin compras registradas.</p>';
+    } catch { c.innerHTML = '<p style="color:var(--red)">Error al cargar compras.</p>'; }
+}
+
+async function reenviarEmail(id) {
+    const res = await fetch(`/admin/compras/${id}/reenviar-email`, { method:'POST', credentials:'include' });
+    const d   = await res.json();
+    Swal.fire({
+        icon: d.ok ? 'success' : 'error',
+        title: d.ok ? 'Email reenviado' : 'Error al reenviar',
+        timer: 2000, showConfirmButton: false,
+        background: 'var(--ink-2)', color: 'var(--text)'
+    });
+    if (d.ok) cargarCompras();
 }
 
 async function cargarConsultas() {
-    const container = document.getElementById('tab-consultas');
-    if (!container) return;
-    container.innerHTML = '<p class="admin-loading">Cargando consultas...</p>';
+    const c = document.getElementById('tab-consultas');
+    if (!c) return;
+    c.innerHTML = '<p style="color:var(--text-dim);font-style:italic;padding:20px 0">Cargando...</p>';
     try {
-        const res   = await fetch('/admin/consultas', { credentials:'include' });
-        const lista = await res.json();
-        const nuevas = lista.filter(c => !c.leida).length;
-        const badge  = document.getElementById('badge-consultas');
-        if (badge) { badge.textContent = nuevas; badge.style.display = nuevas > 0 ? 'inline-flex' : 'none'; }
-
-        container.innerHTML = lista.length ? lista.map(c => `
-            <div class="admin-item" id="consulta-${c.id}">
-                <div class="item-header">
-                    <div>
-                        <strong>${c.nombre}</strong>
-                        ${!c.leida ? '<span class="item-badge badge-no-leida">Nueva</span>' : ''}
-                        <br><span style="font-size:12px;color:#888">${c.email}${c.telefono ? ` · ${c.telefono}` : ''}</span>
-                    </div>
-                    <span class="item-date">${c.fecha}</span>
+        const lista = await (await fetch('/admin/consultas', { credentials:'include' })).json();
+        c.innerHTML = lista.length ? lista.map(m => `
+            <div class="admin-item" id="msg-${m.id}">
+                <div class="admin-item-hdr">
+                    <strong>${m.nombre} — ${m.email} ${!m.leida?'<span class="badge badge-new">Nueva</span>':''}</strong>
+                    <span class="admin-item-date">${m.fecha}</span>
                 </div>
-                <div class="item-body">
-                    ${c.tipo_evento ? `<em style="color:var(--gold);font-size:12px;">${c.tipo_evento}${c.fecha_evento ? ` · ${c.fecha_evento}` : ''}</em><br><br>` : ''}
-                    ${c.mensaje || '<em style="color:#555">Sin mensaje</em>'}
-                </div>
-                ${!c.leida ? `<div style="margin-top:10px;text-align:right;">
-                    <button class="mark-read-btn" onclick="marcarLeida(${c.id})">
-                        <i class="fa-solid fa-check"></i> Marcar como leída
-                    </button></div>` : ''}
+                <div class="admin-item-body">${m.mensaje || '<em>Sin mensaje</em>'}</div>
+                ${!m.leida?`<button class="admin-action-btn" onclick="marcarLeida(${m.id})" style="margin-top:10px"><i class="fa-solid fa-check"></i> Marcar como leída</button>`:''}
             </div>`).join('')
-            : '<p style="color:var(--text-dim);font-style:italic;padding:20px 0">Sin consultas aún.</p>';
-    } catch {
-        container.innerHTML = '<p style="color:var(--red);">Error al cargar consultas.</p>';
-    }
+        : '<p style="color:var(--text-dim);font-style:italic;padding:20px 0">Sin consultas.</p>';
+    } catch { c.innerHTML = '<p style="color:var(--red)">Error al cargar.</p>'; }
 }
 
 async function marcarLeida(id) {
     await fetch(`/admin/consultas/${id}/leer`, { method:'PATCH', credentials:'include' });
-    document.getElementById(`consulta-${id}`)?.querySelector('.item-badge')?.remove();
-    document.getElementById(`consulta-${id}`)?.querySelector('div[style*="text-align:right"]')?.remove();
-    const badge = document.getElementById('badge-consultas');
-    if (badge) {
-        const n = parseInt(badge.textContent) - 1;
-        badge.textContent = n; badge.style.display = n > 0 ? 'inline-flex' : 'none';
-    }
-}
-
-async function cargarPagos() {
-    const container = document.getElementById('tab-pagos');
-    if (!container) return;
-    container.innerHTML = '<p class="admin-loading">Cargando pagos...</p>';
-    try {
-        const res   = await fetch('/admin/pagos', { credentials:'include' });
-        const lista = await res.json();
-        container.innerHTML = lista.length ? lista.map(p => {
-            const cls = p.estado==='approved' ? 'badge-approved' : p.estado==='rejected' ? 'badge-rejected' : 'badge-pendiente';
-            return `<div class="admin-item">
-                <div class="item-header">
-                    <strong>${p.paquete} <span class="item-badge ${cls}">${p.estado}</span></strong>
-                    <span class="item-date">${p.fecha}</span>
-                </div>
-                <div class="item-body">${p.email} &nbsp;·&nbsp; <strong style="color:var(--gold)">$${Number(p.monto).toLocaleString('es-AR')}</strong> ARS</div>
-            </div>`;
-        }).join('')
-        : '<p style="color:var(--text-dim);font-style:italic;padding:20px 0">Sin pagos registrados.</p>';
-    } catch {
-        container.innerHTML = '<p style="color:var(--red);">Error al cargar pagos.</p>';
-    }
+    document.getElementById(`msg-${id}`)?.querySelector('.badge-new')?.remove();
+    document.getElementById(`msg-${id}`)?.querySelector('.admin-action-btn')?.remove();
 }
 
 // ─── LOGOUT ───────────────────────────────────────────────────────────────────
 async function logout() {
     await fetch('/logout', { method:'POST', credentials:'include' });
-    isAdmin = false;
-    toggleAdminUI(false);
-    cerrarAdminPanel();
-    Swal.fire({ icon:'success', title:'Sesión cerrada', timer:1500, showConfirmButton:false, background:'#111', color:'#fff' });
+    isAdmin = false; toggleAdminUI(false); cerrarAdminPanel();
+    Swal.fire({ icon:'success', title:'Sesión cerrada', timer:1500, showConfirmButton:false, background:'var(--ink-2)', color:'var(--text)' });
+}
+
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+function shakear(elId) {
+    const el = document.querySelector(`.${elId}`) || document.getElementById(elId);
+    if (!el) return;
+    el.classList.add('shake');
+    setTimeout(() => el.classList.remove('shake'), 500);
 }
