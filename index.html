@@ -3,116 +3,330 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nacho Lingua | Fotografía</title>
-    
+    <meta name="description" content="Nacho Lingua Fotografía — Fotógrafo deportivo y social en Córdoba, Argentina.">
+    <meta property="og:title" content="Nacho Lingua Fotografía">
+    <meta property="og:description" content="Fotografía deportiva y social premium en Córdoba, Argentina.">
+    <meta property="og:image" content="nacho_lingua.jpg">
+    <title>Nacho Lingua | Fotografía Deportiva · Córdoba</title>
+ 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
-    
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-    
-    <link rel="stylesheet" href="styles.css?v=2">
-
-    <style>
-        .album-photos {
-            display: grid !important;
-            grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)) !important;
-            gap: 10px !important;
-            padding: 15px !important;
-            background: #111 !important;
-            max-height: 500px !important;
-            overflow-y: auto !important;
-            border-radius: 8px !important;
-        }
-
-        .photo-thumb {
-            width: 100% !important;
-            height: 100px !important; /* Altura fija para que sean cuadraditos */
-            object-fit: cover !important; /* Recorta la foto para que no se deforme */
-            border-radius: 4px !important;
-            border: 2px solid transparent !important;
-            transition: all 0.2s !important;
-        }
-
-        .photo-thumb:hover {
-            transform: scale(1.05) !important;
-            border-color: #d4af37 !important;
-            z-index: 10;
-            cursor: pointer;
-        }
-    </style>
-
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&family=Playfair+Display:ital,wght@0,400;0,600;1,400&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11" defer></script>
 </head>
 <body>
-
-    <nav id="navbar">
-        <div class="nav-brand">NL</div>
-        
-        <ul class="nav-links">
-            <li><a href="#hero" class="active">Inicio</a></li>
-            <li><a href="#portfolio">Galerías</a></li>
-            <li><a href="#contact">Contacto</a></li>
-        </ul>
-        <button id="btn-add-album" class="nav-action-btn" title="Crear Nuevo Álbum" style="display: none;">
-            <i class="fa-solid fa-plus"></i> Nuevo Álbum
+ 
+<!-- LOADING SCREEN -->
+<div id="loading-screen">
+    <div class="loading-logo">NL</div>
+    <div class="loading-bar"></div>
+</div>
+ 
+<!-- NAVBAR -->
+<nav id="navbar">
+    <a href="#hero" class="nav-brand">NL</a>
+    <ul class="nav-links">
+        <li><a href="#hero"      class="active">Inicio</a></li>
+        <li><a href="#portfolio">Portfolio</a></li>
+        <li><a href="#paquetes">Paquetes</a></li>
+        <li><a href="#contact">Contacto</a></li>
+    </ul>
+    <div class="nav-right">
+        <button id="btn-admin-panel" class="nav-action-btn admin-panel" style="display:none;">
+            <i class="fa-solid fa-chart-simple"></i> Panel
         </button>
-    </nav>
-
-    <header id="hero">
-        <div id="fondo-estatico" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0; background-image: url('nacho_lingua.jpg'); background-size: cover; background-position: center; filter: grayscale(100%) brightness(0.4);"></div>
-        
-        <div class="hero-overlay"></div>
-
-        <div class="hero-content">
-            <p class="hero-subtitle">CAPTURING MOMENTS</p>
-            <h1 class="hero-title">NACHO LINGUA<br><span class="highlight">FOTOGRAFÍA</span></h1>
-            <div class="hero-divider"></div>
-            <a href="#portfolio" class="hero-btn">VER PORTFOLIO</a>
-        </div>
-    </header>
-
-    <main id="portfolio">
-        <div class="section-header">
-            <h2>Últimos Trabajos</h2>
-            <p>Selecciona una categoría para explorar</p>
-        </div>
-
-        <div id="category-filters" class="filters">
-            <button class="filter-btn active" data-filter="all">Todos</button>
-            <button class="filter-btn" data-filter="futbol">Fútbol</button>
-            <button class="filter-btn" data-filter="basquet">Básquet</button>
-            <button class="filter-btn" data-filter="social">Social</button>
-        </div>
-
-        <div id="gallery-grid" class="gallery-container">
-            <div class="empty-state">
-                <p>Aún no hay galerías. Usa el botón "Nuevo Álbum" arriba para comenzar.</p>
-            </div>
-        </div>
-    </main>
-
-    <footer id="contact">
-        <div class="footer-content">
-            <h3>Nacho Lingua</h3>
-            <p>Córdoba, Argentina</p>
-            
-            <div class="social-icons">
-                <a href="#" aria-label="Instagram"><i class="fa-brands fa-instagram"></i></a>
-                <a href="#" aria-label="Twitter"><i class="fa-brands fa-twitter"></i></a>
-                <a href="#" aria-label="Email"><i class="fa-solid fa-envelope"></i></a>
-            </div>
-            
-            <p class="copyright">&copy; 2026 Nacho Lingua Fotografía. Todos los derechos reservados.</p>
-        </div>
-    </footer>
-
-    <div id="lightbox" class="lightbox" onclick="cerrarVisor()">
-        <span class="close-btn">&times;</span>
-        <img class="lightbox-content" id="img-ampliada">
-        <div id="caption"></div>
+        <button id="btn-add-album" class="nav-action-btn" style="display:none;">
+            <i class="fa-solid fa-plus"></i> Álbum
+        </button>
+        <button id="btn-logout" class="nav-action-btn danger" style="display:none;" title="Cerrar sesión">
+            <i class="fa-solid fa-right-from-bracket"></i>
+        </button>
     </div>
-
-    <script src="script.js?v=2"></script>
+</nav>
+ 
+<!-- HERO -->
+<header id="hero">
+    <div id="fondo-estatico" aria-hidden="true"></div>
+    <div class="hero-overlay" aria-hidden="true"></div>
+    <div class="hero-content">
+        <p class="hero-subtitle">CÓRDOBA, ARGENTINA</p>
+        <h1 class="hero-title">NACHO LINGUA<br><span class="highlight">FOTOGRAFÍA</span></h1>
+        <div class="hero-divider"></div>
+        <a href="#portfolio" class="hero-btn">VER PORTFOLIO &nbsp;↓</a>
+    </div>
+</header>
+ 
+<!-- STATS -->
+<section id="stats">
+    <div class="stat-item reveal">
+        <span class="stat-number" data-target="200" data-suffix="+">0</span>
+        <span class="stat-label">Eventos cubiertos</span>
+    </div>
+    <div class="stat-item reveal reveal-delay-1">
+        <span class="stat-number" data-target="5000" data-suffix="+">0</span>
+        <span class="stat-label">Fotos entregadas</span>
+    </div>
+    <div class="stat-item reveal reveal-delay-2">
+        <span class="stat-number" data-target="3" data-suffix=" años">0</span>
+        <span class="stat-label">De experiencia</span>
+    </div>
+    <div class="stat-item reveal reveal-delay-3">
+        <span class="stat-number" data-target="150" data-suffix="+">0</span>
+        <span class="stat-label">Clientes satisfechos</span>
+    </div>
+</section>
+ 
+<!-- PORTFOLIO -->
+<main id="portfolio">
+    <div class="section-header reveal">
+        <span class="section-tag">Trabajos</span>
+        <h2>Portfolio</h2>
+        <p>Explorá las galerías por categoría</p>
+        <div class="section-divider"></div>
+    </div>
+    <div id="category-filters" class="filters">
+        <button class="filter-btn active" data-filter="all">Todos</button>
+        <button class="filter-btn" data-filter="futbol">Fútbol</button>
+        <button class="filter-btn" data-filter="basquet">Básquet</button>
+        <button class="filter-btn" data-filter="social">Social</button>
+        <button class="filter-btn" data-filter="otro">Otro</button>
+    </div>
+    <div id="gallery-grid" class="gallery-container">
+        <div class="empty-state"><p>Cargando portfolio...</p></div>
+    </div>
+</main>
+ 
+<!-- PAQUETES -->
+<section id="paquetes">
+    <div class="section-header reveal">
+        <span class="section-tag">Servicios</span>
+        <h2>Paquetes de Fotografía</h2>
+        <p>Elegí el paquete que mejor se adapte a tu evento</p>
+        <div class="section-divider"></div>
+    </div>
+    <div class="paquetes-grid">
+        <div class="pack-card reveal reveal-delay-1">
+            <p class="pack-name">Básico</p>
+            <div class="pack-price">
+                <span class="pack-currency">$</span>
+                <span class="pack-amount">80.000</span>
+                <span class="pack-period">ARS</span>
+            </div>
+            <div class="pack-divider"></div>
+            <ul class="pack-features">
+                <li>Cobertura de 1 evento deportivo</li>
+                <li>50 fotos editadas en alta resolución</li>
+                <li>Entrega en 72 horas</li>
+                <li>Galería digital de descarga</li>
+                <li>Marca de agua en preview</li>
+            </ul>
+            <button class="pack-btn" onclick="contratarPaquete('basico','Pack Básico')">Contratar</button>
+        </div>
+        <div class="pack-card featured reveal reveal-delay-2">
+            <div class="pack-featured-badge">Más elegido</div>
+            <p class="pack-name">Profesional</p>
+            <div class="pack-price">
+                <span class="pack-currency">$</span>
+                <span class="pack-amount">150.000</span>
+                <span class="pack-period">ARS</span>
+            </div>
+            <div class="pack-divider"></div>
+            <ul class="pack-features">
+                <li>Cobertura de 1 evento completo</li>
+                <li>150 fotos editadas en alta resolución</li>
+                <li>Galería privada online compartible</li>
+                <li>Entrega en 48 horas</li>
+                <li>Fotos sin marca de agua</li>
+                <li>1 revisión de selección incluida</li>
+            </ul>
+            <button class="pack-btn" onclick="contratarPaquete('profesional','Pack Profesional')">Contratar</button>
+        </div>
+        <div class="pack-card reveal reveal-delay-3">
+            <p class="pack-name">Premium</p>
+            <div class="pack-price">
+                <span class="pack-currency">$</span>
+                <span class="pack-amount">280.000</span>
+                <span class="pack-period">ARS</span>
+            </div>
+            <div class="pack-divider"></div>
+            <ul class="pack-features">
+                <li>Cobertura de 2 eventos completos</li>
+                <li>Fotos ilimitadas, todas editadas</li>
+                <li>Galería privada online compartible</li>
+                <li>Entrega prioritaria en 24 horas</li>
+                <li>Fotos sin marca de agua</li>
+                <li>Coordinación personalizada</li>
+                <li>Print digital de portada del evento</li>
+            </ul>
+            <button class="pack-btn" onclick="contratarPaquete('premium','Pack Premium')">Contratar</button>
+        </div>
+    </div>
+    <p class="pack-nota reveal">
+        ¿Tenés un requerimiento especial? <a href="#contact">Escribinos</a> y armamos un paquete a medida.
+    </p>
+</section>
+ 
+<!-- CONTACTO -->
+<section id="contact">
+    <div class="section-header reveal">
+        <span class="section-tag">Contacto</span>
+        <h2>Hablemos</h2>
+        <p>Contame sobre tu evento y te respondo a la brevedad</p>
+        <div class="section-divider"></div>
+    </div>
+    <div class="contact-grid">
+        <div class="contact-info reveal">
+            <h3>Nacho Lingua<br>Fotografía</h3>
+            <p>Fotógrafo especializado en eventos deportivos y sociales en Córdoba. Cada foto es un momento irrepetible capturado con precisión y pasión.</p>
+            <div class="contact-detail">
+                <div class="contact-detail-icon"><i class="fa-solid fa-location-dot"></i></div>
+                <span>Córdoba, Argentina</span>
+            </div>
+            <div class="contact-detail">
+                <div class="contact-detail-icon"><i class="fa-brands fa-whatsapp"></i></div>
+                <a href="https://wa.me/5493510000000" target="_blank" class="contact-link">+54 9 351 000-0000</a>
+            </div>
+            <div class="contact-detail">
+                <div class="contact-detail-icon"><i class="fa-solid fa-envelope"></i></div>
+                <a href="mailto:nacho@nachofotografia.com" class="contact-link">nacho@nachofotografia.com</a>
+            </div>
+            <div class="contact-social">
+                <a href="https://instagram.com/nacholingua" target="_blank" class="social-btn" title="Instagram"><i class="fa-brands fa-instagram"></i></a>
+                <a href="https://twitter.com/nacholingua"   target="_blank" class="social-btn" title="Twitter"><i class="fa-brands fa-x-twitter"></i></a>
+                <a href="https://wa.me/5493510000000"       target="_blank" class="social-btn" title="WhatsApp"><i class="fa-brands fa-whatsapp"></i></a>
+            </div>
+        </div>
+        <div class="contact-form reveal reveal-delay-1">
+            <form id="contact-form" novalidate>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="c-nombre">Nombre *</label>
+                        <input id="c-nombre" name="nombre" type="text" placeholder="Tu nombre" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="c-email">Email *</label>
+                        <input id="c-email" name="email" type="email" placeholder="tu@email.com" required>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="c-telefono">WhatsApp</label>
+                        <input id="c-telefono" name="telefono" type="tel" placeholder="+54 9 351...">
+                    </div>
+                    <div class="form-group">
+                        <label for="c-tipo">Tipo de evento</label>
+                        <select id="c-tipo" name="tipo_evento">
+                            <option value="" disabled selected>Seleccioná...</option>
+                            <option>Fútbol</option><option>Básquet</option>
+                            <option>Evento social</option><option>Otro deporte</option><option>Otro</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="c-fecha">Fecha tentativa del evento</label>
+                    <input id="c-fecha" name="fecha_evento" type="date">
+                </div>
+                <div class="form-group">
+                    <label for="c-mensaje">Mensaje</label>
+                    <textarea id="c-mensaje" name="mensaje" rows="4" placeholder="Contame sobre tu evento, club, institución..."></textarea>
+                </div>
+                <button type="submit" class="form-submit-btn">Enviar consulta</button>
+            </form>
+        </div>
+    </div>
+</section>
+ 
+<!-- FOOTER -->
+<footer>
+    <div class="footer-logo">NACHO LINGUA</div>
+    <p class="footer-tagline">Fotografía Deportiva · Córdoba, Argentina</p>
+    <div class="footer-links">
+        <a href="#hero">Inicio</a>
+        <a href="#portfolio">Portfolio</a>
+        <a href="#paquetes">Paquetes</a>
+        <a href="#contact">Contacto</a>
+    </div>
+    <div class="footer-divider"></div>
+    <p class="copyright">
+        &copy; 2026 Nacho Lingua Fotografía · Todos los derechos reservados · Córdoba, Argentina
+    </p>
+    <!--
+        ACCESO ADMIN: Hacé clic 3 veces seguidas en el copyright para abrir el login.
+        También podés ir directamente a /login
+    -->
+    <span id="admin-trigger" style="display:inline-block;cursor:default;user-select:none;color:transparent;font-size:8px;">·</span>
+</footer>
+ 
+<!-- LIGHTBOX -->
+<div id="lightbox" role="dialog" aria-modal="true">
+    <button class="lightbox-close" onclick="cerrarVisor()">&times;</button>
+    <button class="lightbox-nav lightbox-prev" id="lb-prev" onclick="lightboxPrev()"><i class="fa-solid fa-chevron-left"></i></button>
+    <img class="lightbox-content" id="img-ampliada" alt="Foto ampliada">
+    <button class="lightbox-nav lightbox-next" id="lb-next" onclick="lightboxNext()"><i class="fa-solid fa-chevron-right"></i></button>
+    <span class="lightbox-counter" id="lightbox-counter"></span>
+</div>
+ 
+<!-- MODAL LOGIN -->
+<div id="login-modal" role="dialog" aria-modal="true">
+    <div class="login-modal-box" onclick="event.stopPropagation()">
+        <div class="login-modal-logo">NL</div>
+        <h2 class="login-modal-title">Acceso Admin</h2>
+        <p class="login-modal-sub">Ingresá tu contraseña para gestionar el portfolio</p>
+        <div class="login-input-wrap">
+            <i class="fa-solid fa-lock login-input-icon"></i>
+            <input type="password" id="admin-password" placeholder="Contraseña"
+                   class="login-password-input" autocomplete="current-password"
+                   onkeydown="if(event.key==='Enter')ejecutarLogin()">
+            <button type="button" class="login-eye-btn" onclick="togglePasswordVis()" title="Ver contraseña">
+                <i class="fa-solid fa-eye" id="toggle-icon"></i>
+            </button>
+        </div>
+        <p id="login-error" class="login-error">
+            <i class="fa-solid fa-circle-exclamation"></i> Contraseña incorrecta
+        </p>
+        <button id="login-submit-btn" class="login-submit" onclick="ejecutarLogin()">Ingresar</button>
+        <button class="login-cancel" onclick="cerrarLoginModal()">Cancelar</button>
+    </div>
+</div>
+ 
+<!-- PANEL ADMIN -->
+<div id="admin-modal" role="dialog" aria-modal="true">
+    <div class="admin-panel">
+        <div class="admin-panel-header">
+            <div>
+                <h3>Panel de Administración</h3>
+                <p style="font-size:11px;color:var(--text-muted);margin-top:3px;">Nacho Lingua Fotografía</p>
+            </div>
+            <button onclick="cerrarAdminPanel()" class="admin-close-btn">&times;</button>
+        </div>
+        <div class="admin-tabs">
+            <button class="admin-tab active" data-tab="consultas" onclick="switchAdminTab('consultas')">
+                <i class="fa-solid fa-envelope"></i> Consultas
+                <span id="badge-consultas" class="admin-badge" style="display:none"></span>
+            </button>
+            <button class="admin-tab" data-tab="pagos" onclick="switchAdminTab('pagos')">
+                <i class="fa-solid fa-credit-card"></i> Pagos
+            </button>
+        </div>
+        <div id="tab-consultas" class="admin-tab-content active">
+            <p class="admin-loading">Cargando...</p>
+        </div>
+        <div id="tab-pagos" class="admin-tab-content">
+            <p class="admin-loading">Cargando...</p>
+        </div>
+    </div>
+</div>
+ 
+<!-- FLOATING -->
+<a id="whatsapp-btn" href="https://wa.me/5493510000000" target="_blank" rel="noopener" title="WhatsApp">
+    <i class="fa-brands fa-whatsapp"></i>
+</a>
+<button id="back-to-top" title="Volver arriba">
+    <i class="fa-solid fa-chevron-up"></i>
+</button>
+ 
+<script src="script.js"></script>
 </body>
 </html>

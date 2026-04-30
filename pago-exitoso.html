@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pago Exitoso | Nacho Lingua</title>
+    <link href="https://fonts.googleapis.com/css2?family=Lato&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        :root { --gold: #c6a87c; }
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #050505;
+            color: #f0f0f0;
+            font-family: 'Lato', sans-serif;
+            display: flex; align-items: center; justify-content: center;
+            min-height: 100vh; text-align: center; padding: 20px;
+        }
+        .card {
+            max-width: 480px;
+            border: 1px solid #1e1e1e;
+            background: #0d0d0d;
+            padding: 60px 44px;
+            box-shadow: 0 0 60px rgba(0,0,0,0.6);
+            animation: fadeUp 0.7s ease;
+        }
+        @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:none; } }
+        .icon { font-size: 52px; color: #4caf50; margin-bottom: 24px; }
+        h1 { font-family: 'Playfair Display', serif; font-size: 28px; margin-bottom: 12px; color: var(--gold); }
+        p  { color: #888; line-height: 1.7; margin-bottom: 32px; font-size: 14px; }
+        a  {
+            display: inline-block;
+            padding: 13px 32px;
+            background: var(--gold);
+            color: #000;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            text-decoration: none;
+            transition: 0.3s;
+        }
+        a:hover { background: #dfc08e; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon"><i class="fa-solid fa-circle-check"></i></div>
+        <h1>¡Pago exitoso!</h1>
+        <p>Tu pago fue procesado correctamente. Nacho te va a contactar en las próximas horas para coordinar todos los detalles de tu sesión.<br><br>Revisá tu email para la confirmación.</p>
+        <a href="index.html">Volver al portfolio</a>
+    </div>
+</body>
+</html>

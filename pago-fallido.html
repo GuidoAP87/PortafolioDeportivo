@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pago No Procesado | Nacho Lingua</title>
+    <link href="https://fonts.googleapis.com/css2?family=Lato&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+    <style>
+        :root { --gold: #c6a87c; }
+        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #050505;
+            color: #f0f0f0;
+            font-family: 'Lato', sans-serif;
+            display: flex; align-items: center; justify-content: center;
+            min-height: 100vh; text-align: center; padding: 20px;
+        }
+        .card {
+            max-width: 480px;
+            border: 1px solid #1e1e1e;
+            background: #0d0d0d;
+            padding: 60px 44px;
+            box-shadow: 0 0 60px rgba(0,0,0,0.6);
+            animation: fadeUp 0.7s ease;
+        }
+        @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:none; } }
+        .icon  { font-size: 52px; color: #e05252; margin-bottom: 24px; }
+        h1 { font-family: 'Playfair Display', serif; font-size: 28px; margin-bottom: 12px; color: var(--gold); }
+        p  { color: #888; line-height: 1.7; margin-bottom: 32px; font-size: 14px; }
+        .btn-group { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+        a  {
+            display: inline-block;
+            padding: 13px 28px;
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 2px;
+            text-transform: uppercase;
+            text-decoration: none;
+            transition: 0.3s;
+        }
+        .btn-primary { background: var(--gold); color: #000; }
+        .btn-primary:hover { background: #dfc08e; }
+        .btn-secondary { background: transparent; color: var(--gold); border: 1px solid var(--gold); }
+        .btn-secondary:hover { background: rgba(198,168,124,0.08); }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="icon"><i class="fa-solid fa-circle-xmark"></i></div>
+        <h1>Pago no procesado</h1>
+        <p>El pago no se pudo completar. Podés intentarlo de nuevo o contactarnos directamente por WhatsApp para coordinar de otra forma.</p>
+        <div class="btn-group">
+            <a href="index.html#paquetes" class="btn-primary">Volver a intentar</a>
+            <!-- ⚠ Reemplazá con tu número de WhatsApp -->
+            <a href="https://wa.me/5493510000000?text=Hola%20Nacho!%20Tuve%20un%20problema%20con%20el%20pago%20y%20quería%20coordinar." target="_blank" class="btn-secondary">
+                <i class="fa-brands fa-whatsapp"></i> WhatsApp
+            </a>
+        </div>
+    </div>
+</body>
+</html>
