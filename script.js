@@ -17,32 +17,34 @@ let adminClickCount = 0;
 let adminClickTimer = null;
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', async () => {
-    await Promise.all([verificarSesion(), cargarEventos()]);
+document.addEventListener('DOMContentLoaded', () => {
+    // 1. FAIL-SAFE: Ocultar la pantalla de carga sí o sí a los 1.3 segundos
+    setTimeout(() => document.getElementById('loading-screen')?.classList.add('hidden'), 1300);
 
+    // 2. Inicializar eventos visuales y botones de inmediato (sin bloquear)
     initNavScroll();
-    initReveal();
     initNavLinks();
-    initStatsCounter();
     initBackToTop();
     initLightboxKB();
     initAdminTriggers();
 
-    // Nav buttons
     bindId('btn-admin-panel', abrirAdminPanel);
     bindId('btn-add-evento',  crearEvento);
     bindId('btn-logout',      logout);
 
-    // Modals backdrop
     bindBackdrop('checkout-modal', cerrarCheckout);
     bindBackdrop('admin-modal',    cerrarAdminPanel);
     bindBackdrop('login-modal',    cerrarLoginModal);
 
-    // WhatsApp float link
     const wa = document.getElementById('whatsapp-btn');
     if (wa) wa.href = `https://wa.me/${WA_NUMBER}`;
 
-    setTimeout(() => document.getElementById('loading-screen')?.classList.add('hidden'), 1300);
+    // 3. Consultar al servidor en segundo plano
+    verificarSesion();
+    cargarEventos().then(() => {
+        initReveal();
+        initStatsCounter();
+    });
 });
 
 function bindId(id, fn) { document.getElementById(id)?.addEventListener('click', fn); }
