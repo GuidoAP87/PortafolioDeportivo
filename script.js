@@ -18,15 +18,17 @@ let adminClickTimer = null;
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. FAIL-SAFE: Ocultar la pantalla de carga sí o sí a los 1.3 segundos
+    // 1. Ocultar la pantalla de carga a los 1.3 segundos siempre
     setTimeout(() => document.getElementById('loading-screen')?.classList.add('hidden'), 1300);
 
-    // 2. Inicializar eventos visuales y botones de inmediato (sin bloquear)
+    // 2. Inicializar TODO el aspecto visual de inmediato (¡Acá estaba el error!)
     initNavScroll();
     initNavLinks();
     initBackToTop();
     initLightboxKB();
     initAdminTriggers();
+    initReveal();        // <-- Ahora los títulos aparecen al instante
+    initStatsCounter();  // <-- Ahora los números cargan al instante
 
     bindId('btn-admin-panel', abrirAdminPanel);
     bindId('btn-add-evento',  crearEvento);
@@ -41,10 +43,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // 3. Consultar al servidor en segundo plano
     verificarSesion();
-    cargarEventos().then(() => {
-        initReveal();
-        initStatsCounter();
-    });
+    cargarEventos();
 });
 
 function bindId(id, fn) { document.getElementById(id)?.addEventListener('click', fn); }
@@ -117,7 +116,7 @@ function initReveal() {
     const obs = new IntersectionObserver(entries => {
         entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
     }, { threshold: 0.1, rootMargin: '0px 0px -30px 0px' });
-    document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
+    document.querySelectorAll('.reveal:not(.visible)').forEach(el => obs.observe(el));
 }
 
 // ─── STATS COUNTER ────────────────────────────────────────────────────────────
@@ -153,7 +152,7 @@ function initBackToTop() {
 async function cargarEventos() {
     const grid = document.getElementById('gallery-grid');
     if (!grid) return;
-    grid.innerHTML = '<div class="empty-state">Cargando...</div>';
+    grid.innerHTML = '<div class="empty-state">Cargando galerías seguras...</div>';
     try {
         const r     = await fetch('/obtener-eventos');
         eventosData = await r.json();
