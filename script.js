@@ -215,8 +215,8 @@ function configurarFiltros() {
     });
 }
 
-// ─── ABRIR EVENTO ─────────────────────────────────────────────────────────────
-function abrirEvento(eventoId) {
+// ─── ABRIR EVENTO (VISTA GALERÍA Y ROSTROS IA) ─────────────────────────────────────────────────────────────
+async function abrirEvento(eventoId) {
     const ev = eventosData.find(e => e.id === eventoId);
     if (!ev) return;
     eventoActual = ev;
@@ -235,7 +235,7 @@ function abrirEvento(eventoId) {
                     <span class="upload-zone-icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>
                     <span>
                         <div class="upload-zone-text" id="upload-label-${ev.id}">Subir fotos al evento</div>
-                        <div class="upload-zone-sub">Múltiples archivos · Sube el original + preview con marca de agua automáticamente</div>
+                        <div class="upload-zone-sub">La IA escaneará los rostros automáticamente en segundo plano.</div>
                     </span>
                     <input type="file" name="foto" accept="image/*" multiple
                         onchange="this.form.dispatchEvent(new Event('submit'))" hidden>
@@ -256,7 +256,7 @@ function abrirEvento(eventoId) {
             <div class="upload-progress-bar" id="upbar-${ev.id}"></div>
         </div>` : '';
 
-    // Grid de fotos
+    // Grid de fotos HTML
     const fotosHTML = lbFotos.length
         ? lbFotos.map((f, idx) => {
             const sel = carrito.has(f.id);
@@ -278,15 +278,70 @@ function abrirEvento(eventoId) {
                     title="Eliminar foto"
                     style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.75);
                            border:none;color:var(--red);width:28px;height:28px;border-radius:50%;
-                           font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+                           font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;">
                     <i class="fa-solid fa-xmark"></i>
                 </button>` : ''}
             </div>`;
           }).join('')
-        : `<div class="empty-state" style="grid-column:1/-1">
-               Aún no hay fotos en este evento.
-           </div>`;
+        : `<div class="empty-state" style="grid-column:1/-1">Aún no hay fotos en este evento.</div>`;
 
+    // 🤖 LÓGICA DE RECONOCIMIENTO FACIAL (IA) 🤖
+    let facesHtml = '';
+    try {
+        const resFaces = await fetch(`/evento/${ev.id}/personas`);
+        const dataFaces = await resFaces.json();
+        
+        if (dataFaces.personas && dataFaces.personas.length > 0) {
+            const chips = dataFaces.personas.map(p => {
+                // Botones de edición solo para administradores
+                const adminBtns = isAdmin ? `
+                    <div class="face-chip-admin-btns">
+                        <div class="face-chip-admin-btn" onclick="event.stopPropagation(); editarNombrePersona(${p.id}, '${p.nombre}')" title="Etiquetar persona"><i class="fa-solid fa-pen"></i></div>
+                        <div class="face-chip-admin-btn del" onclick="event.stopPropagation(); borrarPersona(${p.id})" title="Borrar rostro detectado"><i class="fa-solid fa-trash"></i></div>
+                    </div>
+                ` : '';
+
+                return `
+                <div class="face-chip" data-fotos='${JSON.stringify(p.foto_ids)}' onclick="filtrarPorCara(this)">
+                    ${adminBtns}
+                    <div class="face-chip-avatar">
+                        <img src="${p.cara_url}" alt="Rostro detectado por IA">
+                        <div class="face-chip-check"><i class="fa-solid fa-check"></i></div>
+                    </div>
+                    <div class="face-chip-label">${p.nombre}</div>
+                    <div class="face-chip-count">${p.total_fotos}</div>
+                </div>`;
+            }).join('');
+
+            const btnReprocesar = isAdmin ? `<button class="reprocess-btn" onclick="reprocesarRostros(${ev.id})"><i class="fa-solid fa-arrows-rotate"></i> Reprocesar IA</button>` : '';
+
+            facesHtml = `
+                <div class="faces-panel">
+                    <div class="faces-panel-header">
+                        <div class="faces-panel-title"><i class="fa-solid fa-face-smile-scan"></i> Encontrá tu foto (DeepFace AI)</div>
+                        <div class="faces-ia-badge ${dataFaces.ia_habilitada ? '' : 'processing'}">IA Activa</div>
+                        ${btnReprocesar}
+                    </div>
+                    <div class="faces-scroll">
+                        <div class="face-chip-all active" onclick="mostrarTodasLasFotos(this)">
+                            <div class="face-chip-all-circle"><i class="fa-solid fa-border-all"></i></div>
+                            <div class="face-chip-all-label">Todas</div>
+                        </div>
+                        ${chips}
+                    </div>
+                </div>`;
+        } else if (dataFaces.ia_habilitada && lbFotos.length > 0) {
+             facesHtml = `
+                <div class="faces-panel" style="padding-bottom:20px;">
+                    <div class="faces-panel-header" style="margin:0;">
+                        <div class="faces-panel-title"><i class="fa-solid fa-spinner fa-spin"></i> La Inteligencia Artificial está escaneando rostros...</div>
+                        <div class="faces-ia-badge processing">Procesando</div>
+                    </div>
+                </div>`;
+        }
+    } catch(e) { console.error("Error cargando rostros IA:", e); }
+
+    // Renderizar Vista Completa
     view.innerHTML = `
         <div class="event-view-header">
             <div class="event-view-nav">
@@ -316,12 +371,103 @@ function abrirEvento(eventoId) {
             </div>
         </div>
         ${adminUpload}
+        ${facesHtml}
         <div class="photos-grid">${fotosHTML}</div>`;
 
     window.scrollTo({ top: 0, behavior: 'smooth' });
     actualizarCarritoBar();
 }
 
+// ─── FUNCIONES IA (FILTROS Y ADMIN) ──────────────────────────────────────────────────────────
+function filtrarPorCara(element) {
+    document.querySelectorAll('.face-chip, .face-chip-all').forEach(el => el.classList.remove('active'));
+    element.classList.add('active');
+    
+    const fotoIds = JSON.parse(element.getAttribute('data-fotos'));
+
+    document.querySelectorAll('.photo-item').forEach(photo => {
+        const id = parseInt(photo.id.replace('photo-', ''));
+        if (fotoIds.includes(id)) {
+            photo.classList.add('face-match');
+            photo.classList.remove('face-dimmed');
+        } else {
+            photo.classList.add('face-dimmed');
+            photo.classList.remove('face-match');
+        }
+    });
+}
+
+function mostrarTodasLasFotos(element) {
+    document.querySelectorAll('.face-chip, .face-chip-all').forEach(el => el.classList.remove('active'));
+    element.classList.add('active');
+    
+    document.querySelectorAll('.photo-item').forEach(photo => {
+        photo.classList.remove('face-dimmed', 'face-match');
+    });
+}
+
+async function editarNombrePersona(personaId, nombreActual) {
+    const { value: nuevoNombre } = await Swal.fire({
+        title: 'Etiquetar jugador/persona',
+        input: 'text',
+        inputValue: nombreActual.includes('Persona #') ? '' : nombreActual,
+        inputPlaceholder: 'Ej: Juan Pérez',
+        showCancelButton: true,
+        confirmButtonText: 'Guardar',
+        cancelButtonText: 'Cancelar',
+        background: 'var(--ink-2)', color: 'var(--text)',
+        confirmButtonColor: '#D4A843', cancelButtonColor: '#555'
+    });
+
+    if (nuevoNombre !== undefined) {
+        const res = await fetch(`/persona/${personaId}/nombre`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ nombre: nuevoNombre }),
+            credentials: 'include'
+        });
+        if (res.ok) abrirEvento(eventoActual.id); // Recargar la vista para ver el nombre nuevo
+    }
+}
+
+async function borrarPersona(personaId) {
+    const { isConfirmed } = await Swal.fire({
+        title: '¿Ocultar este rostro?',
+        text: 'Se eliminará la cara del filtro (las fotos originales no se borran).',
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, ocultar',
+        cancelButtonText: 'Cancelar',
+        background: 'var(--ink-2)', color: 'var(--text)',
+        confirmButtonColor: '#e84040', cancelButtonColor: '#555'
+    });
+
+    if (isConfirmed) {
+        const res = await fetch(`/persona/${personaId}`, { method: 'DELETE', credentials: 'include' });
+        if (res.ok) abrirEvento(eventoActual.id);
+    }
+}
+
+async function reprocesarRostros(eventoId) {
+     const { isConfirmed } = await Swal.fire({
+        title: '¿Reprocesar IA?',
+        text: 'Python volverá a escanear los rostros de todas las fotos de este evento.',
+        icon: 'info',
+        showCancelButton: true,
+        confirmButtonText: 'Iniciar Escaneo',
+        cancelButtonText: 'Cancelar',
+        background: 'var(--ink-2)', color: 'var(--text)',
+        confirmButtonColor: '#D4A843', cancelButtonColor: '#555'
+    });
+    if (isConfirmed) {
+        const res = await fetch(`/evento/${eventoId}/reprocesar-rostros`, { method: 'POST', credentials: 'include' });
+        if (res.ok) {
+            Swal.fire({icon: 'success', title: 'IA trabajando en segundo plano...', background: 'var(--ink-2)', color: 'var(--text)', timer: 2500, showConfirmButton: false});
+        }
+    }
+}
+
+// ─── UTILIDADES GENERALES ────────────────────────────────────────────────────────────
 function cerrarEvento() {
     eventoActual = null;
     document.getElementById('event-view').style.display = 'none';
