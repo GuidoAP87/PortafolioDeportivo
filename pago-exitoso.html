@@ -3,52 +3,90 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pago Exitoso | Nacho Lingua</title>
-    <link href="https://fonts.googleapis.com/css2?family=Lato&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    <title>¡Compra exitosa! — Nacho Lingua Fotografía</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
-        :root { --gold: #c6a87c; }
-        *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+        *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
         body {
-            background: #050505;
-            color: #f0f0f0;
-            font-family: 'Lato', sans-serif;
-            display: flex; align-items: center; justify-content: center;
-            min-height: 100vh; text-align: center; padding: 20px;
+            background:#06060A; color:#f2f2f2;
+            font-family:'Inter',sans-serif;
+            display:flex; align-items:center; justify-content:center;
+            min-height:100vh; padding:20px;
+        }
+        body::after {
+            content:''; position:fixed; inset:0;
+            background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+            opacity:0.022; pointer-events:none; z-index:0;
         }
         .card {
-            max-width: 480px;
-            border: 1px solid #1e1e1e;
-            background: #0d0d0d;
-            padding: 60px 44px;
-            box-shadow: 0 0 60px rgba(0,0,0,0.6);
-            animation: fadeUp 0.7s ease;
+            max-width:480px; width:100%;
+            background:#0c0c12; border:1px solid #1c1c24;
+            padding:60px 44px; text-align:center;
+            box-shadow:0 0 80px rgba(0,0,0,0.7);
+            animation:fadeUp 0.7s ease; position:relative; z-index:1;
         }
-        @keyframes fadeUp { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:none; } }
-        .icon { font-size: 52px; color: #4caf50; margin-bottom: 24px; }
-        h1 { font-family: 'Playfair Display', serif; font-size: 28px; margin-bottom: 12px; color: var(--gold); }
-        p  { color: #888; line-height: 1.7; margin-bottom: 32px; font-size: 14px; }
-        a  {
-            display: inline-block;
-            padding: 13px 32px;
-            background: var(--gold);
-            color: #000;
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 3px;
-            text-transform: uppercase;
-            text-decoration: none;
-            transition: 0.3s;
+        @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:none} }
+        .icon {
+            font-size:56px; color:#3dba6b;
+            margin-bottom:24px; display:block;
+            animation:iconPop 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.3s both;
         }
-        a:hover { background: #dfc08e; }
+        @keyframes iconPop { from{opacity:0;transform:scale(0.4)} to{opacity:1;transform:scale(1)} }
+        .brand {
+            font-family:'Bebas Neue',sans-serif;
+            font-size:14px; letter-spacing:5px; color:#D4A843;
+            display:block; margin-bottom:20px;
+        }
+        h1 {
+            font-family:'Bebas Neue',sans-serif;
+            font-size:32px; letter-spacing:3px; color:#f2f2f2;
+            margin-bottom:16px;
+        }
+        p { color:#777; line-height:1.8; font-size:14px; margin-bottom:10px; }
+        .highlight { color:#D4A843; font-weight:600; }
+        .divider { height:1px; background:#1c1c24; margin:28px 0; }
+        .info-box {
+            background:#121218; border:1px solid #1c1c24;
+            padding:20px; text-align:left; margin-bottom:28px;
+        }
+        .info-box p { margin:0; font-size:13px; }
+        .info-box i { color:#D4A843; margin-right:8px; }
+        a.cta {
+            display:inline-block; padding:14px 36px;
+            background:#D4A843; color:#000;
+            font-size:11px; font-weight:700; letter-spacing:3px;
+            text-transform:uppercase; text-decoration:none;
+            transition:background 0.3s, transform 0.2s;
+        }
+        a.cta:hover { background:#e8bf6a; transform:translateY(-1px); }
+        .footer-note { margin-top:28px; font-size:11px; color:#333; }
     </style>
 </head>
 <body>
     <div class="card">
-        <div class="icon"><i class="fa-solid fa-circle-check"></i></div>
-        <h1>¡Pago exitoso!</h1>
-        <p>Tu pago fue procesado correctamente. Nacho te va a contactar en las próximas horas para coordinar todos los detalles de tu sesión.<br><br>Revisá tu email para la confirmación.</p>
-        <a href="index.html">Volver al portfolio</a>
+        <span class="brand">Nacho Lingua Fotografía</span>
+        <i class="fa-solid fa-circle-check icon"></i>
+        <h1>¡Pago aprobado!</h1>
+        <p>Tu compra fue procesada correctamente.</p>
+
+        <div class="divider"></div>
+
+        <div class="info-box">
+            <p><i class="fa-solid fa-envelope"></i> Revisá tu <span class="highlight">bandeja de entrada</span> — las fotos en alta resolución están en camino a tu email.</p>
+        </div>
+        <div class="info-box">
+            <p><i class="fa-solid fa-clock"></i> Si en unos minutos no llegaron, revisá la carpeta de <span class="highlight">spam</span> o escribinos por WhatsApp.</p>
+        </div>
+        <div class="info-box">
+            <p><i class="fa-solid fa-download"></i> Los links de descarga son <span class="highlight">permanentes</span> — podés descargar las fotos cuando quieras.</p>
+        </div>
+
+        <a href="/" class="cta">Volver al portfolio</a>
+
+        <p class="footer-note">
+            ¿Problema con tu compra? Escribinos a <a href="https://wa.me/5493510000000" style="color:#D4A843">WhatsApp</a>
+        </p>
     </div>
 </body>
 </html>

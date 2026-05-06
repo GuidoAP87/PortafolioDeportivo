@@ -1,15 +1,30 @@
-# Ignorar entorno virtual de Python
-venv/
-env/
-
-# Ignorar archivos compilados de Python
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+env/
+venv/
+.env
+*.egg-info/
 
-# Ignorar base de datos local (si usaras una)
-*.sqlite3
+# Flask / SQLite
+datos.db
+instance/
+*.sqlite
 
-# Opcional: Si tienes carpetas de fotos originales muy pesadas que no quieres subir
-# seguridad/originales/
+# Uploads temporales
+temp_uploads/
 
-*.db
+# Sistema
+.DS_Store
+Thumbs.db
+*.log
+
+# IDE
+.vscode/
+.idea/
+
+# Cloudinary / Secrets — NUNCA subir al repositorio
+.env.local

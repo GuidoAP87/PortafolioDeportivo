@@ -19,14 +19,14 @@ cloudinary.config(
 
 # ── APP ───────────────────────────────────────────────────────────────────────
 app = Flask(__name__, static_folder='.', static_url_path='')
-app.secret_key = os.environ.get('SECRET_KEY', 'nl-sports-foto-2026-cambiar-en-prod')
+app.secret_key = os.environ.get('SECRET_KEY', 'nl-sports-2026-cambiar-en-prod')
 
 database_url = os.environ.get('DATABASE_URL', 'sqlite:///datos.db')
 if database_url.startswith("postgres://"):
     database_url = database_url.replace("postgres://", "postgresql://", 1)
 
-app.config['SQLALCHEMY_DATABASE_URI']         = database_url
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS']  = False
+app.config['SQLALCHEMY_DATABASE_URI']        = database_url
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db = SQLAlchemy(app)
 
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
@@ -44,48 +44,52 @@ os.makedirs(CARPETA_TEMP, exist_ok=True)
 # ── MERCADOPAGO ───────────────────────────────────────────────────────────────
 try:
     import mercadopago
-    _tok = os.environ.get('MP_ACCESS_TOKEN', '')
-    MP_SDK         = mercadopago.SDK(_tok) if _tok else None
-    MP_HABILITADO  = bool(_tok)
+    _tok          = os.environ.get('MP_ACCESS_TOKEN', '')
+    MP_SDK        = mercadopago.SDK(_tok) if _tok else None
+    MP_HABILITADO = bool(_tok)
 except ImportError:
-    MP_SDK = None
+    MP_SDK        = None
     MP_HABILITADO = False
 
-# ── SMTP (envío de fotos por email) ──────────────────────────────────────────
+# ── SMTP ──────────────────────────────────────────────────────────────────────
+# Configurar en Render como variables de entorno:
+#   SMTP_HOST  → smtp.gmail.com
+#   SMTP_PORT  → 587
+#   SMTP_USER  → tu-email@gmail.com
+#   SMTP_PASS  → contraseña de aplicación de Google
 SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
 SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
-SMTP_USER = os.environ.get('SMTP_USER', '')   # tu-email@gmail.com
-SMTP_PASS = os.environ.get('SMTP_PASS', '')   # contraseña de app de Google
-EMAIL_REMITENTE_NOMBRE = 'Nacho Lingua Fotografía'
+SMTP_USER = os.environ.get('SMTP_USER', '')
+SMTP_PASS = os.environ.get('SMTP_PASS', '')
 
 # ── MODELOS ───────────────────────────────────────────────────────────────────
 class Evento(db.Model):
     id          = db.Column(db.Integer, primary_key=True)
     titulo      = db.Column(db.String(150), nullable=False)
-    deporte     = db.Column(db.String(50), nullable=False)
+    deporte     = db.Column(db.String(50),  nullable=False)
     fecha       = db.Column(db.String(50))
     descripcion = db.Column(db.String(300))
-    destacado   = db.Column(db.Boolean, default=False)
-    fotos       = db.relationship('Foto', backref='evento', lazy=True, cascade="all, delete-orphan")
+    fotos       = db.relationship('Foto', backref='evento', lazy=True,
+                                  cascade="all, delete-orphan")
 
 class Foto(db.Model):
     id           = db.Column(db.Integer, primary_key=True)
     url_preview  = db.Column(db.String(500), nullable=False)   # con marca de agua
-    url_original = db.Column(db.String(500), nullable=False)   # sin marca de agua (se envía por email)
+    url_original = db.Column(db.String(500), nullable=False)   # sin marca de agua
     precio       = db.Column(db.Float, default=3500.0)          # ARS
     evento_id    = db.Column(db.Integer, db.ForeignKey('evento.id'), nullable=False)
 
 class Compra(db.Model):
-    id                = db.Column(db.Integer, primary_key=True)
-    mp_preference_id  = db.Column(db.String(250))
-    mp_payment_id     = db.Column(db.String(100))
-    email_cliente     = db.Column(db.String(150), nullable=False)
-    nombre_cliente    = db.Column(db.String(150))
-    foto_ids          = db.Column(db.Text)       # JSON: [1, 4, 7, ...]
-    monto_total       = db.Column(db.Float)
-    estado            = db.Column(db.String(50), default='pendiente')
-    email_enviado     = db.Column(db.Boolean, default=False)
-    creada_en         = db.Column(db.DateTime, server_default=db.func.now())
+    id               = db.Column(db.Integer, primary_key=True)
+    mp_preference_id = db.Column(db.String(250))
+    mp_payment_id    = db.Column(db.String(100))
+    email_cliente    = db.Column(db.String(150), nullable=False)
+    nombre_cliente   = db.Column(db.String(150))
+    foto_ids         = db.Column(db.Text)        # JSON: [1, 4, 7]
+    monto_total      = db.Column(db.Float)
+    estado           = db.Column(db.String(50), default='pendiente')
+    email_enviado    = db.Column(db.Boolean, default=False)
+    creada_en        = db.Column(db.DateTime, server_default=db.func.now())
 
 class Consulta(db.Model):
     id        = db.Column(db.Integer, primary_key=True)
@@ -101,21 +105,20 @@ with app.app_context():
 # ── MARCA DE AGUA ─────────────────────────────────────────────────────────────
 def agregar_marca_de_agua(ruta_entrada, ruta_salida, texto="© NACHO LINGUA"):
     try:
+        import math
         base      = Image.open(ruta_entrada).convert("RGBA")
         txt_layer = Image.new("RGBA", base.size, (255, 255, 255, 0))
         draw      = ImageDraw.Draw(txt_layer)
         fontsize  = int(base.width / 14)
         try:
             font = ImageFont.truetype("arial.ttf", size=fontsize)
-        except:
+        except Exception:
             font = ImageFont.load_default()
-        # Mosaico diagonal
-        import math
         angulo = -25
         for y_start in range(-base.height, base.height * 2, int(fontsize * 4.5)):
             for x_start in range(-base.width, base.width * 2, int(base.width / 2.5)):
                 x = x_start + y_start * math.tan(math.radians(-angulo))
-                draw.text((x, y_start), texto, font=font, fill=(255, 255, 255, 60))
+                draw.text((x, y_start), texto, font=font, fill=(255, 255, 255, 55))
         watermarked = Image.alpha_composite(base, txt_layer).convert("RGB")
         watermarked.save(ruta_salida, "JPEG", quality=82)
         return True
@@ -137,32 +140,31 @@ def enviar_fotos_email(compra_id):
     if not fotos:
         return False
 
-    nombre_display = compra.nombre_cliente or compra.email_cliente.split('@')[0]
+    nombre_display = compra.nombre_cliente or compra.email_cliente.split('@')[0].capitalize()
 
-    # Generar filas de fotos para el email
     filas_fotos = ""
     for i, f in enumerate(fotos, 1):
-        evento_titulo = f.evento.titulo if f.evento else "Evento"
+        evento_titulo = f.evento.titulo if f.evento else "Evento deportivo"
         filas_fotos += f"""
         <tr>
           <td style="padding:14px 0;border-bottom:1px solid #1a1a1a;">
             <table width="100%" cellpadding="0" cellspacing="0">
               <tr>
-                <td style="width:60px;vertical-align:middle;">
-                  <div style="width:48px;height:48px;background:#1a1a1a;display:flex;
-                              align-items:center;justify-content:center;border-radius:3px;
-                              font-family:serif;font-size:18px;color:#c6a87c;text-align:center;
-                              line-height:48px;">#{i}</div>
+                <td style="width:52px;vertical-align:middle;text-align:center;">
+                  <div style="width:40px;height:40px;background:#1a1a1a;border-radius:3px;
+                              line-height:40px;text-align:center;font-size:13px;color:#c6a87c;
+                              font-weight:700;margin:0 auto;">#{i}</div>
                 </td>
-                <td style="vertical-align:middle;padding-left:14px;">
-                  <p style="margin:0;font-size:13px;color:#e0e0e0;">{evento_titulo}</p>
-                  <p style="margin:4px 0 0;font-size:11px;color:#666;">Foto #{f.id}</p>
+                <td style="padding-left:14px;vertical-align:middle;">
+                  <p style="margin:0;font-size:13px;color:#e0e0e0;font-weight:500;">{evento_titulo}</p>
+                  <p style="margin:3px 0 0;font-size:11px;color:#555;">Foto #{f.id} &nbsp;·&nbsp; Alta resolución</p>
                 </td>
-                <td style="text-align:right;vertical-align:middle;">
+                <td style="text-align:right;vertical-align:middle;padding-left:10px;">
                   <a href="{f.url_original}"
-                     style="display:inline-block;padding:8px 18px;background:#c6a87c;
-                            color:#000;font-size:11px;font-weight:700;letter-spacing:2px;
-                            text-decoration:none;border-radius:2px;text-transform:uppercase;">
+                     style="display:inline-block;padding:10px 20px;background:#D4A843;
+                            color:#000;font-size:10px;font-weight:700;letter-spacing:2px;
+                            text-decoration:none;border-radius:2px;text-transform:uppercase;
+                            white-space:nowrap;">
                     Descargar
                   </a>
                 </td>
@@ -174,60 +176,57 @@ def enviar_fotos_email(compra_id):
     html_body = f"""<!DOCTYPE html>
 <html lang="es">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#050505;font-family:'Helvetica Neue',Arial,sans-serif;">
-  <div style="max-width:560px;margin:0 auto;padding:40px 20px;">
+<body style="margin:0;padding:0;background:#06060A;font-family:'Helvetica Neue',Arial,sans-serif;">
+  <div style="max-width:580px;margin:0 auto;padding:40px 24px;">
 
-    <!-- Header -->
-    <div style="text-align:center;padding:40px 0 32px;border-bottom:1px solid #1a1a1a;">
-      <p style="margin:0 0 8px;font-size:11px;letter-spacing:5px;color:#666;text-transform:uppercase;">Nacho Lingua</p>
-      <h1 style="margin:0;font-family:Georgia,serif;font-size:28px;color:#c6a87c;font-weight:400;letter-spacing:2px;">FOTOGRAFÍA</h1>
-      <p style="margin:16px 0 0;font-size:11px;letter-spacing:3px;color:#444;text-transform:uppercase;">Córdoba · Argentina</p>
-    </div>
-
-    <!-- Greeting -->
-    <div style="padding:36px 0 28px;">
-      <h2 style="margin:0 0 12px;font-family:Georgia,serif;font-size:22px;color:#f0f0f0;font-weight:400;">¡Gracias por tu compra, {nombre_display}!</h2>
-      <p style="margin:0;font-size:14px;color:#888;line-height:1.7;">
-        Tus fotos están listas para descargar en alta resolución, sin marca de agua.
-        Hacé clic en cada botón de descarga — los archivos son JPEG de máxima calidad.
+    <div style="text-align:center;padding:40px 0 36px;border-bottom:1px solid #1a1a1a;">
+      <p style="margin:0 0 6px;font-size:10px;letter-spacing:5px;color:#444;text-transform:uppercase;">Nacho Lingua</p>
+      <h1 style="margin:0;font-family:Impact,sans-serif;font-size:36px;color:#D4A843;
+                 font-weight:400;letter-spacing:8px;">FOTOGRAFÍA</h1>
+      <p style="margin:12px 0 0;font-size:10px;letter-spacing:3px;color:#333;text-transform:uppercase;">
+        Córdoba · Argentina
       </p>
     </div>
 
-    <!-- Fotos -->
-    <div style="background:#0d0d0d;border:1px solid #1e1e1e;border-radius:4px;padding:0 24px;">
+    <div style="padding:36px 0 28px;">
+      <h2 style="margin:0 0 14px;font-size:22px;color:#f2f2f2;font-weight:400;">
+        ¡Gracias por tu compra, {nombre_display}!
+      </h2>
+      <p style="margin:0;font-size:14px;color:#777;line-height:1.75;">
+        Tus fotos están listas para descargar en alta resolución, completamente sin marca de agua.
+        Hacé clic en cada botón de <strong style="color:#D4A843">Descargar</strong> para guardarlas.
+      </p>
+    </div>
+
+    <div style="background:#0c0c12;border:1px solid #1e1e1e;border-radius:4px;padding:8px 20px 4px;">
+      <p style="font-size:10px;letter-spacing:3px;color:#444;text-transform:uppercase;
+                padding:14px 0 4px;margin:0;">
+        {len(fotos)} foto{'s' if len(fotos)>1 else ''} adquirida{'s' if len(fotos)>1 else ''}
+      </p>
       <table width="100%" cellpadding="0" cellspacing="0">
-        <tr>
-          <td style="padding:20px 0 4px;">
-            <p style="margin:0;font-size:10px;letter-spacing:3px;color:#555;text-transform:uppercase;">
-              {len(fotos)} foto{"s" if len(fotos)>1 else ""} adquirida{"s" if len(fotos)>1 else ""}
-            </p>
-          </td>
-        </tr>
         {filas_fotos}
       </table>
     </div>
 
-    <!-- Info -->
     <div style="padding:28px 0;border-bottom:1px solid #111;">
-      <p style="margin:0;font-size:12px;color:#555;line-height:1.7;">
-        Los links de descarga no tienen vencimiento. Si tenés algún problema para descargar tus fotos o
-        necesitás otro formato, respondé este email o escribinos por WhatsApp.
+      <p style="margin:0;font-size:12px;color:#444;line-height:1.7;">
+        Los links de descarga son permanentes. Si tenés cualquier problema para descargar tus fotos,
+        respondé este email o escribinos por WhatsApp y lo resolvemos de inmediato.
       </p>
     </div>
 
-    <!-- Total -->
-    <div style="padding:24px 0;text-align:right;">
-      <p style="margin:0;font-size:11px;color:#555;text-transform:uppercase;letter-spacing:2px;">Total abonado</p>
-      <p style="margin:6px 0 0;font-family:Georgia,serif;font-size:28px;color:#c6a87c;">
-        ${compra.monto_total:,.0f} <span style="font-size:14px;color:#666;">ARS</span>
-      </p>
+    <div style="padding:24px 0;display:flex;justify-content:space-between;align-items:center;">
+      <span style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#444;">Total abonado</span>
+      <span style="font-family:Impact,sans-serif;font-size:32px;color:#D4A843;letter-spacing:2px;">
+        ${compra.monto_total:,.0f} <span style="font-size:14px;color:#555;font-family:Arial,sans-serif;">ARS</span>
+      </span>
     </div>
 
-    <!-- Footer -->
-    <div style="text-align:center;padding:32px 0 0;border-top:1px solid #111;">
-      <p style="margin:0;font-size:11px;color:#333;letter-spacing:1px;">
+    <div style="text-align:center;padding:28px 0 0;border-top:1px solid #111;">
+      <p style="margin:0;font-size:10px;color:#333;letter-spacing:1px;line-height:1.8;">
         © 2026 Nacho Lingua Fotografía · Córdoba, Argentina<br>
-        Todas las imágenes son propiedad intelectual del autor.
+        Todas las imágenes son propiedad intelectual del autor.<br>
+        Prohibida su reproducción y distribución sin autorización.
       </p>
     </div>
 
@@ -237,23 +236,21 @@ def enviar_fotos_email(compra_id):
 
     try:
         msg = MIMEMultipart('alternative')
-        msg['Subject'] = f"Tus fotos — Nacho Lingua Fotografía ({len(fotos)} foto{'s' if len(fotos)>1 else ''})"
-        msg['From']    = f"{EMAIL_REMITENTE_NOMBRE} <{SMTP_USER}>"
+        msg['Subject'] = f"Tus fotos listas — Nacho Lingua Fotografía ({len(fotos)} foto{'s' if len(fotos)>1 else ''})"
+        msg['From']    = f"Nacho Lingua Fotografía <{SMTP_USER}>"
         msg['To']      = compra.email_cliente
         msg.attach(MIMEText(html_body, 'html'))
-
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as servidor:
-            servidor.ehlo()
-            servidor.starttls()
-            servidor.login(SMTP_USER, SMTP_PASS)
-            servidor.sendmail(SMTP_USER, compra.email_cliente, msg.as_string())
-
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as srv:
+            srv.ehlo()
+            srv.starttls()
+            srv.login(SMTP_USER, SMTP_PASS)
+            srv.sendmail(SMTP_USER, compra.email_cliente, msg.as_string())
         compra.email_enviado = True
         db.session.commit()
-        print(f"Email enviado a {compra.email_cliente}")
+        print(f"✓ Email enviado a {compra.email_cliente}")
         return True
     except Exception as e:
-        print(f"Error enviando email: {e}")
+        print(f"✗ Error enviando email: {e}")
         return False
 
 # ── RUTAS ESTÁTICAS ───────────────────────────────────────────────────────────
@@ -265,7 +262,7 @@ def index():
 def foto_fondo():
     return send_file('nacho_lingua.jpg')
 
-# ── EVENTOS (reemplaza álbumes) ───────────────────────────────────────────────
+# ── EVENTOS ───────────────────────────────────────────────────────────────────
 @app.route('/crear-evento', methods=['POST'])
 def crear_evento():
     if not session.get('admin'):
@@ -275,8 +272,7 @@ def crear_evento():
         titulo      = data.get('titulo', ''),
         deporte     = data.get('deporte', ''),
         fecha       = data.get('fecha', ''),
-        descripcion = data.get('descripcion', ''),
-        destacado   = data.get('destacado', False)
+        descripcion = data.get('descripcion', '')
     )
     db.session.add(ev)
     db.session.commit()
@@ -291,7 +287,6 @@ def obtener_eventos():
         "deporte":     e.deporte,
         "fecha":       e.fecha,
         "descripcion": e.descripcion,
-        "destacado":   e.destacado,
         "fotos": [{
             "id":          f.id,
             "url_preview": f.url_preview,
@@ -310,7 +305,7 @@ def borrar_evento(ev_id):
     db.session.commit()
     return jsonify({"mensaje": "Evento eliminado"})
 
-# ── SUBIR FOTO ────────────────────────────────────────────────────────────────
+# ── FOTOS ─────────────────────────────────────────────────────────────────────
 @app.route('/subir-foto', methods=['POST'])
 def subir_foto():
     if not session.get('admin'):
@@ -323,39 +318,43 @@ def subir_foto():
     precio    = float(request.form.get('precio', 3500))
     filename  = archivo.filename
 
-    ruta_orig     = os.path.join(CARPETA_TEMP, 'orig_'     + filename)
-    ruta_preview  = os.path.join(CARPETA_TEMP, 'preview_'  + filename)
+    ruta_orig    = os.path.join(CARPETA_TEMP, 'orig_'    + filename)
+    ruta_preview = os.path.join(CARPETA_TEMP, 'preview_' + filename)
     archivo.save(ruta_orig)
 
-    # Subir ORIGINAL sin marca de agua a Cloudinary
+    # Subir original (sin marca de agua) a Cloudinary — carpeta privada
     try:
-        resp_orig = cloudinary.uploader.upload(
+        resp_orig    = cloudinary.uploader.upload(
             ruta_orig,
-            folder=f"nacho_lingua/originales/evento_{evento_id}",
-            quality="auto:best"
+            folder   = f"nacho_lingua/originales/evento_{evento_id}",
+            quality  = "auto:best"
         )
         url_original = resp_orig['secure_url']
     except Exception as e:
         return jsonify({"error": f"Error subiendo original: {str(e)}"}), 500
 
-    # Crear preview CON marca de agua
+    # Crear preview con marca de agua
     if not agregar_marca_de_agua(ruta_orig, ruta_preview):
         return jsonify({"error": "Error procesando imagen"}), 500
 
     try:
-        resp_prev = cloudinary.uploader.upload(
+        resp_prev   = cloudinary.uploader.upload(
             ruta_preview,
-            folder=f"nacho_lingua/previews/evento_{evento_id}"
+            folder  = f"nacho_lingua/previews/evento_{evento_id}"
         )
         url_preview = resp_prev['secure_url']
     except Exception as e:
         return jsonify({"error": f"Error subiendo preview: {str(e)}"}), 500
 
-    foto = Foto(url_preview=url_preview, url_original=url_original, precio=precio, evento_id=evento_id)
+    foto = Foto(
+        url_preview  = url_preview,
+        url_original = url_original,
+        precio       = precio,
+        evento_id    = evento_id
+    )
     db.session.add(foto)
     db.session.commit()
 
-    # Limpiar temp
     for f in [ruta_orig, ruta_preview]:
         try: os.remove(f)
         except: pass
@@ -376,10 +375,10 @@ def borrar_foto(foto_id):
 # ── COMPRAS / MERCADOPAGO ─────────────────────────────────────────────────────
 @app.route('/crear-orden', methods=['POST'])
 def crear_orden():
-    data       = request.json
-    foto_ids   = data.get('foto_ids', [])
-    email      = data.get('email', '')
-    nombre     = data.get('nombre', '')
+    data     = request.json
+    foto_ids = data.get('foto_ids', [])
+    email    = data.get('email', '').strip()
+    nombre   = data.get('nombre', '').strip()
 
     if not foto_ids or not email:
         return jsonify({"error": "Datos incompletos"}), 400
@@ -391,7 +390,6 @@ def crear_orden():
     total    = sum(f.precio for f in fotos)
     base_url = request.host_url.rstrip('/')
 
-    # Registrar compra pendiente
     compra = Compra(
         email_cliente  = email,
         nombre_cliente = nombre,
@@ -404,15 +402,14 @@ def crear_orden():
 
     if not MP_HABILITADO:
         return jsonify({
-            "error": "mp_no_configurado",
+            "error":     "mp_no_configurado",
             "compra_id": compra.id,
-            "total": total,
-            "wa_message": f"Hola Nacho! Quiero comprar {len(fotos)} foto{'s' if len(fotos)>1 else ''} (Total: ${total:,.0f} ARS).\nMi email: {email}"
+            "total":     total
         }), 503
 
     items = [{
-        "title":       f"Nacho Lingua — Foto deportiva #{f.id}",
-        "description": f.evento.titulo if f.evento else "Fotografía deportiva",
+        "title":       f"Nacho Lingua — Foto #{f.id} ({f.evento.titulo if f.evento else 'Deporte'})",
+        "description": "Fotografía deportiva alta resolución sin marca de agua",
         "quantity":    1,
         "unit_price":  f.precio,
         "currency_id": "ARS"
@@ -422,24 +419,24 @@ def crear_orden():
         "items": items,
         "payer": {"email": email, "name": nombre},
         "back_urls": {
-            "success": f"{base_url}/compra-exitosa?cid={compra.id}",
-            "failure": f"{base_url}/compra-fallida?cid={compra.id}",
-            "pending": f"{base_url}/compra-exitosa?cid={compra.id}"
+            "success": f"{base_url}/pago-exitoso?cid={compra.id}",
+            "failure": f"{base_url}/pago-fallido?cid={compra.id}",
+            "pending": f"{base_url}/pago-exitoso?cid={compra.id}"
         },
         "auto_return":         "approved",
         "notification_url":    f"{base_url}/mp-webhook",
-        "statement_descriptor":"NACHO LINGUA FOTO",
+        "statement_descriptor": "NACHO LINGUA FOTO",
         "external_reference":  str(compra.id)
     }
 
     result = MP_SDK.preference().create(preference_data)
     if result['status'] == 201:
-        pref = result['response']
+        pref                    = result['response']
         compra.mp_preference_id = pref['id']
         db.session.commit()
         return jsonify({"init_point": pref['init_point'], "compra_id": compra.id})
     else:
-        return jsonify({"error": "Error MP"}), 500
+        return jsonify({"error": "Error al crear preferencia MP"}), 500
 
 @app.route('/mp-webhook', methods=['POST'])
 def mp_webhook():
@@ -447,11 +444,11 @@ def mp_webhook():
     if data and data.get('type') == 'payment' and MP_HABILITADO:
         payment_id = data.get('data', {}).get('id')
         if payment_id:
-            result  = MP_SDK.payment().get(payment_id)
+            result = MP_SDK.payment().get(payment_id)
             if result['status'] == 200:
-                payment  = result['response']
-                pref_id  = payment.get('preference_id')
-                compra   = Compra.query.filter_by(mp_preference_id=pref_id).first()
+                payment = result['response']
+                pref_id = payment.get('preference_id')
+                compra  = Compra.query.filter_by(mp_preference_id=pref_id).first()
                 if compra:
                     compra.mp_payment_id = str(payment_id)
                     compra.estado        = payment.get('status', 'desconocido')
@@ -460,27 +457,30 @@ def mp_webhook():
                         enviar_fotos_email(compra.id)
     return jsonify({"status": "ok"}), 200
 
-# ── PÁGINAS DE RETORNO ────────────────────────────────────────────────────────
-@app.route('/compra-exitosa')
-def compra_exitosa():
+# ── PÁGINAS DE RETORNO DE PAGO ────────────────────────────────────────────────
+@app.route('/pago-exitoso')
+def pago_exitoso():
     cid    = request.args.get('cid')
     compra = Compra.query.get(cid) if cid else None
-    # Si llegó por back_url con status approved, enviar email
-    if compra and compra.estado in ['pendiente', 'approved'] and not compra.email_enviado:
+    if compra and not compra.email_enviado:
         compra.estado = 'approved'
         db.session.commit()
         enviar_fotos_email(compra.id)
-    return send_from_directory('.', 'compra-exitosa.html')
+    return send_from_directory('.', 'pago-exitoso.html')
 
-@app.route('/compra-fallida')
-def compra_fallida():
-    return send_from_directory('.', 'compra-fallida.html')
+@app.route('/pago-fallido')
+def pago_fallido():
+    return send_from_directory('.', 'pago-fallido.html')
 
 # ── CONTACTO ──────────────────────────────────────────────────────────────────
 @app.route('/contacto', methods=['POST'])
 def contacto():
     d = request.json
-    db.session.add(Consulta(nombre=d.get('nombre',''), email=d.get('email',''), mensaje=d.get('mensaje','')))
+    db.session.add(Consulta(
+        nombre  = d.get('nombre', ''),
+        email   = d.get('email', ''),
+        mensaje = d.get('mensaje', '')
+    ))
     db.session.commit()
     return jsonify({"ok": True})
 
@@ -519,8 +519,12 @@ def ver_consultas():
         return jsonify({"error": "No autorizado"}), 403
     consultas = Consulta.query.order_by(Consulta.creada_en.desc()).all()
     return jsonify([{
-        "id": c.id, "nombre": c.nombre, "email": c.email, "mensaje": c.mensaje,
-        "leida": c.leida, "fecha": c.creada_en.strftime('%d/%m/%Y %H:%M') if c.creada_en else ''
+        "id":       c.id,
+        "nombre":   c.nombre,
+        "email":    c.email,
+        "mensaje":  c.mensaje,
+        "leida":    c.leida,
+        "fecha":    c.creada_en.strftime('%d/%m/%Y %H:%M') if c.creada_en else ''
     } for c in consultas])
 
 @app.route('/admin/consultas/<int:cid>/leer', methods=['PATCH'])
@@ -528,7 +532,9 @@ def marcar_leida(cid):
     if not session.get('admin'):
         return jsonify({"error": "No autorizado"}), 403
     c = Consulta.query.get(cid)
-    if c: c.leida = True; db.session.commit()
+    if c:
+        c.leida = True
+        db.session.commit()
     return jsonify({"ok": True})
 
 # ── AUTH ──────────────────────────────────────────────────────────────────────

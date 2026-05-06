@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Nacho Lingua Fotografía — Comprá fotos deportivas en alta resolución. Fútbol y básquet en Córdoba, Argentina.">
     <meta property="og:title" content="Nacho Lingua Fotografía">
-    <meta property="og:description" content="Fotografía deportiva premium. Comprá tus fotos en alta resolución.">
+    <meta property="og:description" content="Fotografía deportiva premium. Comprá tus fotos en alta resolución y recibilas por email al instante.">
     <meta property="og:image" content="nacho_lingua.jpg">
     <title>Nacho Lingua | Fotografía Deportiva · Córdoba</title>
 
@@ -18,14 +18,14 @@
 </head>
 <body>
 
-<!-- ══════════════════════════ LOADING SCREEN ══════════════════════════════ -->
+<!-- ════════════════ LOADING SCREEN ════════════════════════════════════════ -->
 <div id="loading-screen">
     <div class="ls-brand">NL</div>
     <div class="ls-sub">Nacho Lingua Fotografía</div>
     <div class="ls-bar"></div>
 </div>
 
-<!-- ══════════════════════════ NAVBAR ══════════════════════════════════════ -->
+<!-- ════════════════ NAVBAR ════════════════════════════════════════════════ -->
 <nav id="navbar">
     <a href="#hero" class="nav-brand">
         <span>NL</span>
@@ -39,7 +39,6 @@
     </div>
 
     <div class="nav-right">
-        <!-- Solo visibles como admin -->
         <button id="btn-admin-panel" class="nav-btn" style="display:none">
             <i class="fa-solid fa-gauge-simple-high"></i> Panel
         </button>
@@ -52,7 +51,7 @@
     </div>
 </nav>
 
-<!-- ══════════════════════════ HERO ════════════════════════════════════════ -->
+<!-- ════════════════ HERO ═══════════════════════════════════════════════════ -->
 <header id="hero">
     <div id="hero-bg"></div>
     <div class="hero-gradient"></div>
@@ -65,7 +64,7 @@
         </h1>
         <p class="hero-description">
             Momentos irrepetibles del fútbol y básquet capturados en alta resolución.
-            Explorá las galerías y comprá tus fotos — las recibís en tu email al instante.
+            Explorá las galerías, elegí tus fotos y recibilas en tu email al instante.
         </p>
         <a href="#portfolio" class="hero-cta">
             <i class="fa-solid fa-images"></i>
@@ -76,7 +75,7 @@
     <div class="hero-scroll-hint">Scroll</div>
 </header>
 
-<!-- ══════════════════════════ STATS ═══════════════════════════════════════ -->
+<!-- ════════════════ STATS ══════════════════════════════════════════════════ -->
 <section id="stats">
     <div class="stat-item reveal">
         <span class="stat-number" data-target="200" data-suffix="+">0</span>
@@ -96,18 +95,17 @@
     </div>
 </section>
 
-<!-- ══════════════════════════ PORTFOLIO ═══════════════════════════════════ -->
+<!-- ════════════════ PORTFOLIO ══════════════════════════════════════════════ -->
 <section id="portfolio" class="section">
     <div class="section-header reveal">
         <div class="section-eyebrow">Galerías</div>
         <h2 class="section-title">ELEGÍ TU EVENTO</h2>
         <p class="section-sub">
-            Seleccioná el evento, elegí las fotos que querés y pagá solo por las que te gustan.
-            Las recibís en alta resolución directamente en tu email.
+            Seleccioná el evento, elegí las fotos que querés y comprá solo las que te gustan.
+            Las recibís en alta resolución sin marca de agua directamente en tu email.
         </p>
     </div>
 
-    <!-- Filtros de deporte -->
     <div class="sport-filters reveal">
         <button class="sport-btn active" data-filter="all">Todos</button>
         <button class="sport-btn" data-filter="futbol">⚽ Fútbol</button>
@@ -115,16 +113,15 @@
         <button class="sport-btn" data-filter="otro">📷 Otro</button>
     </div>
 
-    <!-- Grid de eventos -->
     <div id="gallery-grid">
         <div class="empty-state">Cargando galerías...</div>
     </div>
 </section>
 
-<!-- ══════════════════════════ VISTA DE EVENTO ═════════════════════════════ -->
-<div id="event-view"></div>
+<!-- ════════════════ VISTA DE EVENTO (se llena desde JS) ════════════════════ -->
+<div id="event-view" style="display:none"></div>
 
-<!-- ══════════════════════════ ABOUT / CONTACTO ═══════════════════════════ -->
+<!-- ════════════════ ABOUT / CONTACTO ════════════════════════════════════════ -->
 <section id="about" class="section">
     <div class="about-grid">
         <div class="about-photo reveal">
@@ -135,15 +132,15 @@
             <h2 class="section-title" style="font-size:clamp(28px,4vw,44px)">NACHO<br>LINGUA</h2>
             <p>
                 Fotógrafo deportivo especializado en fútbol y básquet en Córdoba, Argentina.
-                Con más de 3 años de experiencia cubriendo eventos de primer nivel,
-                cada imagen captura la emoción y la intensidad del deporte en su estado puro.
+                Con más de 3 años cubriendo eventos de primer nivel, cada imagen captura
+                la emoción del deporte en su estado más puro.
             </p>
             <p>
                 Las fotos se entregan en alta resolución sin marca de agua,
                 directamente en tu email minutos después de la compra.
             </p>
 
-            <!-- ⚠ Reemplazá con tus datos reales -->
+            <!-- ⚠ Reemplazá con tus datos reales antes de publicar -->
             <div class="contact-link-row">
                 <div class="contact-link-icon"><i class="fa-brands fa-whatsapp"></i></div>
                 <a href="https://wa.me/5493510000000" target="_blank">+54 9 351 000-0000</a>
@@ -173,7 +170,7 @@
     </div>
 </section>
 
-<!-- ══════════════════════════ FOOTER ══════════════════════════════════════ -->
+<!-- ════════════════ FOOTER ══════════════════════════════════════════════════ -->
 <footer>
     <div class="footer-inner">
         <div>
@@ -190,48 +187,58 @@
         <p class="footer-copy">
             &copy; 2026 Nacho Lingua Fotografía · Todos los derechos reservados
         </p>
-        <!-- Trigger admin secreto: clic 3 veces para abrir login | o Ctrl+Shift+A -->
-        <span id="admin-trigger">·</span>
+        <!--
+            ACCESO ADMIN:
+            • Hacé clic 3 veces sobre el punto de abajo
+            • O presioná Ctrl + Shift + A en cualquier momento
+        -->
+        <span id="admin-trigger" title="">·</span>
     </div>
 </footer>
 
-<!-- ══════════════════════════ LIGHTBOX ════════════════════════════════════ -->
+<!-- ════════════════ LIGHTBOX ════════════════════════════════════════════════ -->
 <div id="lightbox">
     <button class="lb-close" onclick="cerrarLightbox()">&times;</button>
-    <button class="lb-nav" id="lb-prev" onclick="lbPrev()"><i class="fa-solid fa-chevron-left"></i></button>
-    <img class="lb-img" id="lb-img" alt="Foto deportiva">
-    <button class="lb-nav" id="lb-next" onclick="lbNext()"><i class="fa-solid fa-chevron-right"></i></button>
+    <button class="lb-nav" id="lb-prev" onclick="lbPrev()">
+        <i class="fa-solid fa-chevron-left"></i>
+    </button>
+    <img class="lb-img" id="lb-img" alt="Foto deportiva ampliada">
+    <button class="lb-nav" id="lb-next" onclick="lbNext()">
+        <i class="fa-solid fa-chevron-right"></i>
+    </button>
     <span class="lb-counter" id="lb-counter"></span>
-    <button class="lb-cart-btn" id="lb-cart-btn" onclick="lbToggleCart()">+ Agregar al carrito</button>
+    <button class="lb-cart-btn" id="lb-cart-btn" onclick="lbToggleCart()">
+        + Agregar al carrito
+    </button>
 </div>
 
-<!-- ══════════════════════════ CARRITO FLOTANTE ═══════════════════════════ -->
+<!-- ════════════════ CARRITO FLOTANTE ════════════════════════════════════════ -->
 <div id="cart-bar">
     <div class="cart-bar-info">
         <span class="cart-bar-count" id="cart-count">0</span>
-        <span class="cart-bar-label">foto<span id="cart-plural">s</span> seleccionada<span id="cart-plural2">s</span></span>
+        <span class="cart-bar-label">fotos seleccionadas</span>
     </div>
     <span class="cart-bar-total" id="cart-total">$0 ARS</span>
     <button class="cart-bar-btn" onclick="abrirCheckout()">
-        <i class="fa-solid fa-bolt"></i> Comprar
+        <i class="fa-solid fa-bolt"></i> Comprar ahora
     </button>
     <button class="cart-clear-btn" onclick="limpiarCarrito()" title="Vaciar selección">
         <i class="fa-solid fa-xmark"></i>
     </button>
 </div>
 
-<!-- ══════════════════════════ CHECKOUT MODAL ══════════════════════════════ -->
+<!-- ════════════════ CHECKOUT MODAL ══════════════════════════════════════════ -->
 <div id="checkout-modal">
     <div class="checkout-box">
         <div class="checkout-header">
             <div>
                 <h2>Tu pedido</h2>
-                <p>Completá tus datos para recibir las fotos por email</p>
+                <p>Completá tus datos y recibís las fotos por email</p>
             </div>
             <button class="checkout-close" onclick="cerrarCheckout()">&times;</button>
         </div>
         <div class="checkout-body">
-            <!-- Resumen de fotos -->
+
             <div class="checkout-summary">
                 <div id="checkout-resumen"></div>
                 <div class="checkout-summary-total">
@@ -240,39 +247,38 @@
                 </div>
             </div>
 
-            <!-- Datos del comprador -->
             <div class="co-group">
                 <label for="co-nombre">Tu nombre</label>
                 <input id="co-nombre" type="text" placeholder="Juan García"
-                       autocomplete="name" onkeydown="if(event.key==='Enter')document.getElementById('co-email').focus()">
+                       autocomplete="name"
+                       onkeydown="if(event.key==='Enter')document.getElementById('co-email').focus()">
             </div>
             <div class="co-group">
                 <label for="co-email">Email para recibir las fotos *</label>
                 <input id="co-email" type="email" placeholder="tu@email.com"
-                       autocomplete="email" onkeydown="if(event.key==='Enter')procesarPago()">
+                       autocomplete="email"
+                       onkeydown="if(event.key==='Enter')procesarPago()">
             </div>
 
-            <!-- CTA pago -->
             <button class="checkout-pay-btn" id="checkout-pay-btn" onclick="procesarPago()">
                 <i class="fa-solid fa-credit-card"></i> Pagar con MercadoPago
             </button>
 
             <div class="checkout-divider">o</div>
 
-            <!-- Alternativa WhatsApp -->
             <button class="checkout-wa-btn" onclick="coordinarWA()">
                 <i class="fa-brands fa-whatsapp"></i> Coordinar pago por WhatsApp
             </button>
 
             <p style="text-align:center;font-size:11px;color:var(--text-dim);margin-top:16px;line-height:1.6">
                 <i class="fa-solid fa-shield-halved" style="color:var(--gold);margin-right:4px"></i>
-                Pago seguro · Las fotos en alta resolución se envían automáticamente a tu email al confirmar el pago
+                Pago seguro · Las fotos en alta resolución se envían automáticamente a tu email
             </p>
         </div>
     </div>
 </div>
 
-<!-- ══════════════════════════ LOGIN MODAL ═════════════════════════════════ -->
+<!-- ════════════════ LOGIN MODAL ══════════════════════════════════════════════ -->
 <div id="login-modal">
     <div class="login-box">
         <div class="login-logo">NL</div>
@@ -293,18 +299,18 @@
             <span> Contraseña incorrecta</span>
         </div>
 
-        <button id="login-submit-btn" class="login-submit" onclick="ejecutarLogin()">Ingresar</button>
+        <button id="login-submit-btn" class="login-submit" onclick="ejecutarLogin()">
+            Ingresar
+        </button>
         <button class="login-cancel" onclick="cerrarLoginModal()">Cancelar</button>
     </div>
 </div>
 
-<!-- ══════════════════════════ ADMIN PANEL ═════════════════════════════════ -->
+<!-- ════════════════ ADMIN PANEL ══════════════════════════════════════════════ -->
 <div id="admin-modal">
     <div class="admin-panel">
         <div class="admin-panel-hdr">
-            <div>
-                <h3>Panel de Administración</h3>
-            </div>
+            <h3>Panel de Administración</h3>
             <button class="admin-close" onclick="cerrarAdminPanel()">&times;</button>
         </div>
         <div class="admin-tabs">
@@ -316,7 +322,7 @@
                 <i class="fa-solid fa-envelope"></i> Consultas
             </button>
         </div>
-        <div id="tab-compras" class="admin-tab-content active">
+        <div id="tab-compras"   class="admin-tab-content active">
             <p style="color:var(--text-dim);font-style:italic;padding:20px 0">Cargando...</p>
         </div>
         <div id="tab-consultas" class="admin-tab-content">
@@ -325,7 +331,7 @@
     </div>
 </div>
 
-<!-- ══════════════════════════ FLOATING BUTTONS ═══════════════════════════ -->
+<!-- ════════════════ FLOATING BUTTONS ════════════════════════════════════════ -->
 <!-- ⚠ Cambiá el número por el tuyo real -->
 <a id="whatsapp-btn" href="https://wa.me/5493510000000" target="_blank" rel="noopener" title="WhatsApp">
     <i class="fa-brands fa-whatsapp"></i>
