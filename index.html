@@ -5,27 +5,30 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Nacho Lingua Fotografía — Comprá fotos deportivas en alta resolución. Fútbol y básquet en Córdoba, Argentina.">
     <meta property="og:title" content="Nacho Lingua Fotografía">
-    <meta property="og:description" content="Fotografía deportiva premium. Comprá tus fotos en alta resolución y recibilas por email al instante.">
+    <meta property="og:description" content="Fotografía deportiva premium. Elegí tus fotos y recibilas en alta resolución por email.">
     <meta property="og:image" content="nacho_lingua.jpg">
     <title>Nacho Lingua | Fotografía Deportiva · Córdoba</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11" defer></script>
 </head>
 <body>
 
-<!-- ════════════════ LOADING SCREEN ════════════════════════════════════════ -->
+<!-- ═══ LOADING ══════════════════════════════════════════════════════════════ -->
 <div id="loading-screen">
     <div class="ls-brand">NL</div>
     <div class="ls-sub">Nacho Lingua Fotografía</div>
     <div class="ls-bar"></div>
 </div>
 
-<!-- ════════════════ NAVBAR ════════════════════════════════════════════════ -->
+<!-- ═══ TOAST CONTAINER ══════════════════════════════════════════════════════ -->
+<div id="toast-container"></div>
+
+<!-- ═══ NAVBAR ═══════════════════════════════════════════════════════════════ -->
 <nav id="navbar">
     <a href="#hero" class="nav-brand">
         <span>NL</span>
@@ -39,11 +42,14 @@
     </div>
 
     <div class="nav-right">
-        <button id="btn-admin-panel" class="nav-btn" style="display:none">
-            <i class="fa-solid fa-gauge-simple-high"></i> Panel
+        <!-- Admin buttons -->
+        <button id="btn-admin-panel" class="nav-btn" style="display:none" title="Panel de administración">
+            <i class="fa-solid fa-gauge-simple-high"></i>
+            <span class="nav-btn-label">Panel</span>
         </button>
-        <button id="btn-add-evento" class="nav-btn gold" style="display:none">
-            <i class="fa-solid fa-plus"></i> Evento
+        <button id="btn-add-evento" class="nav-btn gold" style="display:none" title="Crear nuevo evento">
+            <i class="fa-solid fa-plus"></i>
+            <span class="nav-btn-label">Evento</span>
         </button>
         <button id="btn-logout" class="nav-btn danger" style="display:none" title="Cerrar sesión">
             <i class="fa-solid fa-right-from-bracket"></i>
@@ -51,31 +57,26 @@
     </div>
 </nav>
 
-<!-- ════════════════ HERO ═══════════════════════════════════════════════════ -->
+<!-- ═══ HERO ══════════════════════════════════════════════════════════════════ -->
 <header id="hero">
     <div id="hero-bg"></div>
     <div class="hero-gradient"></div>
-
     <div class="hero-content">
         <p class="hero-eyebrow">Fotografía Deportiva · Córdoba, Argentina</p>
-        <h1 class="hero-title">
-            NACHO<br>
-            <em>LINGUA</em>
-        </h1>
+        <h1 class="hero-title">NACHO<br><em>LINGUA</em></h1>
         <p class="hero-description">
             Momentos irrepetibles del fútbol y básquet capturados en alta resolución.
-            Explorá las galerías, elegí tus fotos y recibilas en tu email al instante.
+            Elegí tus fotos favoritas y recibilas sin marca de agua en tu email al instante.
         </p>
         <a href="#portfolio" class="hero-cta">
             <i class="fa-solid fa-images"></i>
             Explorar galerías
         </a>
     </div>
-
     <div class="hero-scroll-hint">Scroll</div>
 </header>
 
-<!-- ════════════════ STATS ══════════════════════════════════════════════════ -->
+<!-- ═══ STATS ═════════════════════════════════════════════════════════════════ -->
 <section id="stats">
     <div class="stat-item reveal">
         <span class="stat-number" data-target="200" data-suffix="+">0</span>
@@ -95,7 +96,7 @@
     </div>
 </section>
 
-<!-- ════════════════ PORTFOLIO ══════════════════════════════════════════════ -->
+<!-- ═══ PORTFOLIO ══════════════════════════════════════════════════════════════ -->
 <section id="portfolio" class="section">
     <div class="section-header reveal">
         <div class="section-eyebrow">Galerías</div>
@@ -114,14 +115,17 @@
     </div>
 
     <div id="gallery-grid">
-        <div class="empty-state">Cargando galerías...</div>
+        <div class="empty-state">
+            <i class="fa-solid fa-spinner fa-spin" style="font-size:24px;color:var(--gold);margin-bottom:12px"></i>
+            <p>Cargando galerías...</p>
+        </div>
     </div>
 </section>
 
-<!-- ════════════════ VISTA DE EVENTO (se llena desde JS) ════════════════════ -->
+<!-- ═══ VISTA DE EVENTO (se llena desde JS) ════════════════════════════════════ -->
 <div id="event-view" style="display:none"></div>
 
-<!-- ════════════════ ABOUT / CONTACTO ════════════════════════════════════════ -->
+<!-- ═══ ABOUT ══════════════════════════════════════════════════════════════════ -->
 <section id="about" class="section">
     <div class="about-grid">
         <div class="about-photo reveal">
@@ -130,20 +134,13 @@
         <div class="about-info reveal reveal-delay-1">
             <div class="section-eyebrow">El fotógrafo</div>
             <h2 class="section-title" style="font-size:clamp(28px,4vw,44px)">NACHO<br>LINGUA</h2>
-            <p>
-                Fotógrafo deportivo especializado en fútbol y básquet en Córdoba, Argentina.
-                Con más de 3 años cubriendo eventos de primer nivel, cada imagen captura
-                la emoción del deporte en su estado más puro.
-            </p>
-            <p>
-                Las fotos se entregan en alta resolución sin marca de agua,
-                directamente en tu email minutos después de la compra.
-            </p>
+            <p>Fotógrafo deportivo especializado en fútbol y básquet en Córdoba, Argentina. Con más de 3 años cubriendo eventos de primer nivel, cada imagen captura la emoción del deporte en su estado más puro.</p>
+            <p>Las fotos se entregan en alta resolución sin marca de agua, directamente en tu email minutos después de la compra.</p>
 
-            <!-- ⚠ Reemplazá con tus datos reales antes de publicar -->
+            <!-- ⚠ Reemplazá con tus datos reales -->
             <div class="contact-link-row">
                 <div class="contact-link-icon"><i class="fa-brands fa-whatsapp"></i></div>
-                <a href="https://wa.me/5493510000000" target="_blank">+54 9 351 000-0000</a>
+                <a href="https://wa.me/5493510000000" target="_blank" rel="noopener">+54 9 351 000-0000</a>
             </div>
             <div class="contact-link-row">
                 <div class="contact-link-icon"><i class="fa-solid fa-envelope"></i></div>
@@ -153,24 +150,17 @@
                 <div class="contact-link-icon"><i class="fa-solid fa-location-dot"></i></div>
                 <span>Córdoba, Argentina</span>
             </div>
-
             <div class="social-row">
                 <!-- ⚠ Reemplazá con tus redes reales -->
-                <a href="https://instagram.com/nacholingua" target="_blank" class="social-icon" title="Instagram">
-                    <i class="fa-brands fa-instagram"></i>
-                </a>
-                <a href="https://twitter.com/nacholingua" target="_blank" class="social-icon" title="Twitter/X">
-                    <i class="fa-brands fa-x-twitter"></i>
-                </a>
-                <a href="https://wa.me/5493510000000" target="_blank" class="social-icon" title="WhatsApp">
-                    <i class="fa-brands fa-whatsapp"></i>
-                </a>
+                <a href="https://instagram.com/nacholingua" target="_blank" rel="noopener" class="social-icon" title="Instagram"><i class="fa-brands fa-instagram"></i></a>
+                <a href="https://twitter.com/nacholingua"   target="_blank" rel="noopener" class="social-icon" title="Twitter/X"><i class="fa-brands fa-x-twitter"></i></a>
+                <a href="https://wa.me/5493510000000"       target="_blank" rel="noopener" class="social-icon" title="WhatsApp"><i class="fa-brands fa-whatsapp"></i></a>
             </div>
         </div>
     </div>
 </section>
 
-<!-- ════════════════ FOOTER ══════════════════════════════════════════════════ -->
+<!-- ═══ FOOTER ══════════════════════════════════════════════════════════════════ -->
 <footer>
     <div class="footer-inner">
         <div>
@@ -184,42 +174,40 @@
         </div>
     </div>
     <div class="footer-bottom">
-        <p class="footer-copy">
-            &copy; 2026 Nacho Lingua Fotografía · Todos los derechos reservados
-        </p>
+        <p class="footer-copy">&copy; 2026 Nacho Lingua Fotografía · Todos los derechos reservados</p>
         <!--
             ACCESO ADMIN:
-            • Hacé clic 3 veces sobre el punto de abajo
-            • O presioná Ctrl + Shift + A en cualquier momento
+            • Clic 3 veces en el punto "·" de abajo
+            • O presioná Ctrl + Shift + A
         -->
-        <span id="admin-trigger" title="">·</span>
+        <span id="admin-trigger">·</span>
     </div>
 </footer>
 
-<!-- ════════════════ LIGHTBOX ════════════════════════════════════════════════ -->
+<!-- ═══ LIGHTBOX ═══════════════════════════════════════════════════════════════ -->
 <div id="lightbox">
-    <button class="lb-close" onclick="cerrarLightbox()">&times;</button>
-    <button class="lb-nav" id="lb-prev" onclick="lbPrev()">
+    <button class="lb-close" onclick="cerrarLightbox()" title="Cerrar (Esc)">&times;</button>
+    <button class="lb-nav" id="lb-prev" onclick="lbPrev()" title="Anterior (←)">
         <i class="fa-solid fa-chevron-left"></i>
     </button>
-    <img class="lb-img" id="lb-img" alt="Foto deportiva ampliada">
-    <button class="lb-nav" id="lb-next" onclick="lbNext()">
+    <img class="lb-img" id="lb-img" alt="Foto deportiva">
+    <button class="lb-nav" id="lb-next" onclick="lbNext()" title="Siguiente (→)">
         <i class="fa-solid fa-chevron-right"></i>
     </button>
     <span class="lb-counter" id="lb-counter"></span>
     <button class="lb-cart-btn" id="lb-cart-btn" onclick="lbToggleCart()">
-        + Agregar al carrito
+        <i class="fa-solid fa-cart-shopping"></i> Agregar al carrito
     </button>
 </div>
 
-<!-- ════════════════ CARRITO FLOTANTE ════════════════════════════════════════ -->
+<!-- ═══ CARRITO FLOTANTE ════════════════════════════════════════════════════════ -->
 <div id="cart-bar">
     <div class="cart-bar-info">
         <span class="cart-bar-count" id="cart-count">0</span>
         <span class="cart-bar-label">fotos seleccionadas</span>
     </div>
     <span class="cart-bar-total" id="cart-total">$0 ARS</span>
-    <button class="cart-bar-btn" onclick="abrirCheckout()">
+    <button class="cart-bar-btn" onclick="abrirCheckout()" id="cart-checkout-btn">
         <i class="fa-solid fa-bolt"></i> Comprar ahora
     </button>
     <button class="cart-clear-btn" onclick="limpiarCarrito()" title="Vaciar selección">
@@ -227,7 +215,7 @@
     </button>
 </div>
 
-<!-- ════════════════ CHECKOUT MODAL ══════════════════════════════════════════ -->
+<!-- ═══ CHECKOUT MODAL ══════════════════════════════════════════════════════════ -->
 <div id="checkout-modal">
     <div class="checkout-box">
         <div class="checkout-header">
@@ -235,10 +223,9 @@
                 <h2>Tu pedido</h2>
                 <p>Completá tus datos y recibís las fotos por email</p>
             </div>
-            <button class="checkout-close" onclick="cerrarCheckout()">&times;</button>
+            <button class="checkout-close" onclick="cerrarCheckout()" title="Cerrar">&times;</button>
         </div>
         <div class="checkout-body">
-
             <div class="checkout-summary">
                 <div id="checkout-resumen"></div>
                 <div class="checkout-summary-total">
@@ -247,17 +234,17 @@
                 </div>
             </div>
 
-            <div class="co-group">
-                <label for="co-nombre">Tu nombre</label>
-                <input id="co-nombre" type="text" placeholder="Juan García"
-                       autocomplete="name"
-                       onkeydown="if(event.key==='Enter')document.getElementById('co-email').focus()">
-            </div>
-            <div class="co-group">
-                <label for="co-email">Email para recibir las fotos *</label>
-                <input id="co-email" type="email" placeholder="tu@email.com"
-                       autocomplete="email"
-                       onkeydown="if(event.key==='Enter')procesarPago()">
+            <div class="form-row">
+                <div class="co-group">
+                    <label for="co-nombre">Nombre</label>
+                    <input id="co-nombre" type="text" placeholder="Tu nombre" autocomplete="name"
+                           onkeydown="if(event.key==='Enter')document.getElementById('co-email').focus()">
+                </div>
+                <div class="co-group">
+                    <label for="co-email">Email para recibir las fotos *</label>
+                    <input id="co-email" type="email" placeholder="tu@email.com" autocomplete="email"
+                           onkeydown="if(event.key==='Enter')procesarPago()">
+                </div>
             </div>
 
             <button class="checkout-pay-btn" id="checkout-pay-btn" onclick="procesarPago()">
@@ -270,49 +257,56 @@
                 <i class="fa-brands fa-whatsapp"></i> Coordinar pago por WhatsApp
             </button>
 
-            <p style="text-align:center;font-size:11px;color:var(--text-dim);margin-top:16px;line-height:1.6">
-                <i class="fa-solid fa-shield-halved" style="color:var(--gold);margin-right:4px"></i>
+            <p class="checkout-note">
+                <i class="fa-solid fa-shield-halved" style="color:var(--gold)"></i>
                 Pago seguro · Las fotos en alta resolución se envían automáticamente a tu email
             </p>
         </div>
     </div>
 </div>
 
-<!-- ════════════════ LOGIN MODAL ══════════════════════════════════════════════ -->
+<!-- ═══ LOGIN MODAL ══════════════════════════════════════════════════════════════ -->
 <div id="login-modal">
     <div class="login-box">
         <div class="login-logo">NL</div>
         <div class="login-subtitle">Acceso Administrador</div>
-
         <div class="login-input-wrap">
             <i class="fa-solid fa-lock login-icon"></i>
             <input type="password" id="admin-password" class="login-input"
                    placeholder="Contraseña" autocomplete="current-password"
                    onkeydown="if(event.key==='Enter')ejecutarLogin()">
-            <button class="login-eye" onclick="togglePasswordVis()" type="button">
+            <button class="login-eye" onclick="togglePasswordVis()" type="button" title="Mostrar contraseña">
                 <i class="fa-solid fa-eye" id="toggle-icon"></i>
             </button>
         </div>
-
         <div id="login-error" class="login-error">
             <i class="fa-solid fa-circle-exclamation"></i>
-            <span> Contraseña incorrecta</span>
+            <span>Contraseña incorrecta</span>
         </div>
-
-        <button id="login-submit-btn" class="login-submit" onclick="ejecutarLogin()">
-            Ingresar
-        </button>
+        <button id="login-submit-btn" class="login-submit" onclick="ejecutarLogin()">Ingresar</button>
         <button class="login-cancel" onclick="cerrarLoginModal()">Cancelar</button>
     </div>
 </div>
 
-<!-- ════════════════ ADMIN PANEL ══════════════════════════════════════════════ -->
+<!-- ═══ ADMIN PANEL ══════════════════════════════════════════════════════════════ -->
 <div id="admin-modal">
     <div class="admin-panel">
         <div class="admin-panel-hdr">
-            <h3>Panel de Administración</h3>
-            <button class="admin-close" onclick="cerrarAdminPanel()">&times;</button>
+            <div>
+                <h3>Panel de Administración</h3>
+                <p class="admin-panel-sub">Nacho Lingua Fotografía</p>
+            </div>
+            <button class="admin-close" onclick="cerrarAdminPanel()" title="Cerrar">&times;</button>
         </div>
+
+        <!-- Stats rápidas -->
+        <div class="admin-stats-strip" id="admin-stats-strip">
+            <div class="admin-stat"><span id="as-eventos">—</span><small>Eventos</small></div>
+            <div class="admin-stat"><span id="as-fotos">—</span><small>Fotos</small></div>
+            <div class="admin-stat gold"><span id="as-ingresos">—</span><small>Ingresos ARS</small></div>
+            <div class="admin-stat"><span id="as-compras">—</span><small>Ventas</small></div>
+        </div>
+
         <div class="admin-tabs">
             <button class="admin-tab active" data-tab="compras" onclick="switchAdminTab('compras')">
                 <i class="fa-solid fa-bag-shopping"></i> Compras
@@ -320,23 +314,24 @@
             </button>
             <button class="admin-tab" data-tab="consultas" onclick="switchAdminTab('consultas')">
                 <i class="fa-solid fa-envelope"></i> Consultas
+                <span id="badge-consultas" class="admin-badge" style="display:none">!</span>
             </button>
         </div>
         <div id="tab-compras"   class="admin-tab-content active">
-            <p style="color:var(--text-dim);font-style:italic;padding:20px 0">Cargando...</p>
+            <p class="admin-loading">Cargando...</p>
         </div>
         <div id="tab-consultas" class="admin-tab-content">
-            <p style="color:var(--text-dim);font-style:italic;padding:20px 0">Cargando...</p>
+            <p class="admin-loading">Cargando...</p>
         </div>
     </div>
 </div>
 
-<!-- ════════════════ FLOATING BUTTONS ════════════════════════════════════════ -->
-<!-- ⚠ Cambiá el número por el tuyo real -->
-<a id="whatsapp-btn" href="https://wa.me/5493510000000" target="_blank" rel="noopener" title="WhatsApp">
+<!-- ═══ FLOATING ═══════════════════════════════════════════════════════════════ -->
+<!-- ⚠ Cambiá el número -->
+<a id="whatsapp-btn" href="https://wa.me/5493510000000" target="_blank" rel="noopener" title="Escribinos por WhatsApp">
     <i class="fa-brands fa-whatsapp"></i>
 </a>
-<button id="back-to-top" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Volver arriba">
+<button id="back-to-top" title="Volver arriba">
     <i class="fa-solid fa-chevron-up"></i>
 </button>
 
