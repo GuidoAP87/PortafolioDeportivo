@@ -239,7 +239,9 @@ function abrirEvento(eventoId) {
     // Cargar personas IA (async)
     if (ev.fotos?.length > 0) cargarPersonas(ev.id);
 
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Hacemos scroll directo al inicio del evento (compensando la altura del navbar)
+    const offset = document.getElementById('event-view').offsetTop - 68;
+    window.scrollTo({ top: offset, behavior: 'smooth' });
     actualizarCarritoBar();
 }
 
@@ -289,13 +291,12 @@ function renderVistaEvento(ev) {
         ? fotos.map((f, idx) => {
             const sel = carrito.has(f.id);
             return `
-            <div class="photo-item${sel?' selected':''}" id="photo-${f.id}"
-                 onclick="toggleFoto(${f.id})"
-                 ondblclick="event.stopPropagation();abrirLightbox(${idx})"
-                 title="Clic para seleccionar · Doble clic para ampliar">
-                <img src="${f.url_preview}" alt="Foto deportiva" loading="lazy">
+            <div class="photo-item${sel?' selected':''}" id="photo-${f.id}">
+                <img src="${f.url_preview}" alt="Foto deportiva" loading="lazy"
+                     onclick="abrirLightbox(${idx})"
+                     title="Clic para ampliar">
                 <div class="photo-item-overlay">
-                    <div class="photo-select-icon">
+                    <div class="photo-select-icon" onclick="event.stopPropagation(); toggleFoto(${f.id})" title="Agregar/quitar del carrito">
                         <i class="fa-solid ${sel?'fa-check':'fa-cart-shopping'}"></i>
                     </div>
                     <div class="photo-price">$${Number(f.precio).toLocaleString('es-AR')} ARS</div>
@@ -306,7 +307,7 @@ function renderVistaEvento(ev) {
                     title="Eliminar foto"
                     style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.75);
                            border:none;color:var(--red);width:28px;height:28px;border-radius:50%;
-                           font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;">
+                           font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:auto;">
                     <i class="fa-solid fa-xmark"></i>
                 </button>` : ''}
             </div>`;
@@ -336,10 +337,9 @@ function renderVistaEvento(ev) {
             <div class="selection-info">
                 <i class="fa-solid fa-circle-info"></i>
                 <span>
-                    <strong>Clic</strong> para seleccionar ·
-                    <strong>Doble clic</strong> para ampliar ·
-                    <strong>Esc</strong> para cerrar visor ·
-                    Podés seleccionar varias y comprar juntas
+                    <strong>Clic en la foto</strong> para ampliarla · 
+                    <strong>Clic en el carrito</strong> <i class="fa-solid fa-cart-plus" style="margin:0 2px"></i> para seleccionarla · 
+                    Podés elegir varias y comprar juntas
                 </span>
             </div>
         </div>

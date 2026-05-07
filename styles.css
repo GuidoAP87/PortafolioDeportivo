@@ -364,9 +364,9 @@ body::after {
 }
 .event-card:hover .event-card-enter-btn { transform: translateY(0); }
 
-/* ─── VISTA DE EVENTO ─────────────────────────────────────────── */
+/* ─── VISTA DE EVENTO (AMPLIADO A 3% PADDING) ─────────────────── */
 .event-view-header {
-    padding: 88px 8% 0; position: sticky; top: 68px; z-index: 100;
+    padding: 88px 3% 0; position: sticky; top: 68px; z-index: 100;
     background: linear-gradient(to bottom, var(--ink) 80%, transparent);
 }
 .event-view-nav {
@@ -393,7 +393,7 @@ body::after {
 .price-badge span { font-size: 12px; font-family: 'Inter', sans-serif; color: var(--text-dim); }
 
 .selection-info {
-    padding: 12px 8%; background: var(--ink-2);
+    padding: 12px 3%; background: var(--ink-2);
     border-top: 1px solid var(--ink-4); border-bottom: 1px solid var(--ink-4);
     display: flex; align-items: center; gap: 10px;
     font-size: 12px; color: var(--text-sub); flex-wrap: wrap;
@@ -403,7 +403,7 @@ body::after {
 
 /* ─── ADMIN UPLOAD BAR ────────────────────────────────────────── */
 .admin-upload-bar {
-    padding: 14px 8%; display: flex; gap: 12px; align-items: stretch;
+    padding: 14px 3%; display: flex; gap: 12px; align-items: stretch;
     background: rgba(212,168,67,0.03); border-bottom: 1px solid var(--ink-4);
 }
 .upload-zone {
@@ -417,16 +417,16 @@ body::after {
 .upload-zone-text { font-size: 13px; color: var(--gold); }
 .upload-zone-sub  { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
 
-.upload-progress-wrap { height: 3px; background: var(--ink-4); margin: 0 8%; display: none; }
+.upload-progress-wrap { height: 3px; background: var(--ink-4); margin: 0 3%; display: none; }
 .upload-progress-bar  { height: 100%; background: var(--gold); width: 0; transition: width 0.3s ease; }
 .upload-progress-text {
-    padding: 6px 8%; font-size: 11px; color: var(--text-dim);
+    padding: 6px 3%; font-size: 11px; color: var(--text-dim);
     display: none; letter-spacing: 1px;
 }
 
 /* ─── GRILLA DE FOTOS ─────────────────────────────────────────── */
 .photos-grid {
-    padding: 3px 8% 100px;
+    padding: 3px 3% 100px;
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
     gap: 3px;
@@ -434,8 +434,9 @@ body::after {
 
 .photo-item {
     position: relative; overflow: hidden;
-    aspect-ratio: 4/3; cursor: pointer; background: var(--ink-3);
+    aspect-ratio: 4/3; background: var(--ink-3);
     outline: 2px solid transparent; transition: outline-color var(--t);
+    cursor: default; /* El clic ahora es en la imagen (zoom) o icono (carro) */
 }
 .photo-item.selected { outline-color: var(--gold); outline-offset: -2px; }
 
@@ -443,6 +444,7 @@ body::after {
     width: 100%; height: 100%; object-fit: cover;
     transition: transform 0.5s ease, filter 0.3s ease;
     filter: brightness(0.85); display: block;
+    cursor: zoom-in; /* Indica que se puede ampliar */
 }
 .photo-item:hover img    { transform: scale(1.04); filter: brightness(0.65); }
 .photo-item.selected img { filter: brightness(0.55); }
@@ -451,6 +453,7 @@ body::after {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
     opacity: 0; transition: opacity var(--t); flex-direction: column; gap: 8px;
+    pointer-events: none; /* Deja pasar el clic a la imagen del fondo */
 }
 .photo-item:hover .photo-item-overlay,
 .photo-item.selected .photo-item-overlay { opacity: 1; }
@@ -460,6 +463,8 @@ body::after {
     background: rgba(6,6,10,0.8); border: 2px solid var(--text-dim);
     display: flex; align-items: center; justify-content: center;
     font-size: 18px; color: var(--text-dim); transition: all var(--t);
+    pointer-events: auto; /* Reactiva el clic solo para el botón del carro */
+    cursor: pointer;
 }
 .photo-item.selected .photo-select-icon { background: var(--gold); border-color: var(--gold); color: #000; }
 .photo-item:hover:not(.selected) .photo-select-icon { border-color: #fff; color: #fff; }
@@ -477,13 +482,13 @@ body::after {
 }
 .photo-item.selected .photo-check-badge { opacity: 1; transform: scale(1); }
 
-/* Face filter */
+/* Face filter states */
 .photo-item.face-dimmed { opacity: 0.15; pointer-events: none; transition: opacity 0.35s ease; }
 .photo-item.face-match  { opacity: 1; transition: opacity 0.35s ease; }
 
 /* ─── FACE FILTER ─────────────────────────────────────────────── */
 .faces-panel {
-    padding: 18px 8% 0; border-bottom: 1px solid var(--ink-4); background: var(--ink-2);
+    padding: 18px 3% 0; border-bottom: 1px solid var(--ink-4); background: var(--ink-2);
 }
 .faces-panel-header {
     display: flex; align-items: center; gap: 12px; margin-bottom: 14px; flex-wrap: wrap;
@@ -583,7 +588,7 @@ body::after {
 }
 
 .face-filter-results {
-    padding: 10px 8%; font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
+    padding: 10px 3%; font-size: 11px; letter-spacing: 2px; text-transform: uppercase;
     color: var(--text-dim); background: var(--ink-2); border-bottom: 1px solid var(--ink-4);
 }
 .face-filter-results span { color: var(--gold); }
@@ -1010,12 +1015,15 @@ footer { background: #000; padding: 52px 8% 32px; border-top: 1px solid var(--in
     .about-photo::before { display: none; }
     .section { padding: 60px 5%; }
     .hero-content { padding: 0 5% 56px; }
-    .photos-grid { padding: 3px 5% 100px; }
-    .admin-upload-bar { padding: 14px 5%; }
-    .selection-info { padding: 12px 5%; }
-    .event-view-header { padding: 80px 5% 0; }
-    .faces-panel { padding: 16px 5% 0; }
-    .face-filter-results { padding: 10px 5%; }
+    
+    /* Responsive margins matched for new wide-view */
+    .photos-grid { padding: 3px 4% 100px; }
+    .admin-upload-bar { padding: 14px 4%; }
+    .selection-info { padding: 12px 4%; }
+    .event-view-header { padding: 80px 4% 0; }
+    .faces-panel { padding: 16px 4% 0; }
+    .face-filter-results { padding: 10px 4%; }
+
     .admin-stats-strip { grid-template-columns: repeat(2, 1fr); }
     .admin-stat:nth-child(2) { border-right: none; }
 }
