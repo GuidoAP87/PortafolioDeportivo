@@ -364,14 +364,44 @@ body::after {
 }
 .event-card:hover .event-card-enter-btn { transform: translateY(0); }
 
-/* ─── VISTA DE EVENTO (AMPLIADO A 3% PADDING) ─────────────────── */
+/* ─── VISTA DE EVENTO ─────────────────────────────────────────── */
 .event-view-header {
     padding: 88px 3% 0; position: sticky; top: 68px; z-index: 100;
     background: linear-gradient(to bottom, var(--ink) 80%, transparent);
+    transition: all var(--t);
 }
+
+/* ─── DISEÑO REDUCIDO AL SCROLLEAR (SHRUNK) ──────────────────── */
+.event-view-header.shrunk {
+    padding: 14px 3% 0; /* Padding super pequeño arriba */
+    background: rgba(6, 6, 10, 0.95);
+    backdrop-filter: blur(14px);
+    border-bottom: 1px solid var(--ink-4);
+}
+.event-view-header.shrunk .event-view-nav {
+    padding-bottom: 14px;
+}
+.event-view-header.shrunk .event-view-title {
+    font-size: 24px; /* Achica la letra del titulo */
+    margin-top: 2px;
+}
+.event-view-header.shrunk .event-view-date,
+.event-view-header.shrunk .event-view-sport-tag,
+.event-view-header.shrunk .selection-info {
+    display: none; /* Esconde metadatos y barra de tips */
+}
+.event-view-header.shrunk .price-badge {
+    font-size: 20px;
+}
+.event-view-header.shrunk .price-badge span {
+    display: none;
+}
+/* ────────────────────────────────────────────────────────────── */
+
 .event-view-nav {
     display: flex; align-items: center; gap: 16px;
     padding-bottom: 20px; flex-wrap: wrap;
+    transition: padding var(--t);
 }
 .back-btn {
     display: inline-flex; align-items: center; gap: 8px;
@@ -385,11 +415,23 @@ body::after {
     color: var(--gold); background: rgba(212,168,67,0.08);
     border: 1px solid rgba(212,168,67,0.2); padding: 4px 12px;
 }
-.event-view-title { font-family: 'Bebas Neue', sans-serif; font-size: clamp(26px,4vw,46px); letter-spacing: 3px; color: #fff; }
+.event-view-title { 
+    font-family: 'Bebas Neue', sans-serif; 
+    font-size: clamp(26px,4vw,46px); 
+    letter-spacing: 3px; 
+    color: #fff; 
+    transition: font-size var(--t);
+}
 .event-view-date  { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
 
 .price-info { margin-left: auto; text-align: right; }
-.price-badge { font-family: 'Bebas Neue', sans-serif; font-size: 26px; color: var(--gold); line-height: 1; }
+.price-badge { 
+    font-family: 'Bebas Neue', sans-serif; 
+    font-size: 26px; 
+    color: var(--gold); 
+    line-height: 1; 
+    transition: font-size var(--t);
+}
 .price-badge span { font-size: 12px; font-family: 'Inter', sans-serif; color: var(--text-dim); }
 
 .selection-info {
