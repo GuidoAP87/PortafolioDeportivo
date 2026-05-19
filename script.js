@@ -24,6 +24,10 @@ let adminClickTimer = null;
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
+    // 1. Cargar carrito guardado antes de renderizar
+    cargarCarrito();
+
+    // 2. Cargar datos del backend
     await Promise.all([verificarSesion(), cargarEventos()]);
 
     initNavScroll();
@@ -381,6 +385,25 @@ function initDragDrop(eventoId) {
     });
 }
 
+// ─── PERSISTENCIA CARRITO (LOCALSTORAGE) ───────────────────────────────────────
+function guardarCarrito() {
+    // Transformamos el Map a un array de [clave, valor] para serializarlo en JSON
+    localStorage.setItem('nl_carrito', JSON.stringify([...carrito.entries()]));
+}
+
+function cargarCarrito() {
+    const guardado = localStorage.getItem('nl_carrito');
+    if (guardado) {
+        try {
+            carrito = new Map(JSON.parse(guardado));
+            actualizarCarritoBar();
+        } catch (e) {
+            console.error('Error al cargar carrito de localStorage', e);
+            carrito = new Map();
+        }
+    }
+}
+
 // ─── SELECCIÓN DE FOTOS ────────────────────────────────────────────────────────
 function toggleFoto(fotoId) {
     if (!eventoActual) return;
@@ -407,6 +430,7 @@ function toggleFoto(fotoId) {
         toast(`Foto agregada al carrito · ${carrito.size} en total`, 'success', 1500);
     }
     actualizarCarritoBar();
+    guardarCarrito(); // Persistimos los cambios
 }
 
 function limpiarCarrito() {
@@ -417,6 +441,7 @@ function limpiarCarrito() {
         if (icon) icon.className = 'fa-solid fa-cart-shopping';
     });
     actualizarCarritoBar();
+    guardarCarrito(); // Persistimos los cambios
     toast('Selección vaciada', 'info', 1800);
 }
 
@@ -824,6 +849,19 @@ async function borrarEvento(id) {
     if (!isConfirmed) return;
     const res = await fetch(`/borrar-evento/${id}`, { method:'DELETE', credentials:'include' });
     if (res.ok) {
+        // Limpiamos del carrito cualquier foto asociada a este evento que se acaba de borrar
+        let modificado = false;
+        for (const [fotoId, item] of carrito.entries()) {
+            if (item.evento.id === id) {
+                carrito.delete(fotoId);
+                modificado = true;
+            }
+        }
+        if (modificado) {
+            actualizarCarritoBar();
+            guardarCarrito(); // Persistimos limpieza
+        }
+
         cerrarEvento();
         await cargarEventos();
         toast('Evento eliminado', 'info');
@@ -845,7 +883,11 @@ async function borrarFoto(id) {
     const res = await fetch(`/borrar-foto/${id}`, { method:'DELETE', credentials:'include' });
     if (res.ok) {
         document.getElementById(`photo-${id}`)?.remove();
-        if (carrito.has(id)) { carrito.delete(id); actualizarCarritoBar(); }
+        if (carrito.has(id)) { 
+            carrito.delete(id); 
+            actualizarCarritoBar(); 
+            guardarCarrito(); // Persistimos si se borró una foto que estaba seleccionada
+        }
         if (eventoActual) {
             eventoActual.fotos = eventoActual.fotos.filter(f => f.id !== id);
             lbFotos = eventoActual.fotos;
