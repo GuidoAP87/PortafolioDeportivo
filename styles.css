@@ -478,7 +478,7 @@ body::after {
     position: relative; overflow: hidden;
     aspect-ratio: 4/3; background: var(--ink-3);
     outline: 2px solid transparent; transition: outline-color var(--t);
-    cursor: default; /* El clic ahora es en la imagen (zoom) o icono (carro) */
+    cursor: zoom-in; /* Movemos el cursor acá porque la imagen ya no recibe clics */
 }
 .photo-item.selected { outline-color: var(--gold); outline-offset: -2px; }
 
@@ -486,7 +486,9 @@ body::after {
     width: 100%; height: 100%; object-fit: cover;
     transition: transform 0.5s ease, filter 0.3s ease;
     filter: brightness(0.85); display: block;
-    cursor: zoom-in; /* Indica que se puede ampliar */
+    pointer-events: none;      /* Bloqueo antirrobo */
+    user-select: none;         /* Bloqueo antirrobo */
+    -webkit-user-drag: none;   /* Bloqueo antirrobo */
 }
 .photo-item:hover img    { transform: scale(1.04); filter: brightness(0.65); }
 .photo-item.selected img { filter: brightness(0.55); }
@@ -654,6 +656,9 @@ body::after {
 .lb-img {
     max-width: 88vw; max-height: 82vh; object-fit: contain;
     animation: lbIn 0.3s ease; border: 1px solid var(--ink-5);
+    pointer-events: none;      /* Bloqueo antirrobo */
+    user-select: none;         /* Bloqueo antirrobo */
+    -webkit-user-drag: none;   /* Bloqueo antirrobo */
 }
 @keyframes lbIn { from{opacity:0;transform:scale(0.92)} to{opacity:1;transform:scale(1)} }
 

@@ -262,14 +262,22 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
         base      = Image.open(ruta_entrada).convert('RGBA')
         overlay   = Image.new('RGBA', base.size, (255, 255, 255, 0))
         draw      = ImageDraw.Draw(overlay)
-        fontsize  = int(base.width / 14)
+        
+        # Letra el doble de grande (antes era /14, ahora /7)
+        fontsize  = int(base.width / 7)
         try:    font = ImageFont.truetype('arial.ttf', size=fontsize)
         except: font = ImageFont.load_default()
-        angulo = -25
-        for y0 in range(-base.height, base.height * 2, int(fontsize * 4.5)):
-            for x0 in range(-base.width, base.width * 2, int(base.width / 2.5)):
+        
+        angulo = -35
+        
+        # Grilla mucho más tupida e intrusiva
+        for y0 in range(-base.height, base.height * 2, int(fontsize * 2.2)):
+            for x0 in range(-base.width, base.width * 2, int(base.width / 1.2)):
                 x = x0 + y0 * math.tan(math.radians(-angulo))
-                draw.text((x, y0), texto, font=font, fill=(255, 255, 255, 55))
+                
+                # Opacidad subida a 130 para que arruine la foto si intentan usarla
+                draw.text((x, y0), texto, font=font, fill=(255, 255, 255, 130))
+                
         Image.alpha_composite(base, overlay).convert('RGB').save(
             ruta_salida, 'JPEG', quality=82
         )
@@ -615,8 +623,12 @@ def mp_webhook():
                     compra.mp_payment_id = str(pid)
                     compra.estado        = pay.get('status', 'desconocido')
                     db.session.commit()
-                    if compra.estado == 'approved':
-                        enviar_fotos_email(compra.id)
+                    if compra.estado == 'approved' and not compra.email_enviado:
+                        # ⚠ Corrección crítica: Se envía el correo en segundo plano
+                        def enviar_correo_bg(c_id):
+                            with app.app_context():
+                                enviar_fotos_email(c_id)
+                        threading.Thread(target=enviar_correo_bg, args=(compra.id,)).start()
     return jsonify({'status': 'ok'}), 200
 
 @app.route('/pago-exitoso')
