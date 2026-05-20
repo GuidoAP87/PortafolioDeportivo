@@ -368,12 +368,12 @@ body::after {
 .event-view-header {
     padding: 88px 3% 0; position: sticky; top: 68px; z-index: 100;
     background: linear-gradient(to bottom, var(--ink) 80%, transparent);
-    transition: all var(--t);
+    transition: padding 0.3s ease, background 0.3s ease;
 }
 
 /* ─── DISEÑO REDUCIDO AL SCROLLEAR (SHRUNK) ──────────────────── */
 .event-view-header.shrunk {
-    padding: 14px 3% 0; /* Padding super pequeño arriba */
+    padding: 14px 3% 0; 
     background: rgba(6, 6, 10, 0.95);
     backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--ink-4);
@@ -382,19 +382,17 @@ body::after {
     padding-bottom: 14px;
 }
 .event-view-header.shrunk .event-view-title {
-    font-size: 24px; /* Achica la letra del titulo */
+    font-size: 24px; 
     margin-top: 2px;
 }
 .event-view-header.shrunk .event-view-date,
 .event-view-header.shrunk .event-view-sport-tag,
-.event-view-header.shrunk .selection-info {
-    display: none; /* Esconde metadatos y barra de tips */
+.event-view-header.shrunk .selection-info,
+.event-view-header.shrunk .price-badge span {
+    display: none; 
 }
 .event-view-header.shrunk .price-badge {
     font-size: 20px;
-}
-.event-view-header.shrunk .price-badge span {
-    display: none;
 }
 /* ────────────────────────────────────────────────────────────── */
 
@@ -478,7 +476,7 @@ body::after {
     position: relative; overflow: hidden;
     aspect-ratio: 4/3; background: var(--ink-3);
     outline: 2px solid transparent; transition: outline-color var(--t);
-    cursor: zoom-in; /* Movemos el cursor acá porque la imagen ya no recibe clics */
+    cursor: zoom-in; /* Cursor de lupa acá porque la imagen no recibe clic */
 }
 .photo-item.selected { outline-color: var(--gold); outline-offset: -2px; }
 
@@ -486,9 +484,11 @@ body::after {
     width: 100%; height: 100%; object-fit: cover;
     transition: transform 0.5s ease, filter 0.3s ease;
     filter: brightness(0.85); display: block;
-    pointer-events: none;      /* Bloqueo antirrobo */
-    user-select: none;         /* Bloqueo antirrobo */
-    -webkit-user-drag: none;   /* Bloqueo antirrobo */
+    
+    /* BLOQUEO ANTIRROBO */
+    pointer-events: none;      
+    user-select: none;         
+    -webkit-user-drag: none;   
 }
 .photo-item:hover img    { transform: scale(1.04); filter: brightness(0.65); }
 .photo-item.selected img { filter: brightness(0.55); }
@@ -497,7 +497,7 @@ body::after {
     position: absolute; inset: 0;
     display: flex; align-items: center; justify-content: center;
     opacity: 0; transition: opacity var(--t); flex-direction: column; gap: 8px;
-    pointer-events: none; /* Deja pasar el clic a la imagen del fondo */
+    pointer-events: none; 
 }
 .photo-item:hover .photo-item-overlay,
 .photo-item.selected .photo-item-overlay { opacity: 1; }
@@ -507,7 +507,7 @@ body::after {
     background: rgba(6,6,10,0.8); border: 2px solid var(--text-dim);
     display: flex; align-items: center; justify-content: center;
     font-size: 18px; color: var(--text-dim); transition: all var(--t);
-    pointer-events: auto; /* Reactiva el clic solo para el botón del carro */
+    pointer-events: auto; 
     cursor: pointer;
 }
 .photo-item.selected .photo-select-icon { background: var(--gold); border-color: var(--gold); color: #000; }
@@ -656,9 +656,10 @@ body::after {
 .lb-img {
     max-width: 88vw; max-height: 82vh; object-fit: contain;
     animation: lbIn 0.3s ease; border: 1px solid var(--ink-5);
-    pointer-events: none;      /* Bloqueo antirrobo */
-    user-select: none;         /* Bloqueo antirrobo */
-    -webkit-user-drag: none;   /* Bloqueo antirrobo */
+    /* BLOQUEO ANTIRROBO */
+    pointer-events: none;      
+    user-select: none;         
+    -webkit-user-drag: none;
 }
 @keyframes lbIn { from{opacity:0;transform:scale(0.92)} to{opacity:1;transform:scale(1)} }
 

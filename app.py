@@ -624,7 +624,7 @@ def mp_webhook():
                     compra.estado        = pay.get('status', 'desconocido')
                     db.session.commit()
                     if compra.estado == 'approved' and not compra.email_enviado:
-                        # ⚠ Corrección crítica: Se envía el correo en segundo plano
+                        # Se envía el correo en segundo plano
                         def enviar_correo_bg(c_id):
                             with app.app_context():
                                 enviar_fotos_email(c_id)

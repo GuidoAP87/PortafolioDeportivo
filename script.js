@@ -1,10 +1,14 @@
 /* ═══════════════════════════════════════════════════════════════
    NACHO LINGUA FOTOGRAFÍA — SPORTS PHOTO MARKETPLACE 2026
-   ═══════════════════════════════════════════════════════════════
-   ACCESO ADMIN:
-   • Clic 3 veces en el "·" del footer
-   • O Ctrl + Shift + A
    ═══════════════════════════════════════════════════════════════ */
+
+// ⚠ Bloqueo de descarga por clic derecho
+document.addEventListener('contextmenu', e => {
+    if (e.target.tagName === 'IMG' || e.target.closest('.photo-item')) {
+        e.preventDefault();
+        toast('La descarga está protegida', 'info', 1500);
+    }
+});
 
 // ⚠ CONFIGURACIÓN — cambiar antes de publicar
 const WA_NUMBER   = '5493510000000';   // Tu número real de WhatsApp
@@ -24,10 +28,7 @@ let adminClickTimer = null;
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
-    // 1. Cargar carrito guardado antes de renderizar
     cargarCarrito();
-
-    // 2. Cargar datos del backend
     await Promise.all([verificarSesion(), cargarEventos()]);
 
     initNavScroll();
@@ -38,12 +39,10 @@ document.addEventListener('DOMContentLoaded', async () => {
     initLightboxKB();
     initAdminTriggers();
 
-    // Botones nav
     document.getElementById('btn-admin-panel')?.addEventListener('click', abrirAdminPanel);
     document.getElementById('btn-add-evento')?.addEventListener('click', crearEvento);
     document.getElementById('btn-logout')?.addEventListener('click', logout);
 
-    // Cerrar modals al clic en el fondo oscuro
     ['checkout-modal','admin-modal','login-modal'].forEach(id => {
         document.getElementById(id)?.addEventListener('click', e => {
             if (e.target.id === id) {
@@ -54,7 +53,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     });
 
-    // WhatsApp flotante
     const wa = document.getElementById('whatsapp-btn');
     if (wa) wa.href = `https://wa.me/${WA_NUMBER}`;
 
@@ -105,10 +103,19 @@ function toggleAdminUI(admin) {
     });
 }
 
-// ─── NAVBAR ───────────────────────────────────────────────────────────────────
+// ─── NAVBAR & SCROLL ───────────────────────────────────────────────────────────
 function initNavScroll() {
     window.addEventListener('scroll', () => {
         document.getElementById('navbar')?.classList.toggle('scrolled', window.scrollY > 80);
+        
+        const evHeader = document.querySelector('.event-view-header');
+        if (evHeader && document.getElementById('event-view').style.display === 'block') {
+            if (window.scrollY > 120) {
+                evHeader.classList.add('shrunk');
+            } else {
+                evHeader.classList.remove('shrunk');
+            }
+        }
     }, { passive: true });
 }
 
@@ -124,7 +131,6 @@ function initNavLinks() {
     });
 }
 
-// ─── REVEAL ───────────────────────────────────────────────────────────────────
 function initReveal() {
     const obs = new IntersectionObserver(entries => {
         entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); obs.unobserve(e.target); } });
@@ -132,7 +138,6 @@ function initReveal() {
     document.querySelectorAll('.reveal').forEach(el => obs.observe(el));
 }
 
-// ─── STATS COUNTER ────────────────────────────────────────────────────────────
 function initStatsCounter() {
     const obs = new IntersectionObserver(entries => {
         entries.forEach(e => {
@@ -153,7 +158,6 @@ function initStatsCounter() {
     document.querySelectorAll('[data-target]').forEach(c => obs.observe(c));
 }
 
-// ─── BACK TO TOP ─────────────────────────────────────────────────────────────
 function initBackToTop() {
     const btn = document.getElementById('back-to-top');
     if (!btn) return;
@@ -229,7 +233,6 @@ function abrirEvento(eventoId) {
     personaFiltrada = null;
     personasData    = [];
 
-    // Ocultar secciones
     document.getElementById('portfolio').style.display = 'none';
     document.getElementById('about').style.display     = 'none';
 
@@ -237,13 +240,10 @@ function abrirEvento(eventoId) {
     view.style.display = 'block';
     view.innerHTML     = renderVistaEvento(ev);
 
-    // Drag & drop
     initDragDrop(ev.id);
 
-    // Cargar personas IA (async)
     if (ev.fotos?.length > 0) cargarPersonas(ev.id);
 
-    // Hacemos scroll directo al inicio del evento (compensando la altura del navbar)
     const offset = document.getElementById('event-view').offsetTop - 68;
     window.scrollTo({ top: offset, behavior: 'smooth' });
     actualizarCarritoBar();
@@ -295,10 +295,8 @@ function renderVistaEvento(ev) {
         ? fotos.map((f, idx) => {
             const sel = carrito.has(f.id);
             return `
-            <div class="photo-item${sel?' selected':''}" id="photo-${f.id}">
-                <img src="${f.url_preview}" alt="Foto deportiva" loading="lazy"
-                     onclick="abrirLightbox(${idx})"
-                     title="Clic para ampliar">
+            <div class="photo-item${sel?' selected':''}" id="photo-${f.id}" onclick="abrirLightbox(${idx})">
+                <img src="${f.url_preview}" alt="Foto deportiva" loading="lazy" title="Clic para ampliar">
                 <div class="photo-item-overlay">
                     <div class="photo-select-icon" onclick="event.stopPropagation(); toggleFoto(${f.id})" title="Agregar/quitar del carrito">
                         <i class="fa-solid ${sel?'fa-check':'fa-cart-shopping'}"></i>
@@ -360,7 +358,6 @@ function cerrarEvento() {
     window.scrollTo({ top: document.getElementById('portfolio').offsetTop - 68, behavior: 'smooth' });
 }
 
-// ─── DRAG & DROP UPLOAD ───────────────────────────────────────────────────────
 function initDragDrop(eventoId) {
     if (!isAdmin) return;
     const zone = document.querySelector('.upload-zone');
@@ -377,7 +374,6 @@ function initDragDrop(eventoId) {
         if (!files.length) return;
         const input = document.getElementById(`file-input-${eventoId}`);
         if (!input) return;
-        // Crear DataTransfer para asignar al input
         const dt = new DataTransfer();
         files.forEach(f => dt.items.add(f));
         input.files = dt.files;
@@ -385,9 +381,8 @@ function initDragDrop(eventoId) {
     });
 }
 
-// ─── PERSISTENCIA CARRITO (LOCALSTORAGE) ───────────────────────────────────────
+// ─── PERSISTENCIA CARRITO ──────────────────────────────────────────────────────
 function guardarCarrito() {
-    // Transformamos el Map a un array de [clave, valor] para serializarlo en JSON
     localStorage.setItem('nl_carrito', JSON.stringify([...carrito.entries()]));
 }
 
@@ -430,7 +425,7 @@ function toggleFoto(fotoId) {
         toast(`Foto agregada al carrito · ${carrito.size} en total`, 'success', 1500);
     }
     actualizarCarritoBar();
-    guardarCarrito(); // Persistimos los cambios
+    guardarCarrito();
 }
 
 function limpiarCarrito() {
@@ -441,7 +436,7 @@ function limpiarCarrito() {
         if (icon) icon.className = 'fa-solid fa-cart-shopping';
     });
     actualizarCarritoBar();
-    guardarCarrito(); // Persistimos los cambios
+    guardarCarrito();
     toast('Selección vaciada', 'info', 1800);
 }
 
@@ -454,7 +449,6 @@ function actualizarCarritoBar() {
     document.getElementById('cart-total').textContent = `$${total.toLocaleString('es-AR')} ARS`;
     bar.classList.toggle('visible', count > 0);
 
-    // Actualizar LB si está abierto
     if (document.getElementById('lightbox')?.classList.contains('open')) {
         actualizarLbBtn();
     }
@@ -692,7 +686,7 @@ async function reprocesarIA() {
     }
 }
 
-// ─── CREAR EVENTO ─────────────────────────────────────────────────────────────
+// ─── ADMIN CREAR/EDITAR/SUBIR ────────────────────────────────────────────────
 async function crearEvento() {
     const { value: vals } = await Swal.fire({
         title: 'Nuevo Evento',
@@ -738,7 +732,6 @@ async function crearEvento() {
     }
 }
 
-// ─── EDITAR EVENTO ────────────────────────────────────────────────────────────
 async function editarEvento(eventoId) {
     const ev = eventosData.find(e => e.id === eventoId);
     if (!ev) return;
@@ -768,14 +761,12 @@ async function editarEvento(eventoId) {
     });
     if (res.ok) {
         await cargarEventos();
-        // Reabrir con datos frescos
         const evActualizado = eventosData.find(e => e.id === eventoId);
         if (evActualizado) { eventoActual = evActualizado; document.getElementById('event-view').innerHTML = renderVistaEvento(evActualizado); initDragDrop(eventoId); }
         toast('Evento actualizado', 'success');
     } else { toast('Error al guardar', 'error'); }
 }
 
-// ─── SUBIR FOTOS ─────────────────────────────────────────────────────────────
 async function subirFotos(event, eventoId) {
     event.preventDefault();
     const input = event.target.querySelector('input[type="file"]');
@@ -836,7 +827,6 @@ async function subirFotos(event, eventoId) {
     }
 }
 
-// ─── BORRAR EVENTO ────────────────────────────────────────────────────────────
 async function borrarEvento(id) {
     const { isConfirmed } = await Swal.fire({
         title: '¿Borrar este evento?',
@@ -849,7 +839,6 @@ async function borrarEvento(id) {
     if (!isConfirmed) return;
     const res = await fetch(`/borrar-evento/${id}`, { method:'DELETE', credentials:'include' });
     if (res.ok) {
-        // Limpiamos del carrito cualquier foto asociada a este evento que se acaba de borrar
         let modificado = false;
         for (const [fotoId, item] of carrito.entries()) {
             if (item.evento.id === id) {
@@ -859,7 +848,7 @@ async function borrarEvento(id) {
         }
         if (modificado) {
             actualizarCarritoBar();
-            guardarCarrito(); // Persistimos limpieza
+            guardarCarrito();
         }
 
         cerrarEvento();
@@ -870,7 +859,6 @@ async function borrarEvento(id) {
     }
 }
 
-// ─── BORRAR FOTO ──────────────────────────────────────────────────────────────
 async function borrarFoto(id) {
     const { isConfirmed } = await Swal.fire({
         title: '¿Eliminar esta foto?', icon: 'warning',
@@ -886,7 +874,7 @@ async function borrarFoto(id) {
         if (carrito.has(id)) { 
             carrito.delete(id); 
             actualizarCarritoBar(); 
-            guardarCarrito(); // Persistimos si se borró una foto que estaba seleccionada
+            guardarCarrito();
         }
         if (eventoActual) {
             eventoActual.fotos = eventoActual.fotos.filter(f => f.id !== id);
@@ -896,7 +884,7 @@ async function borrarFoto(id) {
     }
 }
 
-// ─── CHECKOUT ─────────────────────────────────────────────────────────────────
+// ─── CHECKOUT Y PAGOS ────────────────────────────────────────────────────────
 function abrirCheckout() {
     if (!carrito.size) return;
     const items = [...carrito.values()];
@@ -1003,7 +991,7 @@ function coordinarWA() {
     window.open(`https://wa.me/${WA_NUMBER}?text=${msg}`, '_blank');
 }
 
-// ─── LOGIN ────────────────────────────────────────────────────────────────────
+// ─── LOGIN & ADMIN UI ────────────────────────────────────────────────────────
 function abrirLoginModal() {
     const m = document.getElementById('login-modal');
     m.style.display = 'flex';
@@ -1069,7 +1057,6 @@ async function ejecutarLogin() {
     }
 }
 
-// ─── ADMIN PANEL ─────────────────────────────────────────────────────────────
 async function abrirAdminPanel() {
     const m = document.getElementById('admin-modal');
     m.style.display = 'flex';
@@ -1101,7 +1088,6 @@ async function cargarAdminStats() {
         document.getElementById('as-ingresos').textContent = d.ingresos
             ? `$${Number(d.ingresos).toLocaleString('es-AR')}`
             : '$0';
-        // Badges
         if (d.emails_pend > 0) {
             const b = document.getElementById('badge-compras');
             if (b) { b.textContent = d.emails_pend; b.style.display = 'inline-flex'; }
@@ -1192,7 +1178,6 @@ async function marcarLeida(id) {
     await fetch(`/admin/consultas/${id}/leer`, { method:'PATCH', credentials:'include' });
     document.getElementById(`msg-${id}`)?.querySelector('.badge-new')?.remove();
     document.getElementById(`msg-${id}`)?.querySelector('.admin-item-actions')?.remove();
-    // Actualizar badge
     const badge = document.getElementById('badge-consultas');
     if (badge) {
         const n = parseInt(badge.textContent) - 1;
@@ -1202,7 +1187,6 @@ async function marcarLeida(id) {
     toast('Marcada como leída', 'info', 1500);
 }
 
-// ─── LOGOUT ───────────────────────────────────────────────────────────────────
 async function logout() {
     await fetch('/logout', { method:'POST', credentials:'include' });
     isAdmin = false; toggleAdminUI(false); cerrarAdminPanel();
