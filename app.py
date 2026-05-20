@@ -230,25 +230,27 @@ def detectar_rostros(ruta_imagen, foto_id, evento_id):
         print(f'⚠ Error IA foto #{foto_id}: {e}')
 
 # ── MARCA DE AGUA (EXTRA GIGANTE) ─────────────────────────────────────────────
-def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
+def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA 2026'):
     try:
         base      = Image.open(ruta_entrada).convert('RGBA')
         overlay   = Image.new('RGBA', base.size, (255, 255, 255, 0))
         draw      = ImageDraw.Draw(overlay)
         
-        # LETRA EXTRA GIGANTE: ancho de la foto / 4.5
-        fontsize  = int(base.width / 4.5)
+        # Usamos la dimensión más grande de la foto para que verticales y horizontales queden gigantes
+        max_dim   = max(base.width, base.height)
+        fontsize  = int(max_dim / 5.5)
+        
         try:    font = ImageFont.truetype('arial.ttf', size=fontsize)
         except: font = ImageFont.load_default()
         
         angulo = -35
         
-        # Grilla para repetir
+        # Grilla para que cubra todo sin dejar huecos
         for y0 in range(-base.height, base.height * 2, int(fontsize * 1.5)):
-            for x0 in range(-base.width, base.width * 2, int(base.width / 1.1)):
+            for x0 in range(-base.width, base.width * 2, int(fontsize * 3.5)):
                 x = x0 + y0 * math.tan(math.radians(-angulo))
                 
-                # Opacidad súper alta (180 de 255)
+                # Opacidad altísima (180 de 255)
                 draw.text((x, y0), texto, font=font, fill=(255, 255, 255, 180))
                 
         Image.alpha_composite(base, overlay).convert('RGB').save(
