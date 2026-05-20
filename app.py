@@ -263,20 +263,20 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
         overlay   = Image.new('RGBA', base.size, (255, 255, 255, 0))
         draw      = ImageDraw.Draw(overlay)
         
-        # Letra el doble de grande (antes era /14, ahora /7)
-        fontsize  = int(base.width / 7)
+        # Letra gigante (ancho de la foto / 6)
+        fontsize  = int(base.width / 6)
         try:    font = ImageFont.truetype('arial.ttf', size=fontsize)
         except: font = ImageFont.load_default()
         
         angulo = -35
         
-        # Grilla mucho más tupida e intrusiva
-        for y0 in range(-base.height, base.height * 2, int(fontsize * 2.2)):
-            for x0 in range(-base.width, base.width * 2, int(base.width / 1.2)):
+        # Grilla bien apretada e intrusiva
+        for y0 in range(-base.height, base.height * 2, int(fontsize * 1.8)):
+            for x0 in range(-base.width, base.width * 2, int(base.width / 1.5)):
                 x = x0 + y0 * math.tan(math.radians(-angulo))
                 
-                # Opacidad subida a 130 para que arruine la foto si intentan usarla
-                draw.text((x, y0), texto, font=font, fill=(255, 255, 255, 130))
+                # Opacidad altísima (140 de 255)
+                draw.text((x, y0), texto, font=font, fill=(255, 255, 255, 140))
                 
         Image.alpha_composite(base, overlay).convert('RGB').save(
             ruta_salida, 'JPEG', quality=82
