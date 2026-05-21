@@ -229,17 +229,17 @@ def detectar_rostros(ruta_imagen, foto_id, evento_id):
     except Exception as e:
         print(f'⚠ Error IA foto #{foto_id}: {e}')
 
-# ── MARCA DE AGUA (5 POSICIONES Y GIGANTE) ────────────────────────────────────
+# ── MARCA DE AGUA (ADAPTATIVA: 5 POSICIONES PERFECTAS) ────────────────────────
 def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
     try:
         base = Image.open(ruta_entrada).convert('RGBA')
         overlay = Image.new('RGBA', base.size, (255, 255, 255, 0))
         
-        # 1. SOLUCIÓN AL TAMAÑO EN LINUX: Buscar fuentes de sistema garantizadas
-        font = None
-        # Calculamos el tamaño en base al lado más largo de la foto (ideal para horizontales y verticales)
-        fontsize = int(max(base.width, base.height) / 14) 
+        # 1. Escala adaptativa: Usamos la dimensión MÁS CORTA para evitar que colisionen
+        fontsize = int(min(base.width, base.height) / 12) 
         
+        # Buscar fuentes compatibles en el servidor de Render
+        font = None
         rutas_fuentes = [
             "arial.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
@@ -256,40 +256,42 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
                 
         if not font:
             font = ImageFont.load_default()
-            print("⚠ Advertencia: Se usó fuente por defecto.")
 
-        # 2. CREAR IMAGEN DE TEXTO PARA ROTARLA CON PRECISIÓN
-        # Lienzo transparente lo suficientemente grande para alojar el texto
+        # 2. Medir el texto para centrarlo bien
         dummy_draw = ImageDraw.Draw(Image.new('RGBA', (1,1)))
-        bbox = dummy_draw.textbbox((0, 0), texto, font=font)
-        text_w = bbox[2] - bbox[0]
-        text_h = bbox[3] - bbox[1]
+        try:
+            bbox = dummy_draw.textbbox((0, 0), texto, font=font)
+            text_w = bbox[2] - bbox[0]
+            text_h = bbox[3] - bbox[1]
+        except AttributeError: # Fallback por si Render usa un Pillow antiguo
+            text_w, text_h = dummy_draw.textsize(texto, font=font)
 
-        # Crear capa temporal solo para el texto (con padding)
-        txt_img = Image.new('RGBA', (text_w + 100, text_h + 100), (255, 255, 255, 0))
+        # Crear capa temporal solo para el texto (con padding para que no se ampute al rotar)
+        txt_img = Image.new('RGBA', (text_w + 120, text_h + 120), (255, 255, 255, 0))
         txt_draw = ImageDraw.Draw(txt_img)
-        # Opacidad altísima (180/255)
-        txt_draw.text((50, 50), texto, font=font, fill=(255, 255, 255, 180))
+        
+        # Opacidad altísima (140) para que sea imposible de borrar
+        txt_draw.text((60, 60), texto, font=font, fill=(255, 255, 255, 140))
 
-        # Rotar el texto 35 grados
+        # Rotar el bloque de texto 35 grados
         txt_rotated = txt_img.rotate(35, expand=True, resample=Image.BICUBIC)
         rw, rh = txt_rotated.size
 
-        # 3. PEGAR EL TEXTO EN LAS 5 POSICIONES
+        # 3. Calcular las 5 posiciones (como un dado) adaptables a la foto
         W, H = base.size
-        margen_x = int(W * 0.02) # Un mínimo margen
-        margen_y = int(H * 0.02)
+        mx = int(W * 0.02) # Margen dinámico X
+        my = int(H * 0.02) # Margen dinámico Y
         
         posiciones = [
             (W//2 - rw//2, H//2 - rh//2),          # Centro exacto
-            (margen_x, margen_y),                  # Esquina superior izquierda
-            (W - rw - margen_x, margen_y),         # Esquina superior derecha
-            (margen_x, H - rh - margen_y),         # Esquina inferior izquierda
-            (W - rw - margen_x, H - rh - margen_y) # Esquina inferior derecha
+            (mx, my),                              # Arriba Izquierda
+            (W - rw - mx, my),                     # Arriba Derecha
+            (mx, H - rh - my),                     # Abajo Izquierda
+            (W - rw - mx, H - rh - my)             # Abajo Derecha
         ]
 
+        # Pegar las 5 marcas de agua respetando la transparencia
         for pos in posiciones:
-            # Pegar respetando la transparencia (canal alpha)
             overlay.paste(txt_rotated, (int(pos[0]), int(pos[1])), txt_rotated)
 
         # Fusionar y guardar
