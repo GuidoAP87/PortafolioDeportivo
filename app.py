@@ -236,10 +236,9 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
         overlay = Image.new('RGBA', base.size, (255, 255, 255, 0))
         W, H = base.size
         
-        # 1. Tamaño gigante pero controlado (10% del lado más corto)
+        # Tamaño de fuente adaptativo
         fontsize = int(min(W, H) / 10) 
         
-        # Buscar fuentes compatibles en el servidor de Render
         font = None
         rutas_fuentes = [
             "arial.ttf",
@@ -247,55 +246,74 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
             "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
             "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
         ]
-        
         for path in rutas_fuentes:
             try:
                 font = ImageFont.truetype(path, size=fontsize)
                 break
             except IOError:
                 continue
-                
         if not font:
             font = ImageFont.load_default()
 
-        # 2. Medir el texto de forma segura
         dummy_draw = ImageDraw.Draw(Image.new('RGBA', (1,1)))
+        
+        # 1. Medir texto corto (para las esquinas)
         try:
-            bbox = dummy_draw.textbbox((0, 0), texto, font=font)
-            text_w = bbox[2] - bbox[0]
-            text_h = bbox[3] - bbox[1]
+            b = dummy_draw.textbbox((0, 0), texto, font=font)
+            tw, th = b[2] - b[0], b[3] - b[1]
         except AttributeError: 
-            text_w, text_h = dummy_draw.textsize(texto, font=font)
+            tw, th = dummy_draw.textsize(texto, font=font)
 
-        # Crear capa temporal solo para el texto (con padding para evitar cortes)
-        txt_img = Image.new('RGBA', (text_w + 40, text_h + 40), (255, 255, 255, 0))
-        txt_draw = ImageDraw.Draw(txt_img)
+        # 2. Crear texto largo (para que cruce todo el centro de la foto)
+        # Separamos las palabras para que respiren a lo largo de la diagonal
+        texto_largo = f"{texto}        {texto}        {texto}        {texto}        {texto}"
+        try:
+            bl = dummy_draw.textbbox((0, 0), texto_largo, font=font)
+            tlw, tlh = bl[2] - bl[0], bl[3] - bl[1]
+        except AttributeError:
+            tlw, tlh = dummy_draw.textsize(texto_largo, font=font)
+
+        # COLOR CASI SÓLIDO (230/255) y sombra negra (160/255) para legibilidad extrema
+        color_texto  = (255, 255, 255, 230)
+        color_sombra = (0, 0, 0, 160)
+
+        def crear_texto_rotado(txt, w, h):
+            # Padding generoso para que no se corte al rotar
+            img = Image.new('RGBA', (w + 200, h + 200), (255, 255, 255, 0))
+            d = ImageDraw.Draw(img)
+            # Dibujar sombra desplazada 3 pixeles
+            d.text((103, 103), txt, font=font, fill=color_sombra)
+            # Dibujar texto blanco encima
+            d.text((100, 100), txt, font=font, fill=color_texto)
+            return img.rotate(35, expand=True, resample=Image.BICUBIC)
+
+        txt_esquina = crear_texto_rotado(texto, tw, th)
+        txt_centro  = crear_texto_rotado(texto_largo, tlw, tlh)
+
+        re_w, re_h = txt_esquina.size
+        rc_w, rc_h = txt_centro.size
+
+        # --- PEGAR LAS 4 ESQUINAS ---
+        mx, my = int(W * 0.22), int(H * 0.22)
+        esquinas = [(mx, my), (W - mx, my), (mx, H - my), (W - mx, H - my)]
+        for cx, cy in esquinas:
+            px = int(cx - (re_w / 2))
+            py = int(cy - (re_h / 2))
+            overlay.paste(txt_esquina, (px, py), txt_esquina)
+
+        # --- PEGAR LA BANDA CENTRAL ---
+        px_c = int(W//2 - rc_w//2)
+        py_c = int(H//2 - rc_h//2)
         
-        # Dibujar con opacidad alta (140)
-        txt_draw.text((20, 20), texto, font=font, fill=(255, 255, 255, 140))
-
-        # Rotar el bloque de texto 35 grados
-        txt_rotated = txt_img.rotate(35, expand=True, resample=Image.BICUBIC)
-        rw, rh = txt_rotated.size
-
-        # 3. Anclar los centros (Los 5 puntos de un dado)
-        # Usamos el 22% del tamaño de la foto para ubicar las esquinas
-        mx = int(W * 0.22)
-        my = int(H * 0.22)
+        # Distancia visual de ~1cm (dinámica según la foto)
+        separacion = int(fontsize * 1.6) 
         
-        centros = [
-            (W//2, H//2),            # Centro exacto
-            (mx, my),                # Arriba Izquierda
-            (W - mx, my),            # Arriba Derecha
-            (mx, H - my),            # Abajo Izquierda
-            (W - mx, H - my)         # Abajo Derecha
-        ]
-
-        # Pegar centrando la imagen rotada en cada coordenada
-        for cx, cy in centros:
-            px = int(cx - (rw / 2))
-            py = int(cy - (rh / 2))
-            overlay.paste(txt_rotated, (px, py), txt_rotated)
+        # Línea central exacta
+        overlay.paste(txt_centro, (px_c, py_c), txt_centro)
+        # Línea paralela superior
+        overlay.paste(txt_centro, (px_c, py_c - separacion), txt_centro)
+        # Línea paralela inferior
+        overlay.paste(txt_centro, (px_c, py_c + separacion), txt_centro)
 
         # Fusionar y guardar
         Image.alpha_composite(base, overlay).convert('RGB').save(
