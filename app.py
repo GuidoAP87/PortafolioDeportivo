@@ -234,9 +234,10 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
     try:
         base = Image.open(ruta_entrada).convert('RGBA')
         overlay = Image.new('RGBA', base.size, (255, 255, 255, 0))
+        W, H = base.size
         
-        # 1. Escala adaptativa: Usamos la dimensión MÁS CORTA para evitar que colisionen
-        fontsize = int(min(base.width, base.height) / 12) 
+        # 1. Tamaño gigante pero controlado (10% del lado más corto)
+        fontsize = int(min(W, H) / 10) 
         
         # Buscar fuentes compatibles en el servidor de Render
         font = None
@@ -257,42 +258,44 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
         if not font:
             font = ImageFont.load_default()
 
-        # 2. Medir el texto para centrarlo bien
+        # 2. Medir el texto de forma segura
         dummy_draw = ImageDraw.Draw(Image.new('RGBA', (1,1)))
         try:
             bbox = dummy_draw.textbbox((0, 0), texto, font=font)
             text_w = bbox[2] - bbox[0]
             text_h = bbox[3] - bbox[1]
-        except AttributeError: # Fallback por si Render usa un Pillow antiguo
+        except AttributeError: 
             text_w, text_h = dummy_draw.textsize(texto, font=font)
 
-        # Crear capa temporal solo para el texto (con padding para que no se ampute al rotar)
-        txt_img = Image.new('RGBA', (text_w + 120, text_h + 120), (255, 255, 255, 0))
+        # Crear capa temporal solo para el texto (con padding para evitar cortes)
+        txt_img = Image.new('RGBA', (text_w + 40, text_h + 40), (255, 255, 255, 0))
         txt_draw = ImageDraw.Draw(txt_img)
         
-        # Opacidad altísima (140) para que sea imposible de borrar
-        txt_draw.text((60, 60), texto, font=font, fill=(255, 255, 255, 140))
+        # Dibujar con opacidad alta (140)
+        txt_draw.text((20, 20), texto, font=font, fill=(255, 255, 255, 140))
 
         # Rotar el bloque de texto 35 grados
         txt_rotated = txt_img.rotate(35, expand=True, resample=Image.BICUBIC)
         rw, rh = txt_rotated.size
 
-        # 3. Calcular las 5 posiciones (como un dado) adaptables a la foto
-        W, H = base.size
-        mx = int(W * 0.02) # Margen dinámico X
-        my = int(H * 0.02) # Margen dinámico Y
+        # 3. Anclar los centros (Los 5 puntos de un dado)
+        # Usamos el 22% del tamaño de la foto para ubicar las esquinas
+        mx = int(W * 0.22)
+        my = int(H * 0.22)
         
-        posiciones = [
-            (W//2 - rw//2, H//2 - rh//2),          # Centro exacto
-            (mx, my),                              # Arriba Izquierda
-            (W - rw - mx, my),                     # Arriba Derecha
-            (mx, H - rh - my),                     # Abajo Izquierda
-            (W - rw - mx, H - rh - my)             # Abajo Derecha
+        centros = [
+            (W//2, H//2),            # Centro exacto
+            (mx, my),                # Arriba Izquierda
+            (W - mx, my),            # Arriba Derecha
+            (mx, H - my),            # Abajo Izquierda
+            (W - mx, H - my)         # Abajo Derecha
         ]
 
-        # Pegar las 5 marcas de agua respetando la transparencia
-        for pos in posiciones:
-            overlay.paste(txt_rotated, (int(pos[0]), int(pos[1])), txt_rotated)
+        # Pegar centrando la imagen rotada en cada coordenada
+        for cx, cy in centros:
+            px = int(cx - (rw / 2))
+            py = int(cy - (rh / 2))
+            overlay.paste(txt_rotated, (px, py), txt_rotated)
 
         # Fusionar y guardar
         Image.alpha_composite(base, overlay).convert('RGB').save(
