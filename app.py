@@ -229,7 +229,7 @@ def detectar_rostros(ruta_imagen, foto_id, evento_id):
     except Exception as e:
         print(f'⚠ Error IA foto #{foto_id}: {e}')
 
-# ── MARCA DE AGUA (ADAPTATIVA: 5 POSICIONES PERFECTAS) ────────────────────────
+# ── MARCA DE AGUA (3 LÍNEAS DIAGONALES: ARRIBA, MEDIO Y ABAJO) ────────────────
 def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
     try:
         base = Image.open(ruta_entrada).convert('RGBA')
@@ -257,15 +257,7 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
         dummy_draw = ImageDraw.Draw(Image.new('RGBA', (1,1)))
         
-        # 1. Medir texto corto (para las esquinas)
-        try:
-            b = dummy_draw.textbbox((0, 0), texto, font=font)
-            tw, th = b[2] - b[0], b[3] - b[1]
-        except AttributeError: 
-            tw, th = dummy_draw.textsize(texto, font=font)
-
-        # 2. Crear texto largo (para que cruce todo el centro de la foto)
-        # Separamos las palabras para que respiren a lo largo de la diagonal
+        # Crear texto largo para que cruce toda la foto en diagonal
         texto_largo = f"{texto}        {texto}        {texto}        {texto}        {texto}"
         try:
             bl = dummy_draw.textbbox((0, 0), texto_largo, font=font)
@@ -273,47 +265,34 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
         except AttributeError:
             tlw, tlh = dummy_draw.textsize(texto_largo, font=font)
 
-        # COLOR CASI SÓLIDO (230/255) y sombra negra (160/255) para legibilidad extrema
+        # Color sólido y sombra negra para legibilidad extrema
         color_texto  = (255, 255, 255, 230)
         color_sombra = (0, 0, 0, 160)
 
-        def crear_texto_rotado(txt, w, h):
-            # Padding generoso para que no se corte al rotar
-            img = Image.new('RGBA', (w + 200, h + 200), (255, 255, 255, 0))
-            d = ImageDraw.Draw(img)
-            # Dibujar sombra desplazada 3 pixeles
-            d.text((103, 103), txt, font=font, fill=color_sombra)
-            # Dibujar texto blanco encima
-            d.text((100, 100), txt, font=font, fill=color_texto)
-            return img.rotate(35, expand=True, resample=Image.BICUBIC)
-
-        txt_esquina = crear_texto_rotado(texto, tw, th)
-        txt_centro  = crear_texto_rotado(texto_largo, tlw, tlh)
-
-        re_w, re_h = txt_esquina.size
-        rc_w, rc_h = txt_centro.size
-
-        # --- PEGAR LAS 4 ESQUINAS ---
-        mx, my = int(W * 0.22), int(H * 0.22)
-        esquinas = [(mx, my), (W - mx, my), (mx, H - my), (W - mx, H - my)]
-        for cx, cy in esquinas:
-            px = int(cx - (re_w / 2))
-            py = int(cy - (re_h / 2))
-            overlay.paste(txt_esquina, (px, py), txt_esquina)
-
-        # --- PEGAR LA BANDA CENTRAL ---
-        px_c = int(W//2 - rc_w//2)
-        py_c = int(H//2 - rc_h//2)
+        # Padding generoso para que no se ampute al rotar
+        img = Image.new('RGBA', (tlw + 200, tlh + 200), (255, 255, 255, 0))
+        d = ImageDraw.Draw(img)
+        d.text((103, 103), texto_largo, font=font, fill=color_sombra) # Sombra
+        d.text((100, 100), texto_largo, font=font, fill=color_texto)  # Texto
         
-        # Distancia visual de ~1cm (dinámica según la foto)
-        separacion = int(fontsize * 1.6) 
+        # Rotar a 35 grados
+        txt_rotated = img.rotate(35, expand=True, resample=Image.BICUBIC)
+        rc_w, rc_h = txt_rotated.size
+
+        # --- PEGAR LAS 3 LÍNEAS ---
+        # Centramos el texto horizontalmente
+        px = int(W//2 - rc_w//2)
         
-        # Línea central exacta
-        overlay.paste(txt_centro, (px_c, py_c), txt_centro)
-        # Línea paralela superior
-        overlay.paste(txt_centro, (px_c, py_c - separacion), txt_centro)
-        # Línea paralela inferior
-        overlay.paste(txt_centro, (px_c, py_c + separacion), txt_centro)
+        # Distribuimos verticalmente al 25% (Arriba), 50% (Medio) y 75% (Abajo)
+        posiciones_y = [
+            int(H * 0.25),
+            int(H * 0.50),
+            int(H * 0.75)
+        ]
+
+        for cy in posiciones_y:
+            py = int(cy - rc_h//2)
+            overlay.paste(txt_rotated, (px, py), txt_rotated)
 
         # Fusionar y guardar
         Image.alpha_composite(base, overlay).convert('RGB').save(
