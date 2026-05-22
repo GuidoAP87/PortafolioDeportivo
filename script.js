@@ -13,12 +13,12 @@ document.addEventListener('contextmenu', e => {
 // ⚠ 2. Bloqueo de tecla Imprimir Pantalla
 document.addEventListener('keyup', (e) => {
     if (e.key === 'PrintScreen') {
-        navigator.clipboard.writeText(''); // Vacía el portapapeles
+        navigator.clipboard.writeText(''); 
         toast('Captura de pantalla no permitida', 'error', 3000);
     }
 });
 
-// ⚠ 3. Difuminar fotos si abren herramienta de recorte o cambian de pestaña
+// ⚠ 3. Difuminar fotos al perder foco (anti-recortes)
 document.addEventListener('visibilitychange', () => {
     const grid = document.querySelector('.photos-grid');
     const lb   = document.querySelector('.lb-img');
@@ -32,8 +32,18 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ⚠ CONFIGURACIÓN
-const WA_NUMBER   = '5493510000000';   // Tu número real de WhatsApp
-const PRECIO_BASE = 3500;              // Precio base por foto en ARS
+const WA_NUMBER   = '5493510000000';   
+const PRECIO_BASE = 3000; // Solo de referencia para subir fotos             
+
+// ─── LÓGICA DE PRECIOS POR VOLUMEN ───────────────────────────────────────────
+function getPrecioUnitario(cantidad) {
+    if (cantidad === 1) return 3000;
+    if (cantidad === 2) return 2700;
+    if (cantidad === 3) return 2500;
+    if (cantidad === 4) return 2300;
+    if (cantidad >= 5)  return 2000; // <-- Cambiar a 5000 acá si realmente era el valor deseado
+    return 3000;
+}
 
 // ─── ESTADO ───────────────────────────────────────────────────────────────────
 let eventosData     = [];
@@ -80,7 +90,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     setTimeout(() => document.getElementById('loading-screen')?.classList.add('hidden'), 1300);
 });
 
-// ─── TOAST NOTIFICATIONS ──────────────────────────────────────────────────────
 function toast(msg, type = 'info', duration = 3000) {
     const container = document.getElementById('toast-container');
     if (!container) return;
@@ -95,7 +104,6 @@ function toast(msg, type = 'info', duration = 3000) {
     }, duration);
 }
 
-// ─── ADMIN TRIGGERS ───────────────────────────────────────────────────────────
 function initAdminTriggers() {
     document.getElementById('admin-trigger')?.addEventListener('click', () => {
         adminClicks++;
@@ -108,7 +116,6 @@ function initAdminTriggers() {
     });
 }
 
-// ─── SESIÓN ───────────────────────────────────────────────────────────────────
 async function verificarSesion() {
     try {
         const d = await (await fetch('/check-auth', { credentials: 'include' })).json();
@@ -124,7 +131,6 @@ function toggleAdminUI(admin) {
     });
 }
 
-// ─── NAVBAR & SCROLL ───────────────────────────────────────────────────────────
 function initNavScroll() {
     window.addEventListener('scroll', () => {
         document.getElementById('navbar')?.classList.toggle('scrolled', window.scrollY > 80);
@@ -186,7 +192,6 @@ function initBackToTop() {
     btn.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
 }
 
-// ─── EVENTOS ─────────────────────────────────────────────────────────────────
 async function cargarEventos() {
     const grid = document.getElementById('gallery-grid');
     if (!grid) return;
@@ -245,7 +250,6 @@ function configurarFiltros() {
     });
 }
 
-// ─── ABRIR EVENTO ─────────────────────────────────────────────────────────────
 function abrirEvento(eventoId) {
     const ev = eventosData.find(e => e.id === eventoId);
     if (!ev) return;
@@ -315,13 +319,14 @@ function renderVistaEvento(ev) {
         ? fotos.map((f, idx) => {
             const sel = carrito.has(f.id);
             return `
-            <div class="photo-item${sel?' selected':''}" id="photo-${f.id}" onclick="abrirLightbox(${idx})">
-                <img src="${f.url_preview}" alt="Foto deportiva" loading="lazy" title="Clic para ampliar">
+            <div class="photo-item${sel?' selected':''}" id="photo-${f.id}">
+                <img src="${f.url_preview}" alt="Foto deportiva" loading="lazy"
+                     onclick="abrirLightbox(${idx})"
+                     title="Clic para ampliar">
                 <div class="photo-item-overlay">
                     <div class="photo-select-icon" onclick="event.stopPropagation(); toggleFoto(${f.id})" title="Agregar/quitar del carrito">
                         <i class="fa-solid ${sel?'fa-check':'fa-cart-shopping'}"></i>
                     </div>
-                    <div class="photo-price">$${Number(f.precio).toLocaleString('es-AR')} ARS</div>
                 </div>
                 <div class="photo-check-badge"><i class="fa-solid fa-check"></i></div>
                 ${isAdmin ? `
@@ -353,7 +358,10 @@ function renderVistaEvento(ev) {
                     </div>` : ''}
                 </div>
                 <div class="price-info">
-                    <div class="price-badge">$${PRECIO_BASE.toLocaleString('es-AR')} <span>ARS / foto</span></div>
+                    <div class="price-badge" style="font-size:20px; color:var(--gold);">Promos en Carrito</div>
+                    <div style="font-size:11px; color:var(--text-dim); margin-top:4px; text-align:right;">
+                        1x $3.000 | 2x $2.700 c/u | +3 desde $2.500 c/u
+                    </div>
                 </div>
             </div>
             <div class="selection-info">
@@ -361,7 +369,7 @@ function renderVistaEvento(ev) {
                 <span>
                     <strong>Clic en la foto</strong> para ampliarla · 
                     <strong>Clic en el carrito</strong> <i class="fa-solid fa-cart-plus" style="margin:0 2px"></i> para seleccionarla · 
-                    Podés elegir varias y comprar juntas
+                    Podés elegir varias y aprovechar el descuento por cantidad
                 </span>
             </div>
         </div>
@@ -401,7 +409,6 @@ function initDragDrop(eventoId) {
     });
 }
 
-// ─── PERSISTENCIA CARRITO ──────────────────────────────────────────────────────
 function guardarCarrito() {
     localStorage.setItem('nl_carrito', JSON.stringify([...carrito.entries()]));
 }
@@ -413,13 +420,12 @@ function cargarCarrito() {
             carrito = new Map(JSON.parse(guardado));
             actualizarCarritoBar();
         } catch (e) {
-            console.error('Error al cargar carrito de localStorage', e);
+            console.error('Error al cargar carrito', e);
             carrito = new Map();
         }
     }
 }
 
-// ─── SELECCIÓN DE FOTOS ────────────────────────────────────────────────────────
 function toggleFoto(fotoId) {
     if (!eventoActual) return;
     const foto = eventoActual.fotos.find(f => f.id === fotoId);
@@ -456,14 +462,16 @@ function limpiarCarrito() {
         if (icon) icon.className = 'fa-solid fa-cart-shopping';
     });
     actualizarCarritoBar();
-    guardarCarrito();
+    guardarCarrito(); 
     toast('Selección vaciada', 'info', 1800);
 }
 
 function actualizarCarritoBar() {
     const count = carrito.size;
-    const total = [...carrito.values()].reduce((s, {foto}) => s + foto.precio, 0);
-    const bar   = document.getElementById('cart-bar');
+    const unitario = count > 0 ? getPrecioUnitario(count) : 0;
+    const total = count * unitario;
+    
+    const bar = document.getElementById('cart-bar');
     if (!bar) return;
     document.getElementById('cart-count').textContent = count;
     document.getElementById('cart-total').textContent = `$${total.toLocaleString('es-AR')} ARS`;
@@ -474,7 +482,6 @@ function actualizarCarritoBar() {
     }
 }
 
-// ─── LIGHTBOX ────────────────────────────────────────────────────────────────
 function abrirLightbox(idx) {
     lbIdx = idx;
     const lb = document.getElementById('lightbox');
@@ -530,7 +537,6 @@ function initLightboxKB() {
     });
 }
 
-// ─── FACE FILTER ─────────────────────────────────────────────────────────────
 async function cargarPersonas(eventoId) {
     const wrap = document.getElementById('faces-panel-wrap');
     if (!wrap) return;
@@ -706,7 +712,6 @@ async function reprocesarIA() {
     }
 }
 
-// ─── ADMIN CREAR/EDITAR/SUBIR ────────────────────────────────────────────────
 async function crearEvento() {
     const { value: vals } = await Swal.fire({
         title: 'Nuevo Evento',
@@ -894,7 +899,7 @@ async function borrarFoto(id) {
         if (carrito.has(id)) { 
             carrito.delete(id); 
             actualizarCarritoBar(); 
-            guardarCarrito();
+            guardarCarrito(); 
         }
         if (eventoActual) {
             eventoActual.fotos = eventoActual.fotos.filter(f => f.id !== id);
@@ -904,11 +909,15 @@ async function borrarFoto(id) {
     }
 }
 
-// ─── CHECKOUT Y PAGOS ────────────────────────────────────────────────────────
 function abrirCheckout() {
     if (!carrito.size) return;
+    
+    // Acá aplicamos el precio dinámico al momento de abrir el modal de pago
+    const count = carrito.size;
+    const unitario = getPrecioUnitario(count);
+    const total = count * unitario;
+    
     const items = [...carrito.values()];
-    const total = items.reduce((s,{foto}) => s + foto.precio, 0);
 
     document.getElementById('checkout-resumen').innerHTML = items.map(({foto,evento}) => `
         <div class="checkout-summary-row">
@@ -916,7 +925,7 @@ function abrirCheckout() {
                 <div style="color:var(--text);font-size:13px">${evento.titulo}</div>
                 <div style="color:var(--text-dim);font-size:11px;margin-top:2px">Foto #${foto.id} · Alta resolución</div>
             </div>
-            <div class="row-price">$${Number(foto.precio).toLocaleString('es-AR')}</div>
+            <div class="row-price">$${unitario.toLocaleString('es-AR')}</div>
         </div>`).join('');
 
     document.getElementById('checkout-total-amount').textContent = `$${total.toLocaleString('es-AR')} ARS`;
@@ -966,9 +975,11 @@ async function procesarPago() {
 
         if (data.error === 'mp_no_configurado' || res.status === 503) {
             cerrarCheckout();
-            const total = [...carrito.values()].reduce((s,{foto}) => s+foto.precio, 0);
+            const count = carrito.size;
+            const unitario = getPrecioUnitario(count);
+            const total = count * unitario;
             const msg   = encodeURIComponent(
-                `Hola Nacho! Quiero comprar ${foto_ids.length} foto${foto_ids.length>1?'s':''}.\n` +
+                `Hola Nacho! Quiero comprar ${count} foto${count>1?'s':''}.\n` +
                 `Total: $${total.toLocaleString('es-AR')} ARS\n` +
                 `Email para recibir las fotos: ${email}\n` +
                 `¿Cómo te puedo pagar?`
@@ -1000,7 +1011,9 @@ function coordinarWA() {
     const nombre = document.getElementById('co-nombre')?.value.trim() || '';
     const email  = document.getElementById('co-email')?.value.trim() || '';
     const count  = carrito.size;
-    const total  = [...carrito.values()].reduce((s,{foto}) => s+foto.precio, 0);
+    const unitario = getPrecioUnitario(count);
+    const total  = count * unitario;
+    
     const msg    = encodeURIComponent(
         `Hola Nacho! Quiero comprar ${count} foto${count>1?'s':''}.\n` +
         `Total: $${total.toLocaleString('es-AR')} ARS\n` +
@@ -1011,7 +1024,6 @@ function coordinarWA() {
     window.open(`https://wa.me/${WA_NUMBER}?text=${msg}`, '_blank');
 }
 
-// ─── LOGIN & ADMIN UI ────────────────────────────────────────────────────────
 function abrirLoginModal() {
     const m = document.getElementById('login-modal');
     m.style.display = 'flex';

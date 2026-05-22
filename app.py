@@ -99,7 +99,7 @@ class Foto(db.Model):
     id           = db.Column(db.Integer, primary_key=True)
     url_preview  = db.Column(db.String(500), nullable=False)
     url_original = db.Column(db.String(500), nullable=False)
-    precio       = db.Column(db.Float, default=3500.0)
+    precio       = db.Column(db.Float, default=3000.0)
     evento_id    = db.Column(db.Integer, db.ForeignKey('evento.id'), nullable=False)
     subida_en    = db.Column(db.DateTime, server_default=db.func.now())
     rostros      = db.relationship('RostroDetectado', backref='foto', lazy=True, cascade='all, delete-orphan')
@@ -229,22 +229,19 @@ def detectar_rostros(ruta_imagen, foto_id, evento_id):
     except Exception as e:
         print(f'⚠ Error IA foto #{foto_id}: {e}')
 
-# ── MARCA DE AGUA (CON RUIDO VISUAL ANTI-IA) ──────────────────────────────────
+# ── MARCA DE AGUA ─────────────────────────────────────────────────────────────
 def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
     try:
         base = Image.open(ruta_entrada).convert('RGBA')
         overlay = Image.new('RGBA', base.size, (255, 255, 255, 0))
         W, H = base.size
         
-        # 1. RUIDO VISUAL (Líneas finas para arruinar limpieza con Inteligencia Artificial)
         espaciado = int(min(W, H) / 25)
         overlay_draw = ImageDraw.Draw(overlay)
         for i in range(-max(W,H), max(W,H)*2, espaciado):
-            # Líneas en diagonal (transparencia baja)
             overlay_draw.line([(i, 0), (i + H, H)], fill=(255, 255, 255, 22), width=2)
             overlay_draw.line([(i, H), (i + H, 0)], fill=(255, 255, 255, 22), width=2)
 
-        # 2. MARCAS DE TEXTO GIGANTE (Las 5 filas sólidas)
         fontsize = int(min(W, H) / 10) 
         
         font = None
@@ -290,7 +287,6 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
             py = int(cy - rc_h//2)
             overlay.paste(txt_rotated, (px, py), txt_rotated)
 
-        # Fusionar y guardar
         Image.alpha_composite(base, overlay).convert('RGB').save(
             ruta_salida, 'JPEG', quality=82
         )
@@ -443,7 +439,7 @@ def subir_foto():
 
     archivo   = request.files['foto']
     evento_id = request.form.get('evento_id')
-    precio    = float(request.form.get('precio', 3500))
+    precio    = float(request.form.get('precio', 3000))
     filename  = f"{evento_id}_{archivo.filename}"
 
     ruta_orig    = os.path.join(CARPETA_TEMP, 'orig_'    + filename)
@@ -553,7 +549,7 @@ def reprocesar_rostros(evento_id):
     threading.Thread(target=procesar_batch, daemon=True).start()
     return jsonify({'ok': True, 'mensaje': f'Reprocesando {len(fotos)} fotos en background'})
 
-# ── COMPRAS ───────────────────────────────────────────────────────────────────
+# ── COMPRAS Y LÓGICA DE PRECIOS POR VOLUMEN ───────────────────────────────────
 @app.route('/crear-orden', methods=['POST'])
 def crear_orden():
     d        = request.json
@@ -565,7 +561,20 @@ def crear_orden():
     fotos = Foto.query.filter(Foto.id.in_(foto_ids)).all()
     if not fotos: return jsonify({'error': 'Fotos no encontradas'}), 404
 
-    total    = sum(f.precio for f in fotos)
+    # ⚠ APLICACIÓN DE LA ESCALA DE DESCUENTOS EN EL BACKEND
+    cantidad = len(fotos)
+    if cantidad == 1:
+        precio_unit = 3000
+    elif cantidad == 2:
+        precio_unit = 2700
+    elif cantidad == 3:
+        precio_unit = 2500
+    elif cantidad == 4:
+        precio_unit = 2300
+    else: # 5 o más
+        precio_unit = 2000 # <-- Cambiar a 5000 acá si realmente era el valor deseado
+        
+    total = precio_unit * cantidad
     base_url = request.host_url.rstrip('/')
 
     compra = Compra(email_cliente=email, nombre_cliente=nombre, foto_ids=json.dumps([f.id for f in fotos]), monto_total=total, estado='pendiente')
@@ -574,7 +583,7 @@ def crear_orden():
     if not MP_HABILITADO: return jsonify({'error': 'mp_no_configurado', 'compra_id': compra.id, 'total': total}), 503
 
     result = MP_SDK.preference().create({
-        'items': [{'title': f'Nacho Lingua — Foto #{f.id}', 'description': f.evento.titulo if f.evento else 'Foto deportiva', 'quantity': 1, 'unit_price': f.precio, 'currency_id': 'ARS'} for f in fotos],
+        'items': [{'title': f'Nacho Lingua — Foto #{f.id}', 'description': f.evento.titulo if f.evento else 'Foto deportiva', 'quantity': 1, 'unit_price': float(precio_unit), 'currency_id': 'ARS'} for f in fotos],
         'payer': {'email': email, 'name': nombre},
         'back_urls': {'success': f'{base_url}/pago-exitoso?cid={compra.id}', 'failure': f'{base_url}/pago-fallido?cid={compra.id}', 'pending': f'{base_url}/pago-exitoso?cid={compra.id}'},
         'auto_return': 'approved',
