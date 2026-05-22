@@ -269,8 +269,10 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
         except AttributeError:
             tlw, tlh = dummy_draw.textsize(texto_largo, font=font)
 
-        color_texto  = (255, 255, 255, 230)
-        color_sombra = (0, 0, 0, 160)
+        # 👇 ACÁ MODIFICAMOS LA TRANSPARENCIA (Canal Alpha)
+        # Bajamos de 230 a 110 para el texto, y de 160 a 70 para la sombra
+        color_texto  = (255, 255, 255, 110)
+        color_sombra = (0, 0, 0, 70)
 
         img = Image.new('RGBA', (tlw + 200, tlh + 200), (255, 255, 255, 0))
         d = ImageDraw.Draw(img)
