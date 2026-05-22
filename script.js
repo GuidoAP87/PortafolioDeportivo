@@ -319,9 +319,8 @@ function renderVistaEvento(ev) {
         ? fotos.map((f, idx) => {
             const sel = carrito.has(f.id);
             return `
-            <div class="photo-item${sel?' selected':''}" id="photo-${f.id}">
+            <div class="photo-item${sel?' selected':''}" id="photo-${f.id}" onclick="abrirLightbox(${idx})" style="cursor: pointer;">
                 <img src="${f.url_preview}" alt="Foto deportiva" loading="lazy"
-                     onclick="abrirLightbox(${idx})"
                      title="Clic para ampliar">
                 <div class="photo-item-overlay">
                     <div class="photo-select-icon" onclick="event.stopPropagation(); toggleFoto(${f.id})" title="Agregar/quitar del carrito">
