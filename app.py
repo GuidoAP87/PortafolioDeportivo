@@ -230,6 +230,7 @@ def detectar_rostros(ruta_imagen, foto_id, evento_id):
         print(f'⚠ Error IA foto #{foto_id}: {e}')
 
 # ── MARCA DE AGUA (3 LÍNEAS DIAGONALES: ARRIBA, MEDIO Y ABAJO) ────────────────
+# ── MARCA DE AGUA (5 LÍNEAS DIAGONALES) ───────────────────────────────────────
 def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
     try:
         base = Image.open(ruta_entrada).convert('RGBA')
@@ -279,15 +280,17 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
         txt_rotated = img.rotate(35, expand=True, resample=Image.BICUBIC)
         rc_w, rc_h = txt_rotated.size
 
-        # --- PEGAR LAS 3 LÍNEAS ---
+        # --- PEGAR LAS 5 LÍNEAS ---
         # Centramos el texto horizontalmente
         px = int(W//2 - rc_w//2)
         
-        # Distribuimos verticalmente al 25% (Arriba), 50% (Medio) y 75% (Abajo)
+        # Distribuimos verticalmente en 5 filas (10%, 30%, 50%, 70%, 90%)
         posiciones_y = [
-            int(H * 0.25),
+            int(H * 0.10),
+            int(H * 0.30),
             int(H * 0.50),
-            int(H * 0.75)
+            int(H * 0.70),
+            int(H * 0.90)
         ]
 
         for cy in posiciones_y:
