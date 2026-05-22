@@ -2,22 +2,43 @@
    NACHO LINGUA FOTOGRAFÍA — SPORTS PHOTO MARKETPLACE 2026
    ═══════════════════════════════════════════════════════════════ */
 
-// ⚠ Bloqueo de descarga por clic derecho
+// ⚠ 1. Bloqueo de descarga por clic derecho
 document.addEventListener('contextmenu', e => {
     if (e.target.tagName === 'IMG' || e.target.closest('.photo-item')) {
         e.preventDefault();
-        toast('La descarga está protegida', 'info', 1500);
+        toast('La descarga está protegida por derechos de autor', 'info', 2000);
     }
 });
 
-// ⚠ CONFIGURACIÓN — cambiar antes de publicar
+// ⚠ 2. Bloqueo de tecla Imprimir Pantalla
+document.addEventListener('keyup', (e) => {
+    if (e.key === 'PrintScreen') {
+        navigator.clipboard.writeText(''); // Vacía el portapapeles
+        toast('Captura de pantalla no permitida', 'error', 3000);
+    }
+});
+
+// ⚠ 3. Difuminar fotos si abren herramienta de recorte o cambian de pestaña
+document.addEventListener('visibilitychange', () => {
+    const grid = document.querySelector('.photos-grid');
+    const lb   = document.querySelector('.lb-img');
+    if (document.hidden) {
+        if (grid) grid.style.filter = 'blur(20px)';
+        if (lb)   lb.style.filter   = 'blur(20px)';
+    } else {
+        if (grid) grid.style.filter = 'none';
+        if (lb)   lb.style.filter   = 'none';
+    }
+});
+
+// ⚠ CONFIGURACIÓN
 const WA_NUMBER   = '5493510000000';   // Tu número real de WhatsApp
 const PRECIO_BASE = 3500;              // Precio base por foto en ARS
 
 // ─── ESTADO ───────────────────────────────────────────────────────────────────
 let eventosData     = [];
 let eventoActual    = null;
-let carrito         = new Map();   // fotoId → { foto, evento }
+let carrito         = new Map();
 let isAdmin         = false;
 let lbFotos         = [];
 let lbIdx           = 0;
@@ -241,7 +262,6 @@ function abrirEvento(eventoId) {
     view.innerHTML     = renderVistaEvento(ev);
 
     initDragDrop(ev.id);
-
     if (ev.fotos?.length > 0) cargarPersonas(ev.id);
 
     const offset = document.getElementById('event-view').offsetTop - 68;

@@ -229,15 +229,22 @@ def detectar_rostros(ruta_imagen, foto_id, evento_id):
     except Exception as e:
         print(f'⚠ Error IA foto #{foto_id}: {e}')
 
-# ── MARCA DE AGUA (3 LÍNEAS DIAGONALES: ARRIBA, MEDIO Y ABAJO) ────────────────
-# ── MARCA DE AGUA (5 LÍNEAS DIAGONALES) ───────────────────────────────────────
+# ── MARCA DE AGUA (CON RUIDO VISUAL ANTI-IA) ──────────────────────────────────
 def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
     try:
         base = Image.open(ruta_entrada).convert('RGBA')
         overlay = Image.new('RGBA', base.size, (255, 255, 255, 0))
         W, H = base.size
         
-        # Tamaño de fuente adaptativo
+        # 1. RUIDO VISUAL (Líneas finas para arruinar limpieza con Inteligencia Artificial)
+        espaciado = int(min(W, H) / 25)
+        overlay_draw = ImageDraw.Draw(overlay)
+        for i in range(-max(W,H), max(W,H)*2, espaciado):
+            # Líneas en diagonal (transparencia baja)
+            overlay_draw.line([(i, 0), (i + H, H)], fill=(255, 255, 255, 22), width=2)
+            overlay_draw.line([(i, H), (i + H, 0)], fill=(255, 255, 255, 22), width=2)
+
+        # 2. MARCAS DE TEXTO GIGANTE (Las 5 filas sólidas)
         fontsize = int(min(W, H) / 10) 
         
         font = None
@@ -258,7 +265,6 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
         dummy_draw = ImageDraw.Draw(Image.new('RGBA', (1,1)))
         
-        # Crear texto largo para que cruce toda la foto en diagonal
         texto_largo = f"{texto}        {texto}        {texto}        {texto}        {texto}"
         try:
             bl = dummy_draw.textbbox((0, 0), texto_largo, font=font)
@@ -266,32 +272,19 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
         except AttributeError:
             tlw, tlh = dummy_draw.textsize(texto_largo, font=font)
 
-        # Color sólido y sombra negra para legibilidad extrema
         color_texto  = (255, 255, 255, 230)
         color_sombra = (0, 0, 0, 160)
 
-        # Padding generoso para que no se ampute al rotar
         img = Image.new('RGBA', (tlw + 200, tlh + 200), (255, 255, 255, 0))
         d = ImageDraw.Draw(img)
-        d.text((103, 103), texto_largo, font=font, fill=color_sombra) # Sombra
-        d.text((100, 100), texto_largo, font=font, fill=color_texto)  # Texto
+        d.text((103, 103), texto_largo, font=font, fill=color_sombra) 
+        d.text((100, 100), texto_largo, font=font, fill=color_texto)  
         
-        # Rotar a 35 grados
         txt_rotated = img.rotate(35, expand=True, resample=Image.BICUBIC)
         rc_w, rc_h = txt_rotated.size
 
-        # --- PEGAR LAS 5 LÍNEAS ---
-        # Centramos el texto horizontalmente
         px = int(W//2 - rc_w//2)
-        
-        # Distribuimos verticalmente en 5 filas (10%, 30%, 50%, 70%, 90%)
-        posiciones_y = [
-            int(H * 0.10),
-            int(H * 0.30),
-            int(H * 0.50),
-            int(H * 0.70),
-            int(H * 0.90)
-        ]
+        posiciones_y = [int(H * 0.10), int(H * 0.30), int(H * 0.50), int(H * 0.70), int(H * 0.90)]
 
         for cy in posiciones_y:
             py = int(cy - rc_h//2)
