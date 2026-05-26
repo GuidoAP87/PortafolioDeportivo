@@ -73,6 +73,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-admin-panel')?.addEventListener('click', abrirAdminPanel);
     document.getElementById('btn-add-evento')?.addEventListener('click', crearEvento);
     document.getElementById('btn-logout')?.addEventListener('click', logout);
+    
+    // BOTÓN NUEVO: Menú de Álbumes
+    document.getElementById('btn-albums-menu')?.addEventListener('click', abrirMenuAlbumes);
 
     ['checkout-modal','admin-modal','login-modal'].forEach(id => {
         document.getElementById(id)?.addEventListener('click', e => {
@@ -1426,4 +1429,77 @@ async function logout() {
     await fetch('/logout', { method:'POST', credentials:'include' });
     isAdmin = false; toggleAdminUI(false); cerrarAdminPanel();
     toast('Sesión cerrada', 'info');
+}
+
+// ─── MENÚ LATERAL DE ÁLBUMES ──────────────────────────────────────────────────
+function abrirMenuAlbumes() {
+    renderizarMenuAlbumes();
+    document.getElementById('albums-sidebar-overlay').classList.add('open');
+    document.getElementById('albums-sidebar').classList.add('open');
+    document.body.style.overflow = 'hidden';
+    document.getElementById('sidebar-search-input').value = ''; // Limpia el buscador al abrir
+}
+
+function cerrarMenuAlbumes() {
+    document.getElementById('albums-sidebar-overlay').classList.remove('open');
+    document.getElementById('albums-sidebar').classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+function renderizarMenuAlbumes(filtro = '') {
+    const container = document.getElementById('sidebar-albums-list');
+    if (!container) return;
+
+    const termino = filtro.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
+    let html = '';
+
+    eventosData.forEach(ev => {
+        // Busca coincidencias en el título del evento raíz o su deporte
+        const matchRoot = ev.titulo.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(termino) ||
+                          ev.deporte.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(termino);
+
+        // Busca coincidencias dentro de las subcarpetas de este evento
+        const subsMatches = (ev.subcarpetas || []).filter(sub =>
+            sub.titulo.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(termino)
+        );
+
+        if (matchRoot || subsMatches.length > 0) {
+            html += `
+            <div class="sidebar-item" onclick="seleccionarAlbumDesdeMenu(${ev.id})">
+                <div class="sidebar-item-title">${ev.titulo}</div>
+                <div class="sidebar-item-meta">
+                    <span class="sidebar-item-sport">${ev.deporte}</span>
+                    <span>${ev.fecha || ''}</span>
+                    <span style="margin-left:auto;font-size:13px"><i class="fa-solid fa-folder${ev.total_subcarpetas > 0 ? '' : '-open'}"></i></span>
+                </div>
+            </div>`;
+
+            // Renderiza las subcarpetas indentadas
+            const subsToRender = termino ? subsMatches : (ev.subcarpetas || []);
+            subsToRender.forEach(sub => {
+                html += `
+                <div class="sidebar-subitem" onclick="seleccionarAlbumDesdeMenu(${sub.id})">
+                    <i class="fa-solid fa-turn-up" style="transform: rotate(90deg);"></i>
+                    ${sub.titulo}
+                    <span style="margin-left:auto;font-size:10px;color:var(--text-dim)">${sub.total_fotos||0} fotos</span>
+                </div>`;
+            });
+        }
+    });
+
+    if (!html) {
+        html = '<div style="padding: 32px 24px; text-align: center; color: var(--text-dim); font-size: 13px; font-style: italic;">No se encontraron álbumes con esa búsqueda.</div>';
+    }
+
+    container.innerHTML = html;
+}
+
+function filtrarMenuAlbumes() {
+    const input = document.getElementById('sidebar-search-input');
+    renderizarMenuAlbumes(input.value);
+}
+
+function seleccionarAlbumDesdeMenu(id) {
+    cerrarMenuAlbumes();
+    abrirEvento(id);
 }
