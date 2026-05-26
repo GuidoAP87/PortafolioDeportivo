@@ -90,9 +90,12 @@ class Evento(db.Model):
     deporte     = db.Column(db.String(50),  nullable=False)
     fecha       = db.Column(db.String(50))
     descripcion = db.Column(db.String(300))
+    parent_id   = db.Column(db.Integer, db.ForeignKey('evento.id'), nullable=True)
     creado_en   = db.Column(db.DateTime, server_default=db.func.now())
     fotos       = db.relationship('Foto', backref='evento', lazy=True, cascade='all, delete-orphan')
     personas    = db.relationship('PersonaCluster', backref='evento', lazy=True, cascade='all, delete-orphan')
+    subcarpetas = db.relationship('Evento', backref=db.backref('padre', remote_side='Evento.id'),
+                                  lazy=True, cascade='all, delete-orphan')
 
 class Foto(db.Model):
     __tablename__ = 'foto'
@@ -392,24 +395,49 @@ def index(): return send_from_directory('.', 'index.html')
 def foto_fondo(): return send_file('nacho_lingua.jpg')
 
 # ── EVENTOS ───────────────────────────────────────────────────────────────────
+def serializar_evento(e):
+    """Convierte un Evento a dict incluyendo sus subcarpetas de forma recursiva."""
+    return {
+        'id':          e.id,
+        'titulo':      e.titulo,
+        'deporte':     e.deporte,
+        'fecha':       e.fecha,
+        'descripcion': e.descripcion,
+        'parent_id':   e.parent_id,
+        'total_fotos': len(e.fotos),
+        'total_subcarpetas': len(e.subcarpetas),
+        'fotos': [{'id': f.id, 'url_preview': f.url_preview, 'precio': f.precio}
+                  for f in e.fotos],
+        'subcarpetas': [serializar_evento(s) for s in
+                        sorted(e.subcarpetas, key=lambda x: x.id)]
+    }
+
 @app.route('/crear-evento', methods=['POST'])
 def crear_evento():
     if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
-    d  = request.json
-    ev = Evento(titulo=d.get('titulo',''), deporte=d.get('deporte',''),
-                fecha=d.get('fecha',''), descripcion=d.get('descripcion',''))
+    d         = request.json
+    parent_id = d.get('parent_id') or None
+    # Si tiene padre, hereda el deporte del padre raíz
+    if parent_id:
+        padre = Evento.query.get(parent_id)
+        deporte = padre.deporte if padre else d.get('deporte', '')
+    else:
+        deporte = d.get('deporte', '')
+    ev = Evento(
+        titulo      = d.get('titulo', ''),
+        deporte     = deporte,
+        fecha       = d.get('fecha', ''),
+        descripcion = d.get('descripcion', ''),
+        parent_id   = parent_id
+    )
     db.session.add(ev); db.session.commit()
-    return jsonify({'id': ev.id, 'mensaje': 'Evento creado'})
+    return jsonify({'id': ev.id, 'mensaje': 'Carpeta creada'})
 
 @app.route('/obtener-eventos', methods=['GET'])
 def obtener_eventos():
-    eventos = Evento.query.order_by(Evento.id.desc()).all()
-    return jsonify([{
-        'id': e.id, 'titulo': e.titulo, 'deporte': e.deporte,
-        'fecha': e.fecha, 'descripcion': e.descripcion,
-        'total_fotos': len(e.fotos),
-        'fotos': [{'id': f.id, 'url_preview': f.url_preview, 'precio': f.precio} for f in e.fotos]
-    } for e in eventos])
+    # Solo devolver eventos raíz (sin padre) — las subcarpetas van dentro de cada uno
+    raices = Evento.query.filter_by(parent_id=None).order_by(Evento.id.desc()).all()
+    return jsonify([serializar_evento(e) for e in raices])
 
 @app.route('/editar-evento/<int:ev_id>', methods=['PATCH'])
 def editar_evento(ev_id):

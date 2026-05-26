@@ -1087,3 +1087,46 @@ footer { background: #000; padding: 52px 8% 32px; border-top: 1px solid var(--in
     .footer-inner { flex-direction: column; }
     .admin-stats-strip { grid-template-columns: repeat(2, 1fr); }
 }
+/* ─── SUBCARPETAS ────────────────────────────────────────────── */
+/* Grid de subcarpetas (igual que gallery-grid pero reutilizable dentro de event-view) */
+.subcarpetas-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+    gap: 2px;
+    padding: 0 8% 40px;
+}
+
+/* Card de carpeta que contiene subcarpetas — borde dorado sutil */
+.event-card-folder {
+    border: 1px solid rgba(212, 168, 67, 0.2);
+}
+
+.event-card-folder:hover {
+    border-color: rgba(212, 168, 67, 0.5);
+}
+
+/* Badge de carpeta en la esquina superior derecha */
+.event-card-folder-badge {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    background: rgba(212, 168, 67, 0.15);
+    border: 1px solid rgba(212, 168, 67, 0.35);
+    color: var(--gold);
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    backdrop-filter: blur(4px);
+}
+
+@media (max-width: 900px) {
+    .subcarpetas-grid { padding: 0 5% 32px; }
+}
+
+@media (max-width: 600px) {
+    .subcarpetas-grid { grid-template-columns: 1fr; }
+}
