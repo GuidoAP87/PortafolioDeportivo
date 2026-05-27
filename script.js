@@ -31,18 +31,29 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// ⚠ CONFIGURACIÓN
-const WA_NUMBER   = '5493510000000';   
-const PRECIO_BASE = 3000; // Solo de referencia para subir fotos             
+// ─── CONFIGURACIÓN (se carga desde el backend al iniciar) ────────────────────
+let WA_NUMBER    = '5493510000000'; // fallback hasta que llegue /api/config
+let PRECIO_BASE  = 3000;
+let _escalaPrecios = { 1:3000, 2:2700, 3:2500, 4:2300, 5:2000 };
+
+async function cargarConfig() {
+    try {
+        const cfg = await (await fetch('/api/config')).json();
+        if (cfg.wa_number)      WA_NUMBER      = cfg.wa_number;
+        if (cfg.escala_precios) _escalaPrecios = cfg.escala_precios;
+        PRECIO_BASE = _escalaPrecios[1] || 3000;
+        // Actualizar el botón de WhatsApp si ya está en el DOM
+        const wa = document.getElementById('whatsapp-btn');
+        if (wa) wa.href = `https://wa.me/${WA_NUMBER}`;
+    } catch (e) {
+        console.warn('No se pudo cargar /api/config, usando valores por defecto', e);
+    }
+}
 
 // ─── LÓGICA DE PRECIOS POR VOLUMEN ───────────────────────────────────────────
 function getPrecioUnitario(cantidad) {
-    if (cantidad === 1) return 3000;
-    if (cantidad === 2) return 2700;
-    if (cantidad === 3) return 2500;
-    if (cantidad === 4) return 2300;
-    if (cantidad >= 5)  return 2000; // <-- Cambiar a 5000 acá si realmente era el valor deseado
-    return 3000;
+    const clave = Math.min(cantidad, 5);
+    return _escalaPrecios[clave] ?? _escalaPrecios[1] ?? 3000;
 }
 
 // ─── ESTADO ───────────────────────────────────────────────────────────────────
@@ -60,7 +71,7 @@ let adminClickTimer = null;
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     cargarCarrito();
-    await Promise.all([verificarSesion(), cargarEventos()]);
+    await Promise.all([cargarConfig(), verificarSesion(), cargarEventos()]);
 
     initNavScroll();
     initReveal();
@@ -86,9 +97,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     });
-
-    const wa = document.getElementById('whatsapp-btn');
-    if (wa) wa.href = `https://wa.me/${WA_NUMBER}`;
 
     setTimeout(() => document.getElementById('loading-screen')?.classList.add('hidden'), 1300);
 });
@@ -1344,7 +1352,27 @@ async function cargarCompras() {
     try {
         const lista = await (await fetch('/admin/compras', { credentials:'include' })).json();
         if (!lista.length) { c.innerHTML = '<p class="admin-loading">Sin compras registradas.</p>'; return; }
-        c.innerHTML = lista.map(p => {
+
+        const totalAprobadas = lista.filter(p => p.estado === 'approved').length;
+        const totalIngresos  = lista.filter(p => p.estado === 'approved').reduce((s, p) => s + p.total, 0);
+
+        c.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
+            <div style="font-size:13px;color:var(--text-dim)">
+                <strong style="color:var(--gold)">${totalAprobadas}</strong> ventas aprobadas ·
+                <strong style="color:var(--gold)">$${Number(totalIngresos).toLocaleString('es-AR')}</strong> ARS
+            </div>
+            <a href="/admin/compras/exportar-csv" download
+               style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;
+                      background:transparent;border:1px solid var(--gold);color:var(--gold);
+                      font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
+                      text-decoration:none;cursor:pointer;transition:background 0.2s;"
+               onmouseover="this.style.background='rgba(198,168,124,0.1)'"
+               onmouseout="this.style.background='transparent'">
+                <i class="fa-solid fa-download"></i> Exportar CSV
+            </a>
+        </div>` +
+        lista.map(p => {
             const cls      = p.estado==='approved'?'badge-approved':p.estado==='rejected'?'badge-rejected':'badge-pendiente';
             const emailCls = p.email_enviado ? 'badge-approved' : 'badge-pendiente';
             return `

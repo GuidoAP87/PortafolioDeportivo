@@ -130,7 +130,49 @@ SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
 SMTP_USER = os.environ.get('SMTP_USER', '')
 SMTP_PASS = os.environ.get('SMTP_PASS', '')
 
-# ── DEEPFACE IA ───────────────────────────────────────────────────────────────
+# ── CONFIGURACIÓN DE NEGOCIO ──────────────────────────────────────────────────
+# Fuente única de verdad para precios y contacto.
+# El frontend los lee desde /api/config — NUNCA hardcodear en el JS.
+WA_NUMBER = os.environ.get('WA_NUMBER', '5493510000000')
+
+ESCALA_PRECIOS = {
+    1: int(os.environ.get('PRECIO_1', 3000)),
+    2: int(os.environ.get('PRECIO_2', 2700)),
+    3: int(os.environ.get('PRECIO_3', 2500)),
+    4: int(os.environ.get('PRECIO_4', 2300)),
+    5: int(os.environ.get('PRECIO_5', 2000)),   # 5 o más
+}
+
+def calcular_precio_unitario(cantidad: int) -> int:
+    """Devuelve el precio por foto según la cantidad en el carrito."""
+    return ESCALA_PRECIOS.get(min(cantidad, 5), ESCALA_PRECIOS[5])
+
+# ── TOKENS DE DESCARGA FIRMADOS ───────────────────────────────────────────────
+# Los links del email NO exponen la URL de Cloudinary directamente.
+# Se genera un token HMAC que ata foto_id + compra_id + timestamp.
+# El endpoint /descargar/<foto_id> lo valida antes de redirigir.
+DOWNLOAD_EXPIRY_DAYS = int(os.environ.get('DOWNLOAD_EXPIRY_DAYS', 365))
+
+def _generar_token_descarga(foto_id: int, compra_id: int) -> str:
+    import time
+    ts      = int(time.time())
+    payload = f"dl:{foto_id}:{compra_id}:{ts}"
+    firma   = hmac.new(app.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return f"{ts}.{firma}"
+
+def _verificar_token_descarga(foto_id: int, compra_id: int, token: str) -> bool:
+    import time
+    try:
+        ts_str, firma_recibida = token.split('.', 1)
+        ts = int(ts_str)
+    except (ValueError, AttributeError):
+        return False
+    # Verificar expiración
+    if time.time() - ts > DOWNLOAD_EXPIRY_DAYS * 86400:
+        return False
+    payload    = f"dl:{foto_id}:{compra_id}:{ts}"
+    firma_calc = hmac.new(app.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
+    return hmac.compare_digest(firma_calc, firma_recibida)
 try:
     from deepface import DeepFace
     import numpy as np
@@ -362,7 +404,9 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 def enviar_fotos_email(compra_id):
-    compra = Compra.query.get(compra_id)
+    # select_for_update: bloquea la fila en PostgreSQL para evitar doble envío
+    # ante la race condition entre /pago-exitoso y el webhook de MP.
+    compra = db.session.query(Compra).with_for_update().filter_by(id=compra_id).first()
     if not compra or compra.email_enviado: return False
     if not SMTP_USER or not SMTP_PASS: return False
 
@@ -370,11 +414,15 @@ def enviar_fotos_email(compra_id):
     fotos = Foto.query.filter(Foto.id.in_(ids)).all()
     if not fotos: return False
 
-    nombre = compra.nombre_cliente or compra.email_cliente.split('@')[0].capitalize()
+    nombre   = compra.nombre_cliente or compra.email_cliente.split('@')[0].capitalize()
+    base_url = os.environ.get('ALLOWED_ORIGIN', 'http://localhost:5000')
 
     filas = ''
     for i, f in enumerate(fotos, 1):
         titulo = f.evento.titulo if f.evento else 'Evento deportivo'
+        # URL de descarga firmada — no expone la URL de Cloudinary en el email
+        token        = _generar_token_descarga(f.id, compra.id)
+        url_descarga = f"{base_url}/descargar/{f.id}?compra={compra.id}&token={token}"
         filas += f"""
         <tr><td style="padding:14px 0;border-bottom:1px solid #1a1a1a;">
           <table width="100%" cellpadding="0" cellspacing="0"><tr>
@@ -388,7 +436,7 @@ def enviar_fotos_email(compra_id):
               <p style="margin:3px 0 0;font-size:11px;color:#555;">Foto #{f.id} · Alta resolución · Sin marca de agua</p>
             </td>
             <td style="text-align:right;padding-left:10px;white-space:nowrap;">
-              <a href="{f.url_original}"
+              <a href="{url_descarga}"
                  style="display:inline-block;padding:9px 18px;background:#D4A843;
                         color:#000;font-size:10px;font-weight:700;letter-spacing:2px;
                         text-decoration:none;text-transform:uppercase;">
@@ -651,21 +699,10 @@ def crear_orden():
     fotos = Foto.query.filter(Foto.id.in_(foto_ids)).all()
     if not fotos: return jsonify({'error': 'Fotos no encontradas'}), 404
 
-    # ⚠ APLICACIÓN DE LA ESCALA DE DESCUENTOS EN EL BACKEND
-    cantidad = len(fotos)
-    if cantidad == 1:
-        precio_unit = 3000
-    elif cantidad == 2:
-        precio_unit = 2700
-    elif cantidad == 3:
-        precio_unit = 2500
-    elif cantidad == 4:
-        precio_unit = 2300
-    else: # 5 o más
-        precio_unit = 2000 # <-- Cambiar a 5000 acá si realmente era el valor deseado
-        
-    total = precio_unit * cantidad
-    base_url = request.host_url.rstrip('/')
+    cantidad    = len(fotos)
+    precio_unit = calcular_precio_unitario(cantidad)
+    total       = precio_unit * cantidad
+    base_url    = request.host_url.rstrip('/')
 
     compra = Compra(email_cliente=email, nombre_cliente=nombre, foto_ids=json.dumps([f.id for f in fotos]), monto_total=total, estado='pendiente')
     db.session.add(compra); db.session.commit()
@@ -746,6 +783,50 @@ def pago_exitoso():
 def pago_fallido():
     return send_from_directory('.', 'pago-fallido.html')
 
+# ── DESCARGA SEGURA ───────────────────────────────────────────────────────────
+@app.route('/descargar/<int:foto_id>')
+def descargar_foto(foto_id):
+    """
+    Endpoint de descarga con token firmado.
+    Valida que el token sea legítimo y que la compra esté aprobada
+    antes de redirigir al archivo original en Cloudinary.
+    """
+    compra_id = request.args.get('compra', '')
+    token     = request.args.get('token', '')
+
+    if not compra_id.isdigit():
+        abort(403)
+
+    compra_id = int(compra_id)
+
+    if not _verificar_token_descarga(foto_id, compra_id, token):
+        abort(403)
+
+    compra = Compra.query.get(compra_id)
+    if not compra or compra.estado != 'approved':
+        abort(403)
+
+    ids_comprados = json.loads(compra.foto_ids or '[]')
+    if foto_id not in ids_comprados:
+        abort(403)
+
+    foto = Foto.query.get_or_404(foto_id)
+    # Redirige al archivo real — la URL de Cloudinary nunca aparece en el email
+    from flask import redirect
+    return redirect(foto.url_original, code=302)
+
+# ── API CONFIG (frontend lee desde acá — no hardcodear en JS) ─────────────────
+@app.route('/api/config')
+def api_config():
+    """
+    Configuración pública que el frontend consume al iniciar.
+    Precios y contacto vienen de variables de entorno — un solo lugar para cambiarlos.
+    """
+    return jsonify({
+        'wa_number':     WA_NUMBER,
+        'escala_precios': ESCALA_PRECIOS,
+    })
+
 # ── CONTACTO ──────────────────────────────────────────────────────────────────
 @app.route('/contacto', methods=['POST'])
 def contacto():
@@ -813,6 +894,73 @@ def check_auth(): return jsonify({'isAdmin': session.get('admin', False)})
 
 @app.route('/logout', methods=['POST'])
 def logout(): session.pop('admin', None); return jsonify({'success': True})
+
+# ── ROBOTS Y SITEMAP ──────────────────────────────────────────────────────────
+@app.route('/robots.txt')
+def robots():
+    from flask import Response
+    return Response(
+        "User-agent: *\nAllow: /\nSitemap: https://nacholingua.com/sitemap.xml\n",
+        mimetype='text/plain'
+    )
+
+@app.route('/sitemap.xml')
+def sitemap():
+    from flask import Response
+    from datetime import date
+    hoy = date.today().isoformat()
+    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://nacholingua.com/</loc>
+    <lastmod>{hoy}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
+  </url>
+</urlset>"""
+    return Response(xml, mimetype='application/xml')
+
+# ── EXPORTAR VENTAS A CSV ──────────────────────────────────────────────────────
+@app.route('/admin/compras/exportar-csv')
+def exportar_compras_csv():
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    import csv, io as _io
+    compras = Compra.query.order_by(Compra.creada_en.desc()).all()
+    buf = _io.StringIO()
+    w   = csv.writer(buf)
+    w.writerow(['ID', 'Fecha', 'Nombre', 'Email', 'Fotos', 'Total ARS', 'Estado', 'Email enviado'])
+    for c in compras:
+        ids = json.loads(c.foto_ids or '[]')
+        w.writerow([
+            c.id,
+            c.creada_en.strftime('%d/%m/%Y %H:%M') if c.creada_en else '',
+            c.nombre_cliente or '',
+            c.email_cliente,
+            ', '.join(str(i) for i in ids),
+            f"{c.monto_total:.0f}",
+            c.estado,
+            'Sí' if c.email_enviado else 'No',
+        ])
+    buf.seek(0)
+    from flask import Response
+    return Response(
+        buf.getvalue(),
+        mimetype='text/csv',
+        headers={'Content-Disposition': 'attachment; filename=ventas-nacho-lingua.csv'}
+    )
+
+# ── MANEJO DE ERRORES PERSONALIZADO ───────────────────────────────────────────
+@app.errorhandler(404)
+def not_found(e):
+    return send_from_directory('.', '404.html'), 404
+
+@app.errorhandler(500)
+def server_error(e):
+    return send_from_directory('.', '500.html'), 500
+
+@app.errorhandler(429)
+def too_many_requests(e):
+    return jsonify({'error': 'Demasiados intentos. Esperá un momento e intentá de nuevo.'}), 429
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

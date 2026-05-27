@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pago no completado — Nacho Lingua Fotografía</title>
+    <title>Error del servidor — Nacho Lingua Fotografía</title>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
     <style>
@@ -27,10 +27,10 @@
             animation:fadeUp 0.7s ease; position:relative; z-index:1;
         }
         @keyframes fadeUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:none} }
-        .icon { font-size:56px; color:#e84040; margin-bottom:24px; display:block; }
         .brand { font-family:'Bebas Neue',sans-serif; font-size:14px; letter-spacing:5px; color:#D4A843; display:block; margin-bottom:20px; }
-        h1 { font-family:'Bebas Neue',sans-serif; font-size:32px; letter-spacing:3px; margin-bottom:14px; }
-        p  { color:#777; line-height:1.8; font-size:14px; margin-bottom:20px; }
+        .code  { font-family:'Bebas Neue',sans-serif; font-size:96px; letter-spacing:6px; color:#1c1c24; line-height:1; margin-bottom:4px; }
+        h1     { font-family:'Bebas Neue',sans-serif; font-size:28px; letter-spacing:3px; margin-bottom:16px; }
+        p      { color:#777; line-height:1.8; font-size:14px; margin-bottom:10px; }
         .divider { height:1px; background:#1c1c24; margin:28px 0; }
         .btn-group { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
         a {
@@ -47,18 +47,16 @@
 <body>
     <div class="card">
         <span class="brand">Nacho Lingua Fotografía</span>
-        <i class="fa-solid fa-circle-xmark icon"></i>
-        <h1>Pago no completado</h1>
-        <p>El pago no pudo procesarse. Esto puede deberse a fondos insuficientes, datos incorrectos o cancelación manual.</p>
-        <p>Podés intentarlo de nuevo o coordinar el pago directamente con Nacho por WhatsApp.</p>
+        <div class="code">500</div>
+        <h1>Error del servidor</h1>
+        <p>Algo salió mal de nuestro lado. Ya estamos trabajando en solucionarlo.</p>
+        <p>Si estabas realizando una compra, escribinos por WhatsApp y te ayudamos.</p>
         <div class="divider"></div>
         <div class="btn-group">
-            <a href="/#portfolio" class="btn-primary">
-                <i class="fa-solid fa-arrow-left"></i> Volver a la galería
+            <a href="/" class="btn-primary">
+                <i class="fa-solid fa-arrow-left"></i> Volver al inicio
             </a>
-            <!-- ⚠ Reemplazá con tu número real -->
-            <a href="https://wa.me/5493510000000?text=Hola%20Nacho!%20Tuve%20un%20problema%20con%20el%20pago.%20¿Me%20podés%20ayudar?"
-               id="wa-btn" target="_blank" class="btn-wa">
+            <a href="#" id="wa-btn" target="_blank" class="btn-wa">
                 <i class="fa-brands fa-whatsapp"></i> WhatsApp
             </a>
         </div>
@@ -66,10 +64,12 @@
     <script>
         fetch('/api/config').then(r=>r.json()).then(cfg=>{
             if (cfg.wa_number) {
-                const msg = encodeURIComponent('Hola Nacho! Tuve un problema con el pago. ¿Me podés ayudar?');
+                const msg = encodeURIComponent('Hola Nacho! Tuve un error en el sitio. ¿Me podés ayudar?');
                 document.getElementById('wa-btn').href = `https://wa.me/${cfg.wa_number}?text=${msg}`;
             }
-        }).catch(()=>{});
+        }).catch(()=>{
+            document.getElementById('wa-btn').href = 'https://wa.me/5493510000000';
+        });
     </script>
 </body>
 </html>

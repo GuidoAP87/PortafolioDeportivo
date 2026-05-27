@@ -85,8 +85,15 @@
         <a href="/" class="cta">Volver al portfolio</a>
 
         <p class="footer-note">
-            ¿Problema con tu compra? Escribinos a <a href="https://wa.me/5493510000000" style="color:#D4A843">WhatsApp</a>
+            ¿Problema con tu compra? Escribinos a <a id="wa-link" href="https://wa.me/5493510000000" style="color:#D4A843">WhatsApp</a>
         </p>
     </div>
+    <script>
+        fetch('/api/config').then(r=>r.json()).then(cfg=>{
+            if (cfg.wa_number) {
+                document.getElementById('wa-link').href = `https://wa.me/${cfg.wa_number}`;
+            }
+        }).catch(()=>{});
+    </script>
 </body>
 </html>
