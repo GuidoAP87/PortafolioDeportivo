@@ -3,13 +3,15 @@ NACHO LINGUA FOTOGRAFÍA — Backend Flask 2026
 Persistencia: PostgreSQL (Render) + Cloudinary (imágenes)
 """
 
-import os, json, smtplib, io, threading, math
+import os, json, smtplib, io, threading, math, hmac, hashlib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import timedelta
 from flask import (Flask, request, send_from_directory,
-                   jsonify, session, send_file)
+                   jsonify, session, send_file, abort)
 from flask_cors import CORS
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from PIL import Image, ImageDraw, ImageFont
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_sqlalchemy import SQLAlchemy
@@ -25,7 +27,17 @@ cloudinary.config(
 
 # ── APP ───────────────────────────────────────────────────────────────────────
 app = Flask(__name__, static_folder='.', static_url_path='')
-app.secret_key = os.environ.get('SECRET_KEY', 'nl-sports-2026-CAMBIAR-en-produccion')
+
+_secret = os.environ.get('SECRET_KEY', '')
+if not _secret:
+    import warnings
+    warnings.warn(
+        'SECRET_KEY no está definida. Usando clave insegura — '
+        'NUNCA deployar así en producción.',
+        stacklevel=1
+    )
+    _secret = 'nl-dev-only-INSECURE-key-DO-NOT-USE-in-prod'
+app.secret_key = _secret
 
 # ── BASE DE DATOS ─────────────────────────────────────────────────────────────
 database_url = os.environ.get('DATABASE_URL', 'sqlite:///datos.db')
@@ -47,7 +59,18 @@ app.config.update(
     SESSION_COOKIE_SAMESITE  = 'Lax',
     PERMANENT_SESSION_LIFETIME = timedelta(days=30)
 )
-CORS(app, supports_credentials=True)
+
+# CORS restringido — solo acepta el dominio configurado (o localhost en dev)
+_allowed_origin = os.environ.get('ALLOWED_ORIGIN', 'http://localhost:5000')
+CORS(app, supports_credentials=True, origins=[_allowed_origin])
+
+# Rate Limiter — protege rutas sensibles contra fuerza bruta
+limiter = Limiter(
+    key_func=get_remote_address,
+    app=app,
+    default_limits=[],          # sin límite global; se aplica por ruta
+    storage_uri='memory://',    # cambiar a Redis en producción si se escala
+)
 
 CARPETA_TEMP = 'temp_uploads'
 os.makedirs(CARPETA_TEMP, exist_ok=True)
@@ -61,6 +84,45 @@ try:
 except ImportError:
     MP_SDK        = None
     MP_HABILITADO = False
+
+# Secret exclusivo para webhooks — se genera en el panel de MP al configurar la URL
+MP_WEBHOOK_SECRET = os.environ.get('MP_WEBHOOK_SECRET', '')
+
+def _verificar_firma_mp(request) -> bool:
+    """
+    Valida la firma HMAC-SHA256 que MercadoPago envía en el header x-signature.
+    Docs: https://www.mercadopago.com.ar/developers/es/docs/your-integrations/notifications/webhooks
+    Si MP_WEBHOOK_SECRET no está configurada, se permite el paso (dev mode) pero
+    se emite una advertencia. En producción debe estar siempre configurada.
+    """
+    if not MP_WEBHOOK_SECRET:
+        print('⚠ MP_WEBHOOK_SECRET no configurada — omitiendo validación de firma (solo dev)')
+        return True
+
+    signature_header = request.headers.get('x-signature', '')
+    request_id       = request.headers.get('x-request-id', '')
+
+    # El header tiene formato: ts=<timestamp>,v1=<hash>
+    ts = v1 = ''
+    for part in signature_header.split(','):
+        part = part.strip()
+        if part.startswith('ts='):
+            ts = part[3:]
+        elif part.startswith('v1='):
+            v1 = part[3:]
+
+    if not ts or not v1:
+        return False
+
+    # El contenido firmado incluye el id del pago del body
+    data        = request.get_json(silent=True) or {}
+    data_id     = str(data.get('data', {}).get('id', ''))
+    manifest    = f'id:{data_id};request-id:{request_id};ts:{ts};'
+    firma_calc  = hmac.new(
+        MP_WEBHOOK_SECRET.encode(), manifest.encode(), hashlib.sha256
+    ).hexdigest()
+
+    return hmac.compare_digest(firma_calc, v1)
 
 # ── SMTP ──────────────────────────────────────────────────────────────────────
 SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
@@ -627,6 +689,11 @@ def crear_orden():
 
 @app.route('/mp-webhook', methods=['POST'])
 def mp_webhook():
+    # ── Validar firma antes de procesar cualquier cosa ─────────────────────────
+    if not _verificar_firma_mp(request):
+        print('⚠ Webhook MP rechazado — firma inválida')
+        return jsonify({'status': 'unauthorized'}), 401
+
     d = request.json
     if d and d.get('type') == 'payment' and MP_HABILITADO:
         pid = d.get('data', {}).get('id')
@@ -647,11 +714,32 @@ def mp_webhook():
 
 @app.route('/pago-exitoso')
 def pago_exitoso():
-    cid = request.args.get('cid')
-    compra = Compra.query.get(cid) if cid else None
+    cid        = request.args.get('cid')
+    payment_id = request.args.get('payment_id')   # MP agrega este param al redirigir
+    status     = request.args.get('status', '')    # 'approved', 'pending', etc.
+
+    compra = Compra.query.get(int(cid)) if cid and cid.isdigit() else None
+
     if compra and not compra.email_enviado:
-        compra.estado = 'approved'; db.session.commit()
-        enviar_fotos_email(compra.id)
+        # Verificar el estado real consultando la API de MP, no solo el param de URL
+        aprobado = False
+        if payment_id and MP_HABILITADO:
+            try:
+                r = MP_SDK.payment().get(payment_id)
+                if r['status'] == 200 and r['response'].get('status') == 'approved':
+                    aprobado = True
+                    compra.mp_payment_id = str(payment_id)
+            except Exception as e:
+                print(f'Error verificando pago {payment_id}: {e}')
+        elif status == 'approved' and not MP_HABILITADO:
+            # Modo sin MP configurado (dev local)
+            aprobado = True
+
+        if aprobado:
+            compra.estado = 'approved'
+            db.session.commit()
+            enviar_fotos_email(compra.id)
+
     return send_from_directory('.', 'pago-exitoso.html')
 
 @app.route('/pago-fallido')
@@ -711,8 +799,11 @@ def marcar_leida(cid):
 
 # ── AUTH ──────────────────────────────────────────────────────────────────────
 @app.route('/login', methods=['POST'])
+@limiter.limit('5 per minute')
 def login():
-    d = request.json; pw = os.environ.get('ADMIN_PASSWORD', 'NachoAdmin2026!')
+    d = request.json; pw = os.environ.get('ADMIN_PASSWORD', '')
+    if not pw:
+        return jsonify({'success': False, 'error': 'ADMIN_PASSWORD no configurada'}), 500
     if d.get('password') == pw:
         session.permanent = True; session['admin'] = True; return jsonify({'success': True})
     return jsonify({'success': False}), 401
