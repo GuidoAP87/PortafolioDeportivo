@@ -217,7 +217,7 @@ function renderEventos(filtro = 'all') {
     }
 
     grid.innerHTML = data.map((ev, i) => {
-        const cover = ev.fotos?.[0]?.url_preview || 'https://placehold.co/800x600/0c0c12/1c1c24?text=Sin+fotos';
+        const cover = ev.cover_url || ev.fotos?.[0]?.url_original || ev.fotos?.[0]?.url_preview || 'https://placehold.co/800x600/0c0c12/1c1c24?text=Sin+fotos';
         const count = ev.fotos?.length ?? 0;
         return `
         <div class="event-card reveal" style="transition-delay:${Math.min(i*0.07,0.5)}s"
@@ -335,6 +335,16 @@ function renderVistaEvento(ev) {
                            border:none;color:var(--red);width:28px;height:28px;border-radius:50%;
                            font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:auto;">
                     <i class="fa-solid fa-xmark"></i>
+                </button>
+                <button onclick="event.stopPropagation();elegirPortada(${ev.id},${f.id},this)"
+                    title="${ev.cover_foto_id===f.id ? 'Portada actual' : 'Usar como portada'}"
+                    id="cover-btn-${f.id}"
+                    style="position:absolute;top:8px;left:44px;
+                           background:${ev.cover_foto_id===f.id ? 'var(--gold)' : 'rgba(0,0,0,0.75)'};
+                           border:none;color:${ev.cover_foto_id===f.id ? '#000' : 'var(--gold)'};
+                           width:28px;height:28px;border-radius:50%;
+                           font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:auto;">
+                    <i class="fa-solid fa-image"></i>
                 </button>` : ''}
             </div>`;
           }).join('')
@@ -881,6 +891,39 @@ async function borrarEvento(id) {
     } else {
         toast('Error al borrar el evento', 'error');
     }
+}
+
+// ─── ELEGIR PORTADA ───────────────────────────────────────────────────────────
+async function elegirPortada(eventoId, fotoId, btn) {
+    const ev = eventosData.find(e => e.id === eventoId);
+    if (!ev) return;
+
+    // Si ya es la portada, resetear a automático
+    const esPortadaActual = ev.cover_foto_id === fotoId;
+    const accion = esPortadaActual ? null : fotoId;
+
+    const res  = await fetch(`/evento/${eventoId}/portada`, {
+        method: 'PATCH', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ foto_id: accion })
+    });
+    const data = await res.json();
+    if (!res.ok) { toast(data.error || 'Error al cambiar portada', 'error'); return; }
+
+    // Actualizar estado local
+    ev.cover_foto_id = accion;
+    ev.cover_url     = data.cover_url;
+
+    // Actualizar todos los botones de portada visualmente
+    document.querySelectorAll('.photo-item [id^="cover-btn-"]').forEach(b => {
+        const id = parseInt(b.id.replace('cover-btn-', ''));
+        const esNueva = id === accion;
+        b.style.background = esNueva ? 'var(--gold)' : 'rgba(0,0,0,0.75)';
+        b.style.color      = esNueva ? '#000' : 'var(--gold)';
+        b.title            = esNueva ? 'Portada actual' : 'Usar como portada';
+    });
+
+    toast(accion ? '✓ Portada actualizada' : 'Portada reseteada a automático', 'success', 2000);
 }
 
 async function borrarFoto(id) {

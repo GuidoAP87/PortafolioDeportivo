@@ -124,14 +124,15 @@ FACE_UMBRAL   = 0.62
 # ── MODELOS ───────────────────────────────────────────────────────────────────
 class Evento(db.Model):
     __tablename__ = 'evento'
-    id          = db.Column(db.Integer, primary_key=True)
-    titulo      = db.Column(db.String(150), nullable=False)
-    deporte     = db.Column(db.String(50),  nullable=False)
-    fecha       = db.Column(db.String(50))
-    descripcion = db.Column(db.String(300))
-    creado_en   = db.Column(db.DateTime, server_default=db.func.now())
-    fotos       = db.relationship('Foto', backref='evento', lazy=True, cascade='all, delete-orphan')
-    personas    = db.relationship('PersonaCluster', backref='evento', lazy=True, cascade='all, delete-orphan')
+    id            = db.Column(db.Integer, primary_key=True)
+    titulo        = db.Column(db.String(150), nullable=False)
+    deporte       = db.Column(db.String(50),  nullable=False)
+    fecha         = db.Column(db.String(50))
+    descripcion   = db.Column(db.String(300))
+    cover_foto_id = db.Column(db.Integer, nullable=True)   # portada manual (ID de Foto)
+    creado_en     = db.Column(db.DateTime, server_default=db.func.now())
+    fotos         = db.relationship('Foto', backref='evento', lazy=True, cascade='all, delete-orphan')
+    personas      = db.relationship('PersonaCluster', backref='evento', lazy=True, cascade='all, delete-orphan')
 
 class Foto(db.Model):
     __tablename__ = 'foto'
@@ -707,12 +708,30 @@ def crear_evento():
 @app.route('/obtener-eventos', methods=['GET'])
 def obtener_eventos():
     eventos = Evento.query.order_by(Evento.id.desc()).all()
-    return jsonify([{
-        'id': e.id, 'titulo': e.titulo, 'deporte': e.deporte,
-        'fecha': e.fecha, 'descripcion': e.descripcion,
-        'total_fotos': len(e.fotos),
-        'fotos': [{'id': f.id, 'url_preview': f.url_preview, 'precio': f.precio} for f in e.fotos]
-    } for e in eventos])
+    resultado = []
+    for e in eventos:
+        # Portada: si tiene cover manual usamos el original (sin watermark), sino el preview de la 1ra foto
+        cover_url = None
+        if e.cover_foto_id:
+            cover_foto = Foto.query.get(e.cover_foto_id)
+            if cover_foto:
+                cover_url = cover_foto.url_original  # sin marca de agua
+        if not cover_url and e.fotos:
+            cover_url = e.fotos[0].url_original      # primera foto, también sin watermark
+        resultado.append({
+            'id':            e.id,
+            'titulo':        e.titulo,
+            'deporte':       e.deporte,
+            'fecha':         e.fecha,
+            'descripcion':   e.descripcion,
+            'cover_foto_id': e.cover_foto_id,
+            'cover_url':     cover_url,
+            'total_fotos':   len(e.fotos),
+            'fotos': [{'id': f.id, 'url_preview': f.url_preview,
+                       'url_original': f.url_original, 'precio': f.precio}
+                      for f in e.fotos]
+        })
+    return jsonify(resultado)
 
 @app.route('/editar-evento/<int:ev_id>', methods=['PATCH'])
 def editar_evento(ev_id):
@@ -725,6 +744,27 @@ def editar_evento(ev_id):
     if 'descripcion' in d: ev.descripcion = d['descripcion']
     db.session.commit()
     return jsonify({'ok': True})
+
+
+@app.route('/evento/<int:ev_id>/portada', methods=['PATCH'])
+def set_portada(ev_id):
+    """El admin elige qué foto es la portada del evento."""
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    ev = Evento.query.get_or_404(ev_id)
+    data = request.json
+    foto_id = data.get('foto_id')
+    # Validar que la foto pertenece al evento
+    if foto_id:
+        foto = Foto.query.filter_by(id=foto_id, evento_id=ev_id).first()
+        if not foto:
+            return jsonify({'error': 'Foto no pertenece a este evento'}), 400
+        ev.cover_foto_id = foto_id
+    else:
+        ev.cover_foto_id = None   # resetear a automático
+    db.session.commit()
+    # Devolver la URL original (sin watermark) de la nueva portada
+    cover_foto = Foto.query.get(ev.cover_foto_id) if ev.cover_foto_id else (ev.fotos[0] if ev.fotos else None)
+    return jsonify({'ok': True, 'cover_url': cover_foto.url_original if cover_foto else None})
 
 @app.route('/borrar-evento/<int:ev_id>', methods=['DELETE'])
 def borrar_evento(ev_id):
