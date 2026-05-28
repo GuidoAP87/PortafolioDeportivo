@@ -3,29 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-    <!-- SEO primario -->
+    <meta name="description" content="Nacho Lingua Fotografía — Comprá fotos deportivas en alta resolución. Fútbol y básquet en Córdoba, Argentina.">
+    <meta property="og:title" content="Nacho Lingua Fotografía">
+    <meta property="og:description" content="Fotografía deportiva premium. Elegí tus fotos y recibilas en alta resolución por email.">
+    <meta property="og:image" content="nacho_lingua.jpg">
     <title>Nacho Lingua | Fotografía Deportiva · Córdoba</title>
-    <meta name="description" content="Fotografía deportiva premium en Córdoba. Encontrá tus fotos, elegí las que más te gustan y recibilas en alta resolución por email.">
-    <meta name="robots" content="index, follow">
-    <link rel="canonical" href="https://nacholingua.com/">
-
-    <!-- Open Graph (Facebook, WhatsApp, LinkedIn) -->
-    <meta property="og:type"        content="website">
-    <meta property="og:url"         content="https://nacholingua.com/">
-    <meta property="og:title"       content="Nacho Lingua | Fotografía Deportiva">
-    <meta property="og:description" content="Fotografía deportiva premium en Córdoba. Encontrá tus fotos y recibilas en alta resolución.">
-    <meta property="og:image"       content="https://nacholingua.com/nacho_lingua.jpg">
-    <meta property="og:image:width"  content="1200">
-    <meta property="og:image:height" content="630">
-    <meta property="og:locale"      content="es_AR">
-    <meta property="og:site_name"   content="Nacho Lingua Fotografía">
-
-    <!-- Twitter / X card -->
-    <meta name="twitter:card"        content="summary_large_image">
-    <meta name="twitter:title"       content="Nacho Lingua | Fotografía Deportiva">
-    <meta name="twitter:description" content="Fotografía deportiva premium en Córdoba. Encontrá tus fotos y recibilas en alta resolución.">
-    <meta name="twitter:image"       content="https://nacholingua.com/nacho_lingua.jpg">
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -54,15 +36,13 @@
     </a>
 
     <div class="nav-center">
-        <button id="btn-albums-menu" class="nav-link" style="background:none;border:none;font-family:inherit;cursor:pointer;display:flex;align-items:center;gap:6px;padding-bottom:3px;">
-            <i class="fa-solid fa-book-open"></i> Álbumes
-        </button>
         <a href="#hero"      class="nav-link active">Inicio</a>
         <a href="#portfolio" class="nav-link">Galerías</a>
         <a href="#about"     class="nav-link">Contacto</a>
     </div>
 
     <div class="nav-right">
+        <!-- Admin buttons -->
         <button id="btn-admin-panel" class="nav-btn" style="display:none" title="Panel de administración">
             <i class="fa-solid fa-gauge-simple-high"></i>
             <span class="nav-btn-label">Panel</span>
@@ -263,8 +243,28 @@
                 <div class="co-group">
                     <label for="co-email">Email para recibir las fotos *</label>
                     <input id="co-email" type="email" placeholder="tu@email.com" autocomplete="email"
+                           onkeydown="if(event.key==='Enter')document.getElementById('co-whatsapp').focus()">
+                </div>
+            </div>
+
+            <div class="co-group">
+                <label for="co-whatsapp">
+                    WhatsApp
+                    <span style="font-weight:400;color:var(--text-dim);text-transform:none;letter-spacing:0;font-size:10px;margin-left:6px">— Opcional, para recibir el link también por mensaje</span>
+                </label>
+                <div style="position:relative">
+                    <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#25D366;font-size:15px;pointer-events:none">
+                        <i class="fa-brands fa-whatsapp"></i>
+                    </span>
+                    <input id="co-whatsapp" type="tel"
+                           placeholder="5493511234567  (con código de país, sin +)"
+                           autocomplete="tel"
+                           style="padding-left:42px"
                            onkeydown="if(event.key==='Enter')procesarPago()">
                 </div>
+                <small style="display:block;margin-top:5px;font-size:10px;color:var(--text-dim)">
+                    Ejemplo: 5493511234567 → Argentina + 54, Córdoba 9351, número 1234567
+                </small>
             </div>
 
             <button class="checkout-pay-btn" id="checkout-pay-btn" onclick="procesarPago()">
@@ -279,7 +279,7 @@
 
             <p class="checkout-note">
                 <i class="fa-solid fa-shield-halved" style="color:var(--gold)"></i>
-                Pago seguro · Las fotos en alta resolución se envían automáticamente a tu email
+                Pago seguro · Recibís el link a tus fotos por <strong>email</strong> y <strong>WhatsApp</strong> automáticamente
             </p>
         </div>
     </div>

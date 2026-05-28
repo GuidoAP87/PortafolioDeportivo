@@ -31,29 +31,18 @@ document.addEventListener('visibilitychange', () => {
     }
 });
 
-// ─── CONFIGURACIÓN (se carga desde el backend al iniciar) ────────────────────
-let WA_NUMBER    = '5493510000000'; // fallback hasta que llegue /api/config
-let PRECIO_BASE  = 3000;
-let _escalaPrecios = { 1:3000, 2:2700, 3:2500, 4:2300, 5:2000 };
-
-async function cargarConfig() {
-    try {
-        const cfg = await (await fetch('/api/config')).json();
-        if (cfg.wa_number)      WA_NUMBER      = cfg.wa_number;
-        if (cfg.escala_precios) _escalaPrecios = cfg.escala_precios;
-        PRECIO_BASE = _escalaPrecios[1] || 3000;
-        // Actualizar el botón de WhatsApp si ya está en el DOM
-        const wa = document.getElementById('whatsapp-btn');
-        if (wa) wa.href = `https://wa.me/${WA_NUMBER}`;
-    } catch (e) {
-        console.warn('No se pudo cargar /api/config, usando valores por defecto', e);
-    }
-}
+// ⚠ CONFIGURACIÓN
+const WA_NUMBER   = '5493510000000';   
+const PRECIO_BASE = 3000; // Solo de referencia para subir fotos             
 
 // ─── LÓGICA DE PRECIOS POR VOLUMEN ───────────────────────────────────────────
 function getPrecioUnitario(cantidad) {
-    const clave = Math.min(cantidad, 5);
-    return _escalaPrecios[clave] ?? _escalaPrecios[1] ?? 3000;
+    if (cantidad === 1) return 3000;
+    if (cantidad === 2) return 2700;
+    if (cantidad === 3) return 2500;
+    if (cantidad === 4) return 2300;
+    if (cantidad >= 5)  return 2000; // <-- Cambiar a 5000 acá si realmente era el valor deseado
+    return 3000;
 }
 
 // ─── ESTADO ───────────────────────────────────────────────────────────────────
@@ -71,7 +60,7 @@ let adminClickTimer = null;
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     cargarCarrito();
-    await Promise.all([cargarConfig(), verificarSesion(), cargarEventos()]);
+    await Promise.all([verificarSesion(), cargarEventos()]);
 
     initNavScroll();
     initReveal();
@@ -84,9 +73,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     document.getElementById('btn-admin-panel')?.addEventListener('click', abrirAdminPanel);
     document.getElementById('btn-add-evento')?.addEventListener('click', crearEvento);
     document.getElementById('btn-logout')?.addEventListener('click', logout);
-    
-    // BOTÓN NUEVO: Menú de Álbumes
-    document.getElementById('btn-albums-menu')?.addEventListener('click', abrirMenuAlbumes);
 
     ['checkout-modal','admin-modal','login-modal'].forEach(id => {
         document.getElementById(id)?.addEventListener('click', e => {
@@ -97,6 +83,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         });
     });
+
+    const wa = document.getElementById('whatsapp-btn');
+    if (wa) wa.href = `https://wa.me/${WA_NUMBER}`;
 
     setTimeout(() => document.getElementById('loading-screen')?.classList.add('hidden'), 1300);
 });
@@ -227,42 +216,11 @@ function renderEventos(filtro = 'all') {
         return;
     }
 
-    grid.innerHTML = data.map((ev, i) => renderEventoCard(ev, i)).join('');
-    initReveal();
-    configurarFiltros();
-}
-
-function renderEventoCard(ev, i) {
-    const tieneSubs = ev.total_subcarpetas > 0;
-    const cover     = ev.fotos?.[0]?.url_preview
-        || (ev.subcarpetas?.[0]?.fotos?.[0]?.url_preview)
-        || 'https://placehold.co/800x600/0c0c12/1c1c24?text=Sin+fotos';
-    const count     = ev.total_fotos ?? 0;
-    const delay     = Math.min(i * 0.07, 0.5);
-
-    if (tieneSubs) {
-        // Card de carpeta con subcarpetas (icono de folder)
-        const subCount = ev.total_subcarpetas;
+    grid.innerHTML = data.map((ev, i) => {
+        const cover = ev.fotos?.[0]?.url_preview || 'https://placehold.co/800x600/0c0c12/1c1c24?text=Sin+fotos';
+        const count = ev.fotos?.length ?? 0;
         return `
-        <div class="event-card event-card-folder reveal" style="transition-delay:${delay}s"
-             onclick="abrirEvento(${ev.id})" role="button" tabindex="0"
-             onkeydown="if(event.key==='Enter')abrirEvento(${ev.id})">
-            <img class="event-card-img" src="${cover}" alt="${ev.titulo}" loading="lazy">
-            <div class="event-card-overlay">
-                <div class="event-card-sport">${ev.deporte}</div>
-                <div class="event-card-title">${ev.titulo}</div>
-                <div class="event-card-meta">
-                    <span><i class="fa-solid fa-folder" style="margin-right:5px;color:var(--gold)"></i>${subCount} carpeta${subCount!==1?'s':''}</span>
-                    ${count > 0 ? `<span class="event-card-count">${count} foto${count!==1?'s':''}</span>` : ''}
-                </div>
-            </div>
-            <div class="event-card-folder-badge"><i class="fa-solid fa-folder-open"></i></div>
-            <div class="event-card-enter"><div class="event-card-enter-btn">Abrir carpeta →</div></div>
-        </div>`;
-    } else {
-        // Card normal con fotos
-        return `
-        <div class="event-card reveal" style="transition-delay:${delay}s"
+        <div class="event-card reveal" style="transition-delay:${Math.min(i*0.07,0.5)}s"
              onclick="abrirEvento(${ev.id})" role="button" tabindex="0"
              onkeydown="if(event.key==='Enter')abrirEvento(${ev.id})">
             <img class="event-card-img" src="${cover}" alt="${ev.titulo}" loading="lazy">
@@ -276,7 +234,10 @@ function renderEventoCard(ev, i) {
             </div>
             <div class="event-card-enter"><div class="event-card-enter-btn">Explorar galería →</div></div>
         </div>`;
-    }
+    }).join('');
+
+    initReveal();
+    configurarFiltros();
 }
 
 function configurarFiltros() {
@@ -289,41 +250,9 @@ function configurarFiltros() {
     });
 }
 
-// Búsqueda recursiva de evento por id en el árbol
-function buscarEvento(id, lista) {
-    for (const ev of lista) {
-        if (ev.id === id) return ev;
-        if (ev.subcarpetas?.length) {
-            const found = buscarEvento(id, ev.subcarpetas);
-            if (found) return found;
-        }
-    }
-    return null;
-}
-
-// Construye el breadcrumb de un evento: [raíz, ..., evento]
-function breadcrumbEvento(id, lista, ruta = []) {
-    for (const ev of lista) {
-        const nueva = [...ruta, ev];
-        if (ev.id === id) return nueva;
-        if (ev.subcarpetas?.length) {
-            const found = breadcrumbEvento(id, ev.subcarpetas, nueva);
-            if (found) return found;
-        }
-    }
-    return null;
-}
-
 function abrirEvento(eventoId) {
-    const ev = buscarEvento(eventoId, eventosData);
+    const ev = eventosData.find(e => e.id === eventoId);
     if (!ev) return;
-
-    // Si tiene subcarpetas, mostrar navegación de subcarpetas en vez de fotos
-    if (ev.total_subcarpetas > 0) {
-        mostrarSubcarpetas(ev);
-        return;
-    }
-
     eventoActual    = ev;
     lbFotos         = ev.fotos || [];
     personaFiltrada = null;
@@ -369,16 +298,6 @@ function renderVistaEvento(ev) {
                 onmouseout="this.style.color='var(--text-dim)';this.style.borderColor='var(--ink-5)'">
                 <i class="fa-solid fa-pen-to-square"></i>
                 <span>Editar</span>
-            </button>
-            <button onclick="crearSubcarpeta(${ev.id})"
-                style="height:68px;padding:0 16px;border:1px solid var(--gold-dim);color:var(--gold);
-                       font-size:11px;cursor:pointer;text-transform:uppercase;letter-spacing:1px;
-                       transition:0.3s;background:none;font-family:Inter,sans-serif;
-                       display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;"
-                onmouseover="this.style.background='rgba(212,168,67,0.08)'"
-                onmouseout="this.style.background='none'">
-                <i class="fa-solid fa-folder-plus"></i>
-                <span>Subcarpeta</span>
             </button>
             <button onclick="borrarEvento(${ev.id})"
                 style="height:68px;padding:0 16px;border:1px solid rgba(232,64,64,0.3);color:var(--red);
@@ -427,22 +346,11 @@ function renderVistaEvento(ev) {
     return `
         <div class="event-view-header">
             <div class="event-view-nav">
-                <button class="back-btn" onclick="${ev.parent_id ? 'abrirEvento(' + ev.parent_id + ')' : 'cerrarEvento()'}">
-                    <i class="fa-solid fa-arrow-left-long"></i> ${ev.parent_id ? 'Volver' : 'Todas las galerías'}
+                <button class="back-btn" onclick="cerrarEvento()">
+                    <i class="fa-solid fa-arrow-left-long"></i> Todas las galerías
                 </button>
                 <span class="event-view-sport-tag">${ev.deporte}</span>
                 <div>
-                    ${(() => {
-                        const ruta = breadcrumbEvento(ev.id, eventosData) || [];
-                        if (ruta.length > 1) {
-                            return '<div style="font-size:10px;color:var(--text-dim);margin-bottom:3px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">' +
-                                ruta.slice(0, -1).map(item =>
-                                    '<span style="cursor:pointer;color:var(--gold);" onclick="event.stopPropagation();abrirEvento(' + item.id + ')">' + item.titulo + '</span><span>/</span>'
-                                ).join('') +
-                                '</div>';
-                        }
-                        return '';
-                    })()}
                     <div class="event-view-title">${ev.titulo}</div>
                     ${ev.fecha ? `<div class="event-view-date">
                         <i class="fa-regular fa-calendar" style="color:var(--gold);margin-right:6px"></i>${ev.fecha}
@@ -467,83 +375,6 @@ function renderVistaEvento(ev) {
         ${adminBar}
         <div id="faces-panel-wrap"></div>
         <div class="photos-grid">${fotosHTML}</div>`;
-}
-
-function mostrarSubcarpetas(ev) {
-    // Muestra la vista de subcarpetas de una carpeta padre
-    const ruta = breadcrumbEvento(ev.id, eventosData) || [ev];
-
-    document.getElementById('portfolio').style.display = 'none';
-    document.getElementById('about').style.display     = 'none';
-    const view = document.getElementById('event-view');
-    view.style.display = 'block';
-
-    // Breadcrumb HTML
-    const breadcrumbHTML = ruta.map((item, idx) => {
-        if (idx === ruta.length - 1) {
-            return `<span style="color:var(--text)">${item.titulo}</span>`;
-        }
-        return `<button onclick="abrirEvento(${item.id})"
-            style="background:none;border:none;color:var(--gold);cursor:pointer;
-                   font-size:inherit;font-family:inherit;padding:0;letter-spacing:inherit;
-                   text-transform:inherit;">${item.titulo}</button>
-                <span style="color:var(--text-dim);margin:0 8px">/</span>`;
-    }).join('');
-
-    // Cards de subcarpetas
-    const subCardsHTML = ev.subcarpetas.map((sub, i) => renderEventoCard(sub, i)).join('');
-
-    // Botón de nueva subcarpeta (solo admin)
-    const adminBtn = isAdmin ? `
-        <button onclick="crearSubcarpeta(${ev.id})"
-            class="nav-btn gold"
-            style="display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 14px;
-                   font-size:10px;letter-spacing:2px;text-transform:uppercase;">
-            <i class="fa-solid fa-folder-plus"></i> Nueva subcarpeta
-        </button>` : '';
-
-    view.innerHTML = `
-        <div class="event-view-header">
-            <div class="event-view-nav">
-                <button class="back-btn" onclick="cerrarEvento()">
-                    <i class="fa-solid fa-arrow-left-long"></i> Todas las galerías
-                </button>
-                <span class="event-view-sport-tag">${ev.deporte}</span>
-                <div style="display:flex;flex-direction:column;gap:4px;">
-                    <div style="font-size:11px;color:var(--text-dim);letter-spacing:1px;
-                                display:flex;align-items:center;flex-wrap:wrap;gap:2px;">
-                        ${breadcrumbHTML}
-                    </div>
-                </div>
-                ${adminBtn}
-            </div>
-            <div class="selection-info">
-                <i class="fa-solid fa-folder-open"></i>
-                <span>
-                    <strong>${ev.subcarpetas.length}</strong> subcarpeta${ev.subcarpetas.length!==1?'s':''} en esta carpeta
-                    ${ev.total_fotos > 0 ? ` · <strong>${ev.total_fotos}</strong> foto${ev.total_fotos!==1?'s':''} directas` : ''}
-                </span>
-            </div>
-        </div>
-        <div class="subcarpetas-grid" id="gallery-grid-sub">${subCardsHTML}</div>
-        ${ev.total_fotos > 0 ? `
-        <div style="padding:24px 8% 0;border-top:1px solid var(--ink-4);margin-top:8px;">
-            <div style="font-size:10px;letter-spacing:3px;text-transform:uppercase;
-                        color:var(--gold);margin-bottom:16px;">
-                <i class="fa-solid fa-images" style="margin-right:6px"></i>
-                Fotos directas en esta carpeta
-            </div>
-        </div>` : ''}`;
-
-    // Si hay fotos directas en la carpeta padre, inicializar su vista
-    if (ev.total_fotos > 0) {
-        eventoActual = ev;
-        lbFotos = ev.fotos || [];
-    }
-
-    // Inicializar reveal en las nuevas cards
-    initReveal();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function cerrarEvento() {
@@ -925,52 +756,6 @@ async function crearEvento() {
     }
 }
 
-async function crearSubcarpeta(parentId) {
-    const { value: vals } = await Swal.fire({
-        title: 'Nueva subcarpeta',
-        background: 'var(--ink-2)', color: 'var(--text)',
-        html: `
-            <input id="sub-titulo" class="swal2-input" placeholder="Nombre (ej: Talleres, Primera División...)"
-                style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);
-                       width:88%;margin-bottom:10px;font-family:Inter,sans-serif;">
-            <input id="sub-fecha" type="date" class="swal2-input"
-                style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);
-                       width:88%;margin-bottom:10px;font-family:Inter,sans-serif;">
-            <input id="sub-desc" class="swal2-input" placeholder="Descripción breve (opcional)"
-                style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);
-                       width:88%;font-family:Inter,sans-serif;">`,
-        focusConfirm: false, showCancelButton: true,
-        confirmButtonText: 'Crear subcarpeta', cancelButtonText: 'Cancelar',
-        confirmButtonColor: '#D4A843', cancelButtonColor: '#555',
-        preConfirm: () => {
-            const titulo = document.getElementById('sub-titulo').value.trim();
-            if (!titulo) { Swal.showValidationMessage('El nombre es requerido'); return false; }
-            return {
-                titulo,
-                parent_id:   parentId,
-                fecha:       document.getElementById('sub-fecha').value,
-                descripcion: document.getElementById('sub-desc').value.trim(),
-                deporte:     ''  // lo hereda el backend del padre
-            };
-        }
-    });
-    if (!vals) return;
-
-    const res = await fetch('/crear-evento', {
-        method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(vals)
-    });
-    if (res.ok) {
-        await cargarEventos();
-        // Reabrir la carpeta padre con los datos frescos
-        const padre = buscarEvento(parentId, eventosData);
-        if (padre) mostrarSubcarpetas(padre);
-        toast('¡Subcarpeta creada!', 'success');
-    } else {
-        toast('Error al crear la subcarpeta', 'error');
-    }
-}
-
 async function editarEvento(eventoId) {
     const ev = eventosData.find(e => e.id === eventoId);
     if (!ev) return;
@@ -1159,8 +944,10 @@ function cerrarCheckout() {
 }
 
 async function procesarPago() {
-    const nombre = document.getElementById('co-nombre')?.value.trim();
-    const email  = document.getElementById('co-email')?.value.trim();
+    const nombre    = document.getElementById('co-nombre')?.value.trim();
+    const email     = document.getElementById('co-email')?.value.trim();
+    const whatsapp  = document.getElementById('co-whatsapp')?.value.trim()
+                        .replace(/[\s+\-().]/g, '');
     if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
         document.getElementById('co-email')?.focus();
         document.querySelector('.checkout-box')?.classList.add('shake');
@@ -1178,7 +965,7 @@ async function procesarPago() {
         const res  = await fetch('/crear-orden', {
             method:'POST', credentials:'include',
             headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ foto_ids, email, nombre })
+            body: JSON.stringify({ foto_ids, email, nombre, whatsapp })
         });
         const data = await res.json();
 
@@ -1352,27 +1139,7 @@ async function cargarCompras() {
     try {
         const lista = await (await fetch('/admin/compras', { credentials:'include' })).json();
         if (!lista.length) { c.innerHTML = '<p class="admin-loading">Sin compras registradas.</p>'; return; }
-
-        const totalAprobadas = lista.filter(p => p.estado === 'approved').length;
-        const totalIngresos  = lista.filter(p => p.estado === 'approved').reduce((s, p) => s + p.total, 0);
-
-        c.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;">
-            <div style="font-size:13px;color:var(--text-dim)">
-                <strong style="color:var(--gold)">${totalAprobadas}</strong> ventas aprobadas ·
-                <strong style="color:var(--gold)">$${Number(totalIngresos).toLocaleString('es-AR')}</strong> ARS
-            </div>
-            <a href="/admin/compras/exportar-csv" download
-               style="display:inline-flex;align-items:center;gap:6px;padding:8px 16px;
-                      background:transparent;border:1px solid var(--gold);color:var(--gold);
-                      font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;
-                      text-decoration:none;cursor:pointer;transition:background 0.2s;"
-               onmouseover="this.style.background='rgba(198,168,124,0.1)'"
-               onmouseout="this.style.background='transparent'">
-                <i class="fa-solid fa-download"></i> Exportar CSV
-            </a>
-        </div>` +
-        lista.map(p => {
+        c.innerHTML = lista.map(p => {
             const cls      = p.estado==='approved'?'badge-approved':p.estado==='rejected'?'badge-rejected':'badge-pendiente';
             const emailCls = p.email_enviado ? 'badge-approved' : 'badge-pendiente';
             return `
@@ -1381,7 +1148,10 @@ async function cargarCompras() {
                     <div>
                         <strong>${p.nombre||p.email}</strong>
                         <span class="badge ${cls}">${p.estado}</span>
-                        <span class="badge ${emailCls}">${p.email_enviado?'✓ Email enviado':'Sin email'}</span>
+                        <span class="badge ${emailCls}">${p.email_enviado?'✓ Email':'Sin email'}</span>
+                        ${p.whatsapp ? `<span class="badge ${p.wa_enviado?'badge-approved':'badge-pendiente'}">${p.wa_enviado?'✓ WhatsApp':'WA pendiente'}</span>` : ''}
+                        <br><small style="color:var(--text-dim);font-size:10px">${p.email}${p.whatsapp ? ' · 📱 +' + p.whatsapp : ''}</small>
+                        ${p.link_galeria ? `<br><small><a href="${p.link_galeria}" target="_blank" style="color:var(--gold);font-size:10px;word-break:break-all">🔗 ${p.link_galeria}</a></small>` : ''}
                         <br><small style="color:var(--text-dim)">${p.email}</small>
                     </div>
                     <div style="text-align:right;flex-shrink:0">
@@ -1393,9 +1163,13 @@ async function cargarCompras() {
                     ${p.foto_ids.length} foto${p.foto_ids.length>1?'s':''} · IDs: [${p.foto_ids.join(', ')}]
                 </div>
                 <div class="admin-item-actions">
-                    ${p.estado==='approved'&&!p.email_enviado ? `
-                    <button class="admin-action-btn primary" onclick="reenviarEmail(${p.id})">
-                        <i class="fa-solid fa-paper-plane"></i> Enviar fotos por email
+                    ${p.estado==='approved' ? `
+                    <button class="admin-action-btn primary" onclick="reenviarTodo(${p.id})">
+                        <i class="fa-solid fa-paper-plane"></i> Reenviar email + WhatsApp
+                    </button>` : ''}
+                    ${p.link_galeria ? `
+                    <button class="admin-action-btn" onclick="navigator.clipboard.writeText('${p.link_galeria}').then(()=>toast('Link copiado','success',1800))">
+                        <i class="fa-solid fa-copy"></i> Copiar link galería
                     </button>` : ''}
                 </div>
             </div>`;
@@ -1403,13 +1177,13 @@ async function cargarCompras() {
     } catch { c.innerHTML = '<p class="admin-loading" style="color:var(--red)">Error al cargar.</p>'; }
 }
 
-async function reenviarEmail(id) {
+async function reenviarTodo(id) {
     const btn = event.target.closest('.admin-action-btn');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...'; }
-    const res  = await fetch(`/admin/compras/${id}/reenviar-email`, { method:'POST', credentials:'include' });
+    const res  = await fetch(`/admin/compras/${id}/reenviar`, { method:'POST', credentials:'include' });
     const data = await res.json();
-    toast(data.ok ? '✓ Email enviado correctamente' : 'Error al reenviar el email', data.ok ? 'success' : 'error');
-    if (data.ok) cargarCompras();
+    toast(data.ok ? '✓ Email y WhatsApp reenviados' : 'Error al reenviar', data.ok ? 'success' : 'error');
+    if (data.ok) setTimeout(cargarCompras, 1500);
 }
 
 async function cargarConsultas() {
@@ -1457,77 +1231,4 @@ async function logout() {
     await fetch('/logout', { method:'POST', credentials:'include' });
     isAdmin = false; toggleAdminUI(false); cerrarAdminPanel();
     toast('Sesión cerrada', 'info');
-}
-
-// ─── MENÚ LATERAL DE ÁLBUMES ──────────────────────────────────────────────────
-function abrirMenuAlbumes() {
-    renderizarMenuAlbumes();
-    document.getElementById('albums-sidebar-overlay').classList.add('open');
-    document.getElementById('albums-sidebar').classList.add('open');
-    document.body.style.overflow = 'hidden';
-    document.getElementById('sidebar-search-input').value = ''; // Limpia el buscador al abrir
-}
-
-function cerrarMenuAlbumes() {
-    document.getElementById('albums-sidebar-overlay').classList.remove('open');
-    document.getElementById('albums-sidebar').classList.remove('open');
-    document.body.style.overflow = '';
-}
-
-function renderizarMenuAlbumes(filtro = '') {
-    const container = document.getElementById('sidebar-albums-list');
-    if (!container) return;
-
-    const termino = filtro.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'');
-    let html = '';
-
-    eventosData.forEach(ev => {
-        // Busca coincidencias en el título del evento raíz o su deporte
-        const matchRoot = ev.titulo.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(termino) ||
-                          ev.deporte.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(termino);
-
-        // Busca coincidencias dentro de las subcarpetas de este evento
-        const subsMatches = (ev.subcarpetas || []).filter(sub =>
-            sub.titulo.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'').includes(termino)
-        );
-
-        if (matchRoot || subsMatches.length > 0) {
-            html += `
-            <div class="sidebar-item" onclick="seleccionarAlbumDesdeMenu(${ev.id})">
-                <div class="sidebar-item-title">${ev.titulo}</div>
-                <div class="sidebar-item-meta">
-                    <span class="sidebar-item-sport">${ev.deporte}</span>
-                    <span>${ev.fecha || ''}</span>
-                    <span style="margin-left:auto;font-size:13px"><i class="fa-solid fa-folder${ev.total_subcarpetas > 0 ? '' : '-open'}"></i></span>
-                </div>
-            </div>`;
-
-            // Renderiza las subcarpetas indentadas
-            const subsToRender = termino ? subsMatches : (ev.subcarpetas || []);
-            subsToRender.forEach(sub => {
-                html += `
-                <div class="sidebar-subitem" onclick="seleccionarAlbumDesdeMenu(${sub.id})">
-                    <i class="fa-solid fa-turn-up" style="transform: rotate(90deg);"></i>
-                    ${sub.titulo}
-                    <span style="margin-left:auto;font-size:10px;color:var(--text-dim)">${sub.total_fotos||0} fotos</span>
-                </div>`;
-            });
-        }
-    });
-
-    if (!html) {
-        html = '<div style="padding: 32px 24px; text-align: center; color: var(--text-dim); font-size: 13px; font-style: italic;">No se encontraron álbumes con esa búsqueda.</div>';
-    }
-
-    container.innerHTML = html;
-}
-
-function filtrarMenuAlbumes() {
-    const input = document.getElementById('sidebar-search-input');
-    renderizarMenuAlbumes(input.value);
-}
-
-function seleccionarAlbumDesdeMenu(id) {
-    cerrarMenuAlbumes();
-    abrirEvento(id);
 }

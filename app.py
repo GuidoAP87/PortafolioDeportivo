@@ -3,21 +3,21 @@ NACHO LINGUA FOTOGRAFÍA — Backend Flask 2026
 Persistencia: PostgreSQL (Render) + Cloudinary (imágenes)
 """
 
-import os, json, smtplib, io, threading, math, hmac, hashlib
+import os, json, smtplib, io, threading, math
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import timedelta
 from flask import (Flask, request, send_from_directory,
-                   jsonify, session, send_file, abort)
+                   jsonify, session, send_file)
 from flask_cors import CORS
-from flask_limiter import Limiter
-from flask_limiter.util import get_remote_address
 from PIL import Image, ImageDraw, ImageFont
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_sqlalchemy import SQLAlchemy
 import cloudinary, cloudinary.uploader
+import boto3
+from botocore.client import Config
 
-# ── CLOUDINARY ────────────────────────────────────────────────────────────────
+# ── CLOUDINARY (solo para previews con marca de agua) ────────────────────────
 cloudinary.config(
     cloud_name = os.environ.get('CLOUD_NAME'),
     api_key    = os.environ.get('CLOUD_API_KEY'),
@@ -25,19 +25,46 @@ cloudinary.config(
     secure     = True
 )
 
+# ── WASABI (para originales sin marca de agua) ────────────────────────────────
+WASABI_ACCESS_KEY = os.environ.get('WASABI_ACCESS_KEY', '')
+WASABI_SECRET_KEY = os.environ.get('WASABI_SECRET_KEY', '')
+WASABI_BUCKET     = os.environ.get('WASABI_BUCKET', 'nacho-lingua-fotos')
+WASABI_REGION     = os.environ.get('WASABI_REGION', 'us-east-1')
+WASABI_ENDPOINT   = os.environ.get('WASABI_ENDPOINT', 'https://s3.wasabisys.com')
+WASABI_ENABLED    = bool(WASABI_ACCESS_KEY and WASABI_SECRET_KEY)
+
+def get_wasabi_client():
+    return boto3.client(
+        's3',
+        endpoint_url          = WASABI_ENDPOINT,
+        aws_access_key_id     = WASABI_ACCESS_KEY,
+        aws_secret_access_key = WASABI_SECRET_KEY,
+        region_name           = WASABI_REGION,
+        config                = Config(signature_version='s3v4')
+    )
+
+def subir_a_wasabi(ruta_local, key):
+    """Sube un archivo a Wasabi y devuelve la URL pública."""
+    try:
+        client = get_wasabi_client()
+        with open(ruta_local, 'rb') as f:
+            client.upload_fileobj(
+                f, WASABI_BUCKET, key,
+                ExtraArgs={
+                    'ContentType': 'image/jpeg',
+                    'ACL':         'public-read'
+                }
+            )
+        url = f"{WASABI_ENDPOINT}/{WASABI_BUCKET}/{key}"
+        print(f"✓ Wasabi: subido {key}")
+        return url
+    except Exception as e:
+        print(f"✗ Error Wasabi: {e}")
+        return None
+
 # ── APP ───────────────────────────────────────────────────────────────────────
 app = Flask(__name__, static_folder='.', static_url_path='')
-
-_secret = os.environ.get('SECRET_KEY', '')
-if not _secret:
-    import warnings
-    warnings.warn(
-        'SECRET_KEY no está definida. Usando clave insegura — '
-        'NUNCA deployar así en producción.',
-        stacklevel=1
-    )
-    _secret = 'nl-dev-only-INSECURE-key-DO-NOT-USE-in-prod'
-app.secret_key = _secret
+app.secret_key = os.environ.get('SECRET_KEY', 'nl-sports-2026-CAMBIAR-en-produccion')
 
 # ── BASE DE DATOS ─────────────────────────────────────────────────────────────
 database_url = os.environ.get('DATABASE_URL', 'sqlite:///datos.db')
@@ -59,18 +86,7 @@ app.config.update(
     SESSION_COOKIE_SAMESITE  = 'Lax',
     PERMANENT_SESSION_LIFETIME = timedelta(days=30)
 )
-
-# CORS restringido — solo acepta el dominio configurado (o localhost en dev)
-_allowed_origin = os.environ.get('ALLOWED_ORIGIN', 'http://localhost:5000')
-CORS(app, supports_credentials=True, origins=[_allowed_origin])
-
-# Rate Limiter — protege rutas sensibles contra fuerza bruta
-limiter = Limiter(
-    key_func=get_remote_address,
-    app=app,
-    default_limits=[],          # sin límite global; se aplica por ruta
-    storage_uri='memory://',    # cambiar a Redis en producción si se escala
-)
+CORS(app, supports_credentials=True)
 
 CARPETA_TEMP = 'temp_uploads'
 os.makedirs(CARPETA_TEMP, exist_ok=True)
@@ -85,94 +101,13 @@ except ImportError:
     MP_SDK        = None
     MP_HABILITADO = False
 
-# Secret exclusivo para webhooks — se genera en el panel de MP al configurar la URL
-MP_WEBHOOK_SECRET = os.environ.get('MP_WEBHOOK_SECRET', '')
-
-def _verificar_firma_mp(request) -> bool:
-    """
-    Valida la firma HMAC-SHA256 que MercadoPago envía en el header x-signature.
-    Docs: https://www.mercadopago.com.ar/developers/es/docs/your-integrations/notifications/webhooks
-    Si MP_WEBHOOK_SECRET no está configurada, se permite el paso (dev mode) pero
-    se emite una advertencia. En producción debe estar siempre configurada.
-    """
-    if not MP_WEBHOOK_SECRET:
-        print('⚠ MP_WEBHOOK_SECRET no configurada — omitiendo validación de firma (solo dev)')
-        return True
-
-    signature_header = request.headers.get('x-signature', '')
-    request_id       = request.headers.get('x-request-id', '')
-
-    # El header tiene formato: ts=<timestamp>,v1=<hash>
-    ts = v1 = ''
-    for part in signature_header.split(','):
-        part = part.strip()
-        if part.startswith('ts='):
-            ts = part[3:]
-        elif part.startswith('v1='):
-            v1 = part[3:]
-
-    if not ts or not v1:
-        return False
-
-    # El contenido firmado incluye el id del pago del body
-    data        = request.get_json(silent=True) or {}
-    data_id     = str(data.get('data', {}).get('id', ''))
-    manifest    = f'id:{data_id};request-id:{request_id};ts:{ts};'
-    firma_calc  = hmac.new(
-        MP_WEBHOOK_SECRET.encode(), manifest.encode(), hashlib.sha256
-    ).hexdigest()
-
-    return hmac.compare_digest(firma_calc, v1)
-
 # ── SMTP ──────────────────────────────────────────────────────────────────────
 SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
 SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
 SMTP_USER = os.environ.get('SMTP_USER', '')
 SMTP_PASS = os.environ.get('SMTP_PASS', '')
 
-# ── CONFIGURACIÓN DE NEGOCIO ──────────────────────────────────────────────────
-# Fuente única de verdad para precios y contacto.
-# El frontend los lee desde /api/config — NUNCA hardcodear en el JS.
-WA_NUMBER = os.environ.get('WA_NUMBER', '5493510000000')
-
-ESCALA_PRECIOS = {
-    1: int(os.environ.get('PRECIO_1', 3000)),
-    2: int(os.environ.get('PRECIO_2', 2700)),
-    3: int(os.environ.get('PRECIO_3', 2500)),
-    4: int(os.environ.get('PRECIO_4', 2300)),
-    5: int(os.environ.get('PRECIO_5', 2000)),   # 5 o más
-}
-
-def calcular_precio_unitario(cantidad: int) -> int:
-    """Devuelve el precio por foto según la cantidad en el carrito."""
-    return ESCALA_PRECIOS.get(min(cantidad, 5), ESCALA_PRECIOS[5])
-
-# ── TOKENS DE DESCARGA FIRMADOS ───────────────────────────────────────────────
-# Los links del email NO exponen la URL de Cloudinary directamente.
-# Se genera un token HMAC que ata foto_id + compra_id + timestamp.
-# El endpoint /descargar/<foto_id> lo valida antes de redirigir.
-DOWNLOAD_EXPIRY_DAYS = int(os.environ.get('DOWNLOAD_EXPIRY_DAYS', 365))
-
-def _generar_token_descarga(foto_id: int, compra_id: int) -> str:
-    import time
-    ts      = int(time.time())
-    payload = f"dl:{foto_id}:{compra_id}:{ts}"
-    firma   = hmac.new(app.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    return f"{ts}.{firma}"
-
-def _verificar_token_descarga(foto_id: int, compra_id: int, token: str) -> bool:
-    import time
-    try:
-        ts_str, firma_recibida = token.split('.', 1)
-        ts = int(ts_str)
-    except (ValueError, AttributeError):
-        return False
-    # Verificar expiración
-    if time.time() - ts > DOWNLOAD_EXPIRY_DAYS * 86400:
-        return False
-    payload    = f"dl:{foto_id}:{compra_id}:{ts}"
-    firma_calc = hmac.new(app.secret_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
-    return hmac.compare_digest(firma_calc, firma_recibida)
+# ── DEEPFACE IA ───────────────────────────────────────────────────────────────
 try:
     from deepface import DeepFace
     import numpy as np
@@ -194,12 +129,9 @@ class Evento(db.Model):
     deporte     = db.Column(db.String(50),  nullable=False)
     fecha       = db.Column(db.String(50))
     descripcion = db.Column(db.String(300))
-    parent_id   = db.Column(db.Integer, db.ForeignKey('evento.id'), nullable=True)
     creado_en   = db.Column(db.DateTime, server_default=db.func.now())
     fotos       = db.relationship('Foto', backref='evento', lazy=True, cascade='all, delete-orphan')
     personas    = db.relationship('PersonaCluster', backref='evento', lazy=True, cascade='all, delete-orphan')
-    subcarpetas = db.relationship('Evento', backref=db.backref('padre', remote_side='Evento.id'),
-                                  lazy=True, cascade='all, delete-orphan')
 
 class Foto(db.Model):
     __tablename__ = 'foto'
@@ -237,10 +169,13 @@ class Compra(db.Model):
     mp_payment_id    = db.Column(db.String(100))
     email_cliente    = db.Column(db.String(150), nullable=False)
     nombre_cliente   = db.Column(db.String(150))
+    whatsapp_cliente = db.Column(db.String(30))   # número con código país, sin +
     foto_ids         = db.Column(db.Text)
     monto_total      = db.Column(db.Float)
     estado           = db.Column(db.String(50), default='pendiente')
+    token_galeria    = db.Column(db.String(64), unique=True)  # link privado único
     email_enviado    = db.Column(db.Boolean, default=False)
+    wa_enviado       = db.Column(db.Boolean, default=False)
     creada_en        = db.Column(db.DateTime, server_default=db.func.now())
 
 class Consulta(db.Model):
@@ -403,10 +338,123 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
         return False
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
+# ── HELPERS ───────────────────────────────────────────────────────────────────
+def generar_token():
+    return secrets.token_urlsafe(32)
+
+def url_galeria(token):
+    base = os.environ.get('BASE_URL', '').rstrip('/')
+    if not base:
+        # Fallback: usar variable RAILWAY_PUBLIC_DOMAIN si existe
+        domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost:5000')
+        base   = f"https://{domain}"
+    return f"{base}/galeria/{token}"
+
+# ── ENVÍO POR WHATSAPP (Meta Cloud API) ───────────────────────────────────────
+def enviar_wa_cliente(compra):
+    """Envía el link de galería al cliente por WhatsApp vía Meta Cloud API."""
+    if not META_WA_ENABLED:
+        print("WhatsApp Meta API no configurado")
+        return False
+    if not compra.whatsapp_cliente:
+        print("Cliente no dejó número de WhatsApp")
+        return False
+    if not compra.token_galeria:
+        print("Compra sin token de galería")
+        return False
+
+    nombre = compra.nombre_cliente or "cliente"
+    link   = url_galeria(compra.token_galeria)
+
+    # Payload para la Meta WhatsApp Cloud API
+    # La plantilla "entrega_fotos" debe estar aprobada en Meta con estos parámetros:
+    #   {{1}} = nombre del cliente
+    #   {{2}} = link de la galería
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": compra.whatsapp_cliente,
+        "type": "template",
+        "template": {
+            "name": META_WA_TEMPLATE,
+            "language": {"code": "es_AR"},
+            "components": [
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": nombre},
+                        {"type": "text", "text": link}
+                    ]
+                }
+            ]
+        }
+    }
+
+    try:
+        req = urllib.request.Request(
+            f"https://graph.facebook.com/v19.0/{META_WA_PHONE_ID}/messages",
+            data    = json.dumps(payload).encode('utf-8'),
+            headers = {
+                "Content-Type":  "application/json",
+                "Authorization": f"Bearer {META_WA_TOKEN}"
+            },
+            method = "POST"
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = json.loads(resp.read().decode('utf-8'))
+            print(f"✓ WhatsApp enviado a {compra.whatsapp_cliente}: {body}")
+            return True
+    except Exception as e:
+        print(f"✗ Error enviando WhatsApp: {e}")
+        return False
+
+def notificarme_venta(compra):
+    """Me avisa a Nacho (CallMeBot gratuito) cuando alguien compra."""
+    if not CMB_PHONE or not CMB_APIKEY:
+        return
+    try:
+        ids    = json.loads(compra.foto_ids or '[]')
+        link   = url_galeria(compra.token_galeria) if compra.token_galeria else ''
+        msg    = (
+            f"Nueva venta! {compra.nombre_cliente or compra.email_cliente} "
+            f"compro {len(ids)} foto{'s' if len(ids)>1 else ''} "
+            f"por ${compra.monto_total:,.0f} ARS. "
+            f"WA: {compra.whatsapp_cliente or 'no dejó'}. "
+            f"Galería: {link}"
+        )
+        url = (f"https://api.callmebot.com/whatsapp.php"
+               f"?phone={CMB_PHONE}&text={urllib.parse.quote(msg)}&apikey={CMB_APIKEY}")
+        urllib.request.urlopen(url, timeout=10)
+    except Exception as e:
+        print(f"CallMeBot error: {e}")
+
+def entregar_compra(compra_id):
+    """Envía email + WhatsApp al cliente en background."""
+    with app.app_context():
+        compra = Compra.query.get(compra_id)
+        if not compra:
+            return
+        # Generar token de galería si no tiene
+        if not compra.token_galeria:
+            compra.token_galeria = generar_token()
+            db.session.commit()
+
+        # 1. Email
+        if not compra.email_enviado:
+            enviar_fotos_email(compra_id)
+
+        # 2. WhatsApp al cliente
+        if not compra.wa_enviado and compra.whatsapp_cliente:
+            ok = enviar_wa_cliente(compra)
+            if ok:
+                compra.wa_enviado = True
+                db.session.commit()
+
+        # 3. Notificación a Nacho
+        notificarme_venta(compra)
+
+# ── GALERÍA PRIVADA ────────────────────────────────────────────────────────────
 def enviar_fotos_email(compra_id):
-    # select_for_update: bloquea la fila en PostgreSQL para evitar doble envío
-    # ante la race condition entre /pago-exitoso y el webhook de MP.
-    compra = db.session.query(Compra).with_for_update().filter_by(id=compra_id).first()
+    compra = Compra.query.get(compra_id)
     if not compra or compra.email_enviado: return False
     if not SMTP_USER or not SMTP_PASS: return False
 
@@ -414,15 +462,11 @@ def enviar_fotos_email(compra_id):
     fotos = Foto.query.filter(Foto.id.in_(ids)).all()
     if not fotos: return False
 
-    nombre   = compra.nombre_cliente or compra.email_cliente.split('@')[0].capitalize()
-    base_url = os.environ.get('ALLOWED_ORIGIN', 'http://localhost:5000')
+    nombre = compra.nombre_cliente or compra.email_cliente.split('@')[0].capitalize()
 
     filas = ''
     for i, f in enumerate(fotos, 1):
         titulo = f.evento.titulo if f.evento else 'Evento deportivo'
-        # URL de descarga firmada — no expone la URL de Cloudinary en el email
-        token        = _generar_token_descarga(f.id, compra.id)
-        url_descarga = f"{base_url}/descargar/{f.id}?compra={compra.id}&token={token}"
         filas += f"""
         <tr><td style="padding:14px 0;border-bottom:1px solid #1a1a1a;">
           <table width="100%" cellpadding="0" cellspacing="0"><tr>
@@ -436,7 +480,7 @@ def enviar_fotos_email(compra_id):
               <p style="margin:3px 0 0;font-size:11px;color:#555;">Foto #{f.id} · Alta resolución · Sin marca de agua</p>
             </td>
             <td style="text-align:right;padding-left:10px;white-space:nowrap;">
-              <a href="{url_descarga}"
+              <a href="{f.url_original}"
                  style="display:inline-block;padding:9px 18px;background:#D4A843;
                         color:#000;font-size:10px;font-weight:700;letter-spacing:2px;
                         text-decoration:none;text-transform:uppercase;">
@@ -504,50 +548,171 @@ def index(): return send_from_directory('.', 'index.html')
 @app.route('/nacho_lingua.jpg')
 def foto_fondo(): return send_file('nacho_lingua.jpg')
 
-# ── EVENTOS ───────────────────────────────────────────────────────────────────
-def serializar_evento(e):
-    """Convierte un Evento a dict incluyendo sus subcarpetas de forma recursiva."""
-    return {
-        'id':          e.id,
-        'titulo':      e.titulo,
-        'deporte':     e.deporte,
-        'fecha':       e.fecha,
-        'descripcion': e.descripcion,
-        'parent_id':   e.parent_id,
-        'total_fotos': len(e.fotos),
-        'total_subcarpetas': len(e.subcarpetas),
-        'fotos': [{'id': f.id, 'url_preview': f.url_preview, 'precio': f.precio}
-                  for f in e.fotos],
-        'subcarpetas': [serializar_evento(s) for s in
-                        sorted(e.subcarpetas, key=lambda x: x.id)]
-    }
+@app.route('/galeria/<token>')
+def galeria_privada(token):
+    compra = Compra.query.filter_by(token_galeria=token, estado='approved').first()
+    if not compra:
+        return """<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8">
+        <title>Link inválido</title>
+        <style>
+            body{background:#06060A;color:#f2f2f2;font-family:sans-serif;
+            display:flex;align-items:center;justify-content:center;
+            min-height:100vh;text-align:center;}
+            h1{color:#D4A843;font-size:28px;margin-bottom:12px;}
+            p{color:#777;font-size:14px;line-height:1.7;}
+            a{color:#D4A843;}
+        </style></head>
+        <body><div>
+            <h1>Link inválido</h1>
+            <p>Este link no existe o el pago no fue confirmado.<br>
+            Si creés que es un error, respondé el email que recibiste.</p>
+            <p><a href="/">← Volver al portfolio</a></p>
+        </div></body></html>""", 404
 
+    ids   = json.loads(compra.foto_ids or '[]')
+    fotos = Foto.query.filter(Foto.id.in_(ids)).all()
+    nombre = compra.nombre_cliente or 'Cliente'
+
+    fotos_html = ''
+    for f in fotos:
+        titulo = f.evento.titulo if f.evento else 'Evento deportivo'
+        fotos_html += f'''
+        <div class="foto-card">
+            <div class="foto-img-wrap">
+                <img src="{f.url_preview}" alt="Foto" loading="lazy">
+                <div class="foto-overlay">
+                    <a href="{f.url_original}" download target="_blank" class="btn-dl">
+                        ↓ Descargar
+                    </a>
+                </div>
+            </div>
+            <div class="foto-info">
+                <span>{titulo}</span>
+                <a href="{f.url_original}" download target="_blank" class="btn-dl-sm">↓ Alta resolución</a>
+            </div>
+        </div>'''
+
+    urls_json = json.dumps([f.url_original for f in fotos])
+
+    return f'''<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Tus fotos — Nacho Lingua Fotografía</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
+        :root{{--ink:#06060A;--ink2:#0c0c12;--ink3:#121218;--ink4:#1c1c24;--gold:#D4A843;--text:#f2f2f2;--sub:#888;}}
+        body{{background:var(--ink);color:var(--text);font-family:'Inter',sans-serif;min-height:100vh;}}
+        .header{{background:var(--ink2);border-bottom:1px solid var(--ink4);padding:20px 5%;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}}
+        .brand{{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:5px;color:var(--gold);}}
+        .back{{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--sub);text-decoration:none;transition:color .2s;}}
+        .back:hover{{color:var(--gold);}}
+        .hero{{padding:40px 5% 28px;border-bottom:1px solid var(--ink3);display:flex;align-items:flex-start;justify-content:space-between;flex-wrap:wrap;gap:20px;}}
+        .hero-eyebrow{{font-size:10px;letter-spacing:4px;text-transform:uppercase;color:var(--gold);margin-bottom:8px;display:flex;align-items:center;gap:10px;}}
+        .hero-eyebrow::before{{content:'';width:20px;height:1px;background:var(--gold);display:block;}}
+        .hero-title{{font-family:'Bebas Neue',sans-serif;font-size:clamp(28px,5vw,46px);letter-spacing:3px;color:var(--text);margin-bottom:8px;}}
+        .hero-sub{{font-size:13px;color:var(--sub);line-height:1.7;max-width:420px;}}
+        .hero-stats{{display:flex;gap:28px;flex-shrink:0;}}
+        .stat{{text-align:center;}}
+        .stat-n{{font-family:'Bebas Neue',sans-serif;font-size:36px;color:var(--gold);line-height:1;display:block;}}
+        .stat-l{{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:#555;display:block;margin-top:3px;}}
+        .toolbar{{padding:14px 5%;background:var(--ink2);border-bottom:1px solid var(--ink4);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;}}
+        .toolbar-info{{font-size:12px;color:var(--sub);}}
+        .btn-all{{display:inline-flex;align-items:center;gap:8px;padding:10px 22px;background:var(--gold);color:#000;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;text-decoration:none;cursor:pointer;border:none;font-family:'Inter',sans-serif;transition:background .2s;}}
+        .btn-all:hover{{background:#e8bf6a;}}
+        .grid{{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:3px;padding:3px 5%;}}
+        .foto-card{{background:var(--ink3);overflow:hidden;}}
+        .foto-img-wrap{{position:relative;aspect-ratio:4/3;overflow:hidden;}}
+        .foto-img-wrap img{{width:100%;height:100%;object-fit:cover;transition:transform .5s,filter .3s;filter:brightness(.88);display:block;}}
+        .foto-card:hover .foto-img-wrap img{{transform:scale(1.04);filter:brightness(.6);}}
+        .foto-overlay{{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;opacity:0;transition:opacity .3s;}}
+        .foto-card:hover .foto-overlay{{opacity:1;}}
+        .btn-dl{{display:inline-flex;align-items:center;gap:6px;padding:12px 22px;background:var(--gold);color:#000;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;text-decoration:none;transform:translateY(6px);transition:transform .3s,background .2s;}}
+        .foto-card:hover .btn-dl{{transform:translateY(0);}}
+        .btn-dl:hover{{background:#e8bf6a;}}
+        .foto-info{{padding:10px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px;border-top:1px solid var(--ink4);}}
+        .foto-info span{{font-size:11px;color:var(--sub);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}}
+        .btn-dl-sm{{font-size:11px;color:var(--gold);text-decoration:none;white-space:nowrap;flex-shrink:0;transition:opacity .2s;}}
+        .btn-dl-sm:hover{{opacity:.8;}}
+        footer{{margin-top:48px;padding:32px 5%;border-top:1px solid var(--ink3);text-align:center;}}
+        footer p{{font-size:11px;color:#333;line-height:1.8;}}
+        @media(max-width:600px){{.hero-stats{{display:none;}}.grid{{grid-template-columns:1fr 1fr;}}.foto-overlay{{display:none;}}}}
+    </style>
+</head>
+<body>
+<header class="header">
+    <div class="brand">NL</div>
+    <a href="/" class="back">← Volver al portfolio</a>
+</header>
+<div class="hero">
+    <div>
+        <div class="hero-eyebrow">Tu galería privada</div>
+        <h1 class="hero-title">¡Hola, {nombre}!</h1>
+        <p class="hero-sub">
+            Tus fotos están listas en alta resolución, sin marca de agua.<br>
+            El link es permanente — podés volver cuando quieras.
+        </p>
+    </div>
+    <div class="hero-stats">
+        <div class="stat">
+            <span class="stat-n">{len(fotos)}</span>
+            <span class="stat-l">Foto{"s" if len(fotos)>1 else ""}</span>
+        </div>
+        <div class="stat">
+            <span class="stat-n" style="font-size:22px">${compra.monto_total:,.0f}</span>
+            <span class="stat-l">ARS abonados</span>
+        </div>
+    </div>
+</div>
+<div class="toolbar">
+    <span class="toolbar-info">Pasá el mouse sobre la foto para descargarla · En celular usá el botón debajo</span>
+    <button class="btn-all" onclick="descargarTodas()">↓ Descargar todas</button>
+</div>
+<div class="grid">{fotos_html}</div>
+<footer>
+    <p>© 2026 Nacho Lingua Fotografía · Córdoba, Argentina<br>
+    Imágenes de uso personal · Prohibida su reproducción sin autorización.</p>
+</footer>
+<script>
+    const urls = {urls_json};
+    function descargarTodas() {{
+        const btn = document.querySelector('.btn-all');
+        btn.disabled = true; btn.textContent = 'Descargando...';
+        let i = 0;
+        function next() {{
+            if (i >= urls.length) {{ btn.textContent = '✓ ¡Listas!'; setTimeout(() => {{ btn.textContent = '↓ Descargar todas'; btn.disabled = false; }}, 3000); return; }}
+            const a = document.createElement('a');
+            a.href = urls[i]; a.download = 'nacho-lingua-foto-' + (i+1) + '.jpg'; a.target = '_blank';
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            btn.textContent = 'Descargando ' + (i+1) + ' de ' + urls.length + '...';
+            i++; setTimeout(next, 800);
+        }}
+        next();
+    }}
+</script>
+</body></html>'''
+
+# ── EVENTOS ───────────────────────────────────────────────────────────────────
 @app.route('/crear-evento', methods=['POST'])
 def crear_evento():
     if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
-    d         = request.json
-    parent_id = d.get('parent_id') or None
-    # Si tiene padre, hereda el deporte del padre raíz
-    if parent_id:
-        padre = Evento.query.get(parent_id)
-        deporte = padre.deporte if padre else d.get('deporte', '')
-    else:
-        deporte = d.get('deporte', '')
-    ev = Evento(
-        titulo      = d.get('titulo', ''),
-        deporte     = deporte,
-        fecha       = d.get('fecha', ''),
-        descripcion = d.get('descripcion', ''),
-        parent_id   = parent_id
-    )
+    d  = request.json
+    ev = Evento(titulo=d.get('titulo',''), deporte=d.get('deporte',''),
+                fecha=d.get('fecha',''), descripcion=d.get('descripcion',''))
     db.session.add(ev); db.session.commit()
-    return jsonify({'id': ev.id, 'mensaje': 'Carpeta creada'})
+    return jsonify({'id': ev.id, 'mensaje': 'Evento creado'})
 
 @app.route('/obtener-eventos', methods=['GET'])
 def obtener_eventos():
-    # Solo devolver eventos raíz (sin padre) — las subcarpetas van dentro de cada uno
-    raices = Evento.query.filter_by(parent_id=None).order_by(Evento.id.desc()).all()
-    return jsonify([serializar_evento(e) for e in raices])
+    eventos = Evento.query.order_by(Evento.id.desc()).all()
+    return jsonify([{
+        'id': e.id, 'titulo': e.titulo, 'deporte': e.deporte,
+        'fecha': e.fecha, 'descripcion': e.descripcion,
+        'total_fotos': len(e.fotos),
+        'fotos': [{'id': f.id, 'url_preview': f.url_preview, 'precio': f.precio} for f in e.fotos]
+    } for e in eventos])
 
 @app.route('/editar-evento/<int:ev_id>', methods=['PATCH'])
 def editar_evento(ev_id):
@@ -584,13 +749,23 @@ def subir_foto():
     ruta_preview = os.path.join(CARPETA_TEMP, 'preview_' + filename)
     archivo.save(ruta_orig)
 
-    try:
-        r_orig       = cloudinary.uploader.upload(ruta_orig, folder=f'nacho_lingua/originales/evento_{evento_id}', quality='auto:best')
-        url_original = r_orig['secure_url']
-    except Exception as e:
-        try: os.remove(ruta_orig)
-        except: pass
-        return jsonify({'error': f'Error Cloudinary original: {e}'}), 500
+    # Subir original a Wasabi (sin marca de agua)
+    if WASABI_ENABLED:
+        key_orig     = f"nacho_lingua/originales/evento_{evento_id}/{filename}"
+        url_original = subir_a_wasabi(ruta_orig, key_orig)
+        if not url_original:
+            try: os.remove(ruta_orig)
+            except: pass
+            return jsonify({'error': 'Error subiendo a Wasabi'}), 500
+    else:
+        # Fallback a Cloudinary si Wasabi no está configurado
+        try:
+            r_orig       = cloudinary.uploader.upload(ruta_orig, folder=f'nacho_lingua/originales/evento_{evento_id}', quality='auto:best')
+            url_original = r_orig['secure_url']
+        except Exception as e:
+            try: os.remove(ruta_orig)
+            except: pass
+            return jsonify({'error': f'Error subiendo original: {e}'}), 500
 
     if not agregar_watermark(ruta_orig, ruta_preview):
         try: os.remove(ruta_orig)
@@ -699,12 +874,32 @@ def crear_orden():
     fotos = Foto.query.filter(Foto.id.in_(foto_ids)).all()
     if not fotos: return jsonify({'error': 'Fotos no encontradas'}), 404
 
-    cantidad    = len(fotos)
-    precio_unit = calcular_precio_unitario(cantidad)
-    total       = precio_unit * cantidad
-    base_url    = request.host_url.rstrip('/')
+    # ⚠ APLICACIÓN DE LA ESCALA DE DESCUENTOS EN EL BACKEND
+    cantidad = len(fotos)
+    if cantidad == 1:
+        precio_unit = 3000
+    elif cantidad == 2:
+        precio_unit = 2700
+    elif cantidad == 3:
+        precio_unit = 2500
+    elif cantidad == 4:
+        precio_unit = 2300
+    else: # 5 o más
+        precio_unit = 2000 # <-- Cambiar a 5000 acá si realmente era el valor deseado
+        
+    total = precio_unit * cantidad
+    base_url = request.host_url.rstrip('/')
 
-    compra = Compra(email_cliente=email, nombre_cliente=nombre, foto_ids=json.dumps([f.id for f in fotos]), monto_total=total, estado='pendiente')
+    wa = d.get('whatsapp', '').strip().replace(' ','').replace('+','').replace('-','').replace('(','').replace(')','')
+    compra = Compra(
+        email_cliente    = email,
+        nombre_cliente   = nombre,
+        whatsapp_cliente = wa if wa else None,
+        foto_ids         = json.dumps([f.id for f in fotos]),
+        monto_total      = total,
+        estado           = 'pendiente',
+        token_galeria    = generar_token()
+    )
     db.session.add(compra); db.session.commit()
 
     if not MP_HABILITADO: return jsonify({'error': 'mp_no_configurado', 'compra_id': compra.id, 'total': total}), 503
@@ -726,11 +921,6 @@ def crear_orden():
 
 @app.route('/mp-webhook', methods=['POST'])
 def mp_webhook():
-    # ── Validar firma antes de procesar cualquier cosa ─────────────────────────
-    if not _verificar_firma_mp(request):
-        print('⚠ Webhook MP rechazado — firma inválida')
-        return jsonify({'status': 'unauthorized'}), 401
-
     d = request.json
     if d and d.get('type') == 'payment' and MP_HABILITADO:
         pid = d.get('data', {}).get('id')
@@ -744,88 +934,21 @@ def mp_webhook():
                     compra.estado = pay.get('status', 'desconocido')
                     db.session.commit()
                     if compra.estado == 'approved' and not compra.email_enviado:
-                        def enviar_correo_bg(c_id):
-                            with app.app_context(): enviar_fotos_email(c_id)
-                        threading.Thread(target=enviar_correo_bg, args=(compra.id,)).start()
+                        threading.Thread(target=entregar_compra, args=(compra.id,), daemon=True).start()
     return jsonify({'status': 'ok'}), 200
 
 @app.route('/pago-exitoso')
 def pago_exitoso():
-    cid        = request.args.get('cid')
-    payment_id = request.args.get('payment_id')   # MP agrega este param al redirigir
-    status     = request.args.get('status', '')    # 'approved', 'pending', etc.
-
-    compra = Compra.query.get(int(cid)) if cid and cid.isdigit() else None
-
+    cid = request.args.get('cid')
+    compra = Compra.query.get(cid) if cid else None
     if compra and not compra.email_enviado:
-        # Verificar el estado real consultando la API de MP, no solo el param de URL
-        aprobado = False
-        if payment_id and MP_HABILITADO:
-            try:
-                r = MP_SDK.payment().get(payment_id)
-                if r['status'] == 200 and r['response'].get('status') == 'approved':
-                    aprobado = True
-                    compra.mp_payment_id = str(payment_id)
-            except Exception as e:
-                print(f'Error verificando pago {payment_id}: {e}')
-        elif status == 'approved' and not MP_HABILITADO:
-            # Modo sin MP configurado (dev local)
-            aprobado = True
-
-        if aprobado:
-            compra.estado = 'approved'
-            db.session.commit()
-            enviar_fotos_email(compra.id)
-
+        compra.estado = 'approved'; db.session.commit()
+        threading.Thread(target=entregar_compra, args=(compra.id,), daemon=True).start()
     return send_from_directory('.', 'pago-exitoso.html')
 
 @app.route('/pago-fallido')
 def pago_fallido():
     return send_from_directory('.', 'pago-fallido.html')
-
-# ── DESCARGA SEGURA ───────────────────────────────────────────────────────────
-@app.route('/descargar/<int:foto_id>')
-def descargar_foto(foto_id):
-    """
-    Endpoint de descarga con token firmado.
-    Valida que el token sea legítimo y que la compra esté aprobada
-    antes de redirigir al archivo original en Cloudinary.
-    """
-    compra_id = request.args.get('compra', '')
-    token     = request.args.get('token', '')
-
-    if not compra_id.isdigit():
-        abort(403)
-
-    compra_id = int(compra_id)
-
-    if not _verificar_token_descarga(foto_id, compra_id, token):
-        abort(403)
-
-    compra = Compra.query.get(compra_id)
-    if not compra or compra.estado != 'approved':
-        abort(403)
-
-    ids_comprados = json.loads(compra.foto_ids or '[]')
-    if foto_id not in ids_comprados:
-        abort(403)
-
-    foto = Foto.query.get_or_404(foto_id)
-    # Redirige al archivo real — la URL de Cloudinary nunca aparece en el email
-    from flask import redirect
-    return redirect(foto.url_original, code=302)
-
-# ── API CONFIG (frontend lee desde acá — no hardcodear en JS) ─────────────────
-@app.route('/api/config')
-def api_config():
-    """
-    Configuración pública que el frontend consume al iniciar.
-    Precios y contacto vienen de variables de entorno — un solo lugar para cambiarlos.
-    """
-    return jsonify({
-        'wa_number':     WA_NUMBER,
-        'escala_precios': ESCALA_PRECIOS,
-    })
 
 # ── CONTACTO ──────────────────────────────────────────────────────────────────
 @app.route('/contacto', methods=['POST'])
@@ -850,18 +973,30 @@ def admin_stats():
 @app.route('/admin/compras', methods=['GET'])
 def ver_compras():
     if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    base = os.environ.get('BASE_URL', request.host_url.rstrip('/'))
     return jsonify([{
-        'id': c.id, 'email': c.email_cliente, 'nombre': c.nombre_cliente,
-        'foto_ids': json.loads(c.foto_ids or '[]'), 'total': c.monto_total, 'estado': c.estado,
-        'email_enviado': c.email_enviado, 'fecha': c.creada_en.strftime('%d/%m/%Y %H:%M') if c.creada_en else ''
+        'id':            c.id,
+        'email':         c.email_cliente,
+        'nombre':        c.nombre_cliente,
+        'whatsapp':      c.whatsapp_cliente,
+        'foto_ids':      json.loads(c.foto_ids or '[]'),
+        'total':         c.monto_total,
+        'estado':        c.estado,
+        'email_enviado': c.email_enviado,
+        'wa_enviado':    c.wa_enviado,
+        'link_galeria':  f"{base}/galeria/{c.token_galeria}" if c.token_galeria else None,
+        'fecha':         c.creada_en.strftime('%d/%m/%Y %H:%M') if c.creada_en else ''
     } for c in Compra.query.order_by(Compra.creada_en.desc()).all()])
 
-@app.route('/admin/compras/<int:cid>/reenviar-email', methods=['POST'])
-def reenviar_email(cid):
+@app.route('/admin/compras/<int:cid>/reenviar', methods=['POST'])
+def reenviar_todo(cid):
     if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
     compra = Compra.query.get_or_404(cid)
-    compra.email_enviado = False; db.session.commit()
-    return jsonify({'ok': enviar_fotos_email(cid)})
+    compra.email_enviado = False
+    compra.wa_enviado    = False
+    db.session.commit()
+    threading.Thread(target=entregar_compra, args=(cid,), daemon=True).start()
+    return jsonify({'ok': True})
 
 @app.route('/admin/consultas', methods=['GET'])
 def ver_consultas():
@@ -880,11 +1015,8 @@ def marcar_leida(cid):
 
 # ── AUTH ──────────────────────────────────────────────────────────────────────
 @app.route('/login', methods=['POST'])
-@limiter.limit('5 per minute')
 def login():
-    d = request.json; pw = os.environ.get('ADMIN_PASSWORD', '')
-    if not pw:
-        return jsonify({'success': False, 'error': 'ADMIN_PASSWORD no configurada'}), 500
+    d = request.json; pw = os.environ.get('ADMIN_PASSWORD', 'NachoAdmin2026!')
     if d.get('password') == pw:
         session.permanent = True; session['admin'] = True; return jsonify({'success': True})
     return jsonify({'success': False}), 401
@@ -894,73 +1026,6 @@ def check_auth(): return jsonify({'isAdmin': session.get('admin', False)})
 
 @app.route('/logout', methods=['POST'])
 def logout(): session.pop('admin', None); return jsonify({'success': True})
-
-# ── ROBOTS Y SITEMAP ──────────────────────────────────────────────────────────
-@app.route('/robots.txt')
-def robots():
-    from flask import Response
-    return Response(
-        "User-agent: *\nAllow: /\nSitemap: https://nacholingua.com/sitemap.xml\n",
-        mimetype='text/plain'
-    )
-
-@app.route('/sitemap.xml')
-def sitemap():
-    from flask import Response
-    from datetime import date
-    hoy = date.today().isoformat()
-    xml = f"""<?xml version="1.0" encoding="UTF-8"?>
-<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url>
-    <loc>https://nacholingua.com/</loc>
-    <lastmod>{hoy}</lastmod>
-    <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
-  </url>
-</urlset>"""
-    return Response(xml, mimetype='application/xml')
-
-# ── EXPORTAR VENTAS A CSV ──────────────────────────────────────────────────────
-@app.route('/admin/compras/exportar-csv')
-def exportar_compras_csv():
-    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
-    import csv, io as _io
-    compras = Compra.query.order_by(Compra.creada_en.desc()).all()
-    buf = _io.StringIO()
-    w   = csv.writer(buf)
-    w.writerow(['ID', 'Fecha', 'Nombre', 'Email', 'Fotos', 'Total ARS', 'Estado', 'Email enviado'])
-    for c in compras:
-        ids = json.loads(c.foto_ids or '[]')
-        w.writerow([
-            c.id,
-            c.creada_en.strftime('%d/%m/%Y %H:%M') if c.creada_en else '',
-            c.nombre_cliente or '',
-            c.email_cliente,
-            ', '.join(str(i) for i in ids),
-            f"{c.monto_total:.0f}",
-            c.estado,
-            'Sí' if c.email_enviado else 'No',
-        ])
-    buf.seek(0)
-    from flask import Response
-    return Response(
-        buf.getvalue(),
-        mimetype='text/csv',
-        headers={'Content-Disposition': 'attachment; filename=ventas-nacho-lingua.csv'}
-    )
-
-# ── MANEJO DE ERRORES PERSONALIZADO ───────────────────────────────────────────
-@app.errorhandler(404)
-def not_found(e):
-    return send_from_directory('.', '404.html'), 404
-
-@app.errorhandler(500)
-def server_error(e):
-    return send_from_directory('.', '500.html'), 500
-
-@app.errorhandler(429)
-def too_many_requests(e):
-    return jsonify({'error': 'Demasiados intentos. Esperá un momento e intentá de nuevo.'}), 429
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
