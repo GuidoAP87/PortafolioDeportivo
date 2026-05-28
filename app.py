@@ -50,16 +50,28 @@ def subir_a_wasabi(ruta_local, key):
         with open(ruta_local, 'rb') as f:
             client.upload_fileobj(
                 f, WASABI_BUCKET, key,
-                ExtraArgs={
-                    'ContentType': 'image/jpeg',
-                    'ACL':         'public-read'
-                }
+                ExtraArgs={'ContentType': 'image/jpeg'}
             )
-        url = f"{WASABI_ENDPOINT}/{WASABI_BUCKET}/{key}"
+        # URL pública directa de Wasabi
+        url = f"https://s3.wasabisys.com/{WASABI_BUCKET}/{key}"
         print(f"✓ Wasabi: subido {key}")
         return url
     except Exception as e:
         print(f"✗ Error Wasabi: {e}")
+        return None
+
+def get_wasabi_presigned_url(key, expiry=3600*24*30):
+    """Genera URL firmada para acceso privado (30 días por defecto)."""
+    try:
+        client = get_wasabi_client()
+        url = client.generate_presigned_url(
+            'get_object',
+            Params={'Bucket': WASABI_BUCKET, 'Key': key},
+            ExpiresIn=expiry
+        )
+        return url
+    except Exception as e:
+        print(f"✗ Error presigned URL: {e}")
         return None
 
 # ── APP ───────────────────────────────────────────────────────────────────────
@@ -73,6 +85,7 @@ if database_url.startswith('postgres://'):
 
 app.config['SQLALCHEMY_DATABASE_URI']        = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['MAX_CONTENT_LENGTH']             = 100 * 1024 * 1024  # 100MB por foto
 app.config['SQLALCHEMY_ENGINE_OPTIONS']      = {
     'pool_pre_ping': True,
     'pool_recycle':  300,
@@ -129,10 +142,14 @@ class Evento(db.Model):
     deporte       = db.Column(db.String(50),  nullable=False)
     fecha         = db.Column(db.String(50))
     descripcion   = db.Column(db.String(300))
-    cover_foto_id = db.Column(db.Integer, nullable=True)   # portada manual (ID de Foto)
+    cover_foto_id = db.Column(db.Integer, nullable=True)
+    parent_id     = db.Column(db.Integer, db.ForeignKey('evento.id'), nullable=True)
     creado_en     = db.Column(db.DateTime, server_default=db.func.now())
     fotos         = db.relationship('Foto', backref='evento', lazy=True, cascade='all, delete-orphan')
     personas      = db.relationship('PersonaCluster', backref='evento', lazy=True, cascade='all, delete-orphan')
+    subcarpetas   = db.relationship('Evento',
+                                    backref=db.backref('padre', remote_side='Evento.id'),
+                                    lazy=True, cascade='all, delete-orphan')
 
 class Foto(db.Model):
     __tablename__ = 'foto'
@@ -696,42 +713,59 @@ def galeria_privada(token):
 </body></html>'''
 
 # ── EVENTOS ───────────────────────────────────────────────────────────────────
+def serializar_evento(e):
+    """Serializa un evento con sus subcarpetas de forma recursiva."""
+    cover_url = None
+    if e.cover_foto_id:
+        cf = Foto.query.get(e.cover_foto_id)
+        if cf: cover_url = cf.url_original
+    if not cover_url and e.fotos:
+        cover_url = e.fotos[0].url_original
+    if not cover_url and e.subcarpetas:
+        # Buscar portada en subcarpetas recursivamente
+        for sub in e.subcarpetas:
+            if sub.fotos:
+                cover_url = sub.fotos[0].url_original
+                break
+    return {
+        'id':               e.id,
+        'titulo':           e.titulo,
+        'deporte':          e.deporte,
+        'fecha':            e.fecha,
+        'descripcion':      e.descripcion,
+        'cover_foto_id':    e.cover_foto_id,
+        'cover_url':        cover_url,
+        'parent_id':        e.parent_id,
+        'total_fotos':      len(e.fotos),
+        'total_subcarpetas': len(e.subcarpetas),
+        'fotos': [{'id': f.id, 'url_preview': f.url_preview,
+                   'url_original': f.url_original, 'precio': f.precio}
+                  for f in e.fotos],
+        'subcarpetas': [serializar_evento(s) for s in
+                        sorted(e.subcarpetas, key=lambda x: x.id)]
+    }
+
 @app.route('/crear-evento', methods=['POST'])
 def crear_evento():
     if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
-    d  = request.json
-    ev = Evento(titulo=d.get('titulo',''), deporte=d.get('deporte',''),
-                fecha=d.get('fecha',''), descripcion=d.get('descripcion',''))
+    d         = request.json
+    parent_id = d.get('parent_id') or None
+    if parent_id:
+        padre   = Evento.query.get(parent_id)
+        deporte = padre.deporte if padre else d.get('deporte', '')
+    else:
+        deporte = d.get('deporte', '')
+    ev = Evento(titulo=d.get('titulo',''), deporte=deporte,
+                fecha=d.get('fecha',''), descripcion=d.get('descripcion',''),
+                parent_id=parent_id)
     db.session.add(ev); db.session.commit()
-    return jsonify({'id': ev.id, 'mensaje': 'Evento creado'})
+    return jsonify({'id': ev.id, 'mensaje': 'Carpeta creada'})
 
 @app.route('/obtener-eventos', methods=['GET'])
 def obtener_eventos():
-    eventos = Evento.query.order_by(Evento.id.desc()).all()
-    resultado = []
-    for e in eventos:
-        # Portada: si tiene cover manual usamos el original (sin watermark), sino el preview de la 1ra foto
-        cover_url = None
-        if e.cover_foto_id:
-            cover_foto = Foto.query.get(e.cover_foto_id)
-            if cover_foto:
-                cover_url = cover_foto.url_original  # sin marca de agua
-        if not cover_url and e.fotos:
-            cover_url = e.fotos[0].url_original      # primera foto, también sin watermark
-        resultado.append({
-            'id':            e.id,
-            'titulo':        e.titulo,
-            'deporte':       e.deporte,
-            'fecha':         e.fecha,
-            'descripcion':   e.descripcion,
-            'cover_foto_id': e.cover_foto_id,
-            'cover_url':     cover_url,
-            'total_fotos':   len(e.fotos),
-            'fotos': [{'id': f.id, 'url_preview': f.url_preview,
-                       'url_original': f.url_original, 'precio': f.precio}
-                      for f in e.fotos]
-        })
-    return jsonify(resultado)
+    # Solo raíces (sin padre) — las subcarpetas van anidadas dentro
+    raices = Evento.query.filter_by(parent_id=None).order_by(Evento.id.desc()).all()
+    return jsonify([serializar_evento(e) for e in raices])
 
 @app.route('/editar-evento/<int:ev_id>', methods=['PATCH'])
 def editar_evento(ev_id):
@@ -765,6 +799,22 @@ def set_portada(ev_id):
     # Devolver la URL original (sin watermark) de la nueva portada
     cover_foto = Foto.query.get(ev.cover_foto_id) if ev.cover_foto_id else (ev.fotos[0] if ev.fotos else None)
     return jsonify({'ok': True, 'cover_url': cover_foto.url_original if cover_foto else None})
+
+
+@app.route('/evento/<int:ev_id>/subcarpeta', methods=['POST'])
+def crear_subcarpeta(ev_id):
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    padre = Evento.query.get_or_404(ev_id)
+    d     = request.json
+    sub   = Evento(
+        titulo    = d.get('titulo', ''),
+        deporte   = padre.deporte,
+        fecha     = d.get('fecha', ''),
+        descripcion = d.get('descripcion', ''),
+        parent_id = ev_id
+    )
+    db.session.add(sub); db.session.commit()
+    return jsonify({'id': sub.id, 'mensaje': 'Subcarpeta creada'})
 
 @app.route('/borrar-evento/<int:ev_id>', methods=['DELETE'])
 def borrar_evento(ev_id):

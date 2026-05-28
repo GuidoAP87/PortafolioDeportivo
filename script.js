@@ -204,6 +204,60 @@ async function cargarEventos() {
     }
 }
 
+// ─── HELPERS DE ÁRBOL ────────────────────────────────────────────────────────
+function buscarEvento(id, lista) {
+    for (const ev of lista) {
+        if (ev.id === id) return ev;
+        if (ev.subcarpetas?.length) {
+            const found = buscarEvento(id, ev.subcarpetas);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+function breadcrumbEvento(id, lista, ruta = []) {
+    for (const ev of lista) {
+        const nueva = [...ruta, ev];
+        if (ev.id === id) return nueva;
+        if (ev.subcarpetas?.length) {
+            const found = breadcrumbEvento(id, ev.subcarpetas, nueva);
+            if (found) return found;
+        }
+    }
+    return null;
+}
+
+function renderEventoCard(ev, i) {
+    const cover  = ev.cover_url || ev.fotos?.[0]?.url_preview || 'https://placehold.co/800x600/0c0c12/1c1c24?text=Sin+fotos';
+    const count  = ev.total_fotos ?? ev.fotos?.length ?? 0;
+    const delay  = Math.min(i * 0.07, 0.5);
+    const hasSub = (ev.total_subcarpetas ?? ev.subcarpetas?.length ?? 0) > 0;
+    const subCount = ev.total_subcarpetas ?? ev.subcarpetas?.length ?? 0;
+
+    return `
+    <div class="event-card${hasSub ? ' event-card-folder' : ''} reveal"
+         style="transition-delay:${delay}s"
+         onclick="abrirEvento(${ev.id})" role="button" tabindex="0"
+         onkeydown="if(event.key==='Enter')abrirEvento(${ev.id})">
+        <img class="event-card-img" src="${cover}" alt="${ev.titulo}" loading="lazy">
+        <div class="event-card-overlay">
+            <div class="event-card-sport">${ev.deporte}</div>
+            <div class="event-card-title">${ev.titulo}</div>
+            <div class="event-card-meta">
+                ${ev.fecha ? `<span><i class="fa-regular fa-calendar" style="margin-right:5px"></i>${ev.fecha}</span>` : ''}
+                ${hasSub
+                    ? `<span><i class="fa-solid fa-folder" style="margin-right:5px;color:var(--gold)"></i>${subCount} subcarpeta${subCount!==1?'s':''}</span>`
+                    : `<span class="event-card-count">${count} foto${count!==1?'s':''}</span>`}
+            </div>
+        </div>
+        ${hasSub ? '<div class="event-card-folder-badge"><i class="fa-solid fa-folder-open"></i></div>' : ''}
+        <div class="event-card-enter">
+            <div class="event-card-enter-btn">${hasSub ? 'Abrir carpeta →' : 'Explorar galería →'}</div>
+        </div>
+    </div>`;
+}
+
 function renderEventos(filtro = 'all') {
     const grid = document.getElementById('gallery-grid');
     const data = filtro === 'all'
@@ -216,25 +270,7 @@ function renderEventos(filtro = 'all') {
         return;
     }
 
-    grid.innerHTML = data.map((ev, i) => {
-        const cover = ev.cover_url || ev.fotos?.[0]?.url_original || ev.fotos?.[0]?.url_preview || 'https://placehold.co/800x600/0c0c12/1c1c24?text=Sin+fotos';
-        const count = ev.fotos?.length ?? 0;
-        return `
-        <div class="event-card reveal" style="transition-delay:${Math.min(i*0.07,0.5)}s"
-             onclick="abrirEvento(${ev.id})" role="button" tabindex="0"
-             onkeydown="if(event.key==='Enter')abrirEvento(${ev.id})">
-            <img class="event-card-img" src="${cover}" alt="${ev.titulo}" loading="lazy">
-            <div class="event-card-overlay">
-                <div class="event-card-sport">${ev.deporte}</div>
-                <div class="event-card-title">${ev.titulo}</div>
-                <div class="event-card-meta">
-                    ${ev.fecha ? `<span><i class="fa-regular fa-calendar" style="margin-right:5px"></i>${ev.fecha}</span>` : ''}
-                    <span class="event-card-count">${count} foto${count!==1?'s':''}</span>
-                </div>
-            </div>
-            <div class="event-card-enter"><div class="event-card-enter-btn">Explorar galería →</div></div>
-        </div>`;
-    }).join('');
+    grid.innerHTML = data.map((ev, i) => renderEventoCard(ev, i)).join('');
 
     initReveal();
     configurarFiltros();
@@ -251,8 +287,15 @@ function configurarFiltros() {
 }
 
 function abrirEvento(eventoId) {
-    const ev = eventosData.find(e => e.id === eventoId);
+    const ev = buscarEvento(eventoId, eventosData);
     if (!ev) return;
+
+    // Si tiene subcarpetas, mostrar navegación de subcarpetas
+    if ((ev.total_subcarpetas ?? ev.subcarpetas?.length ?? 0) > 0) {
+        mostrarSubcarpetas(ev);
+        return;
+    }
+
     eventoActual    = ev;
     lbFotos         = ev.fotos || [];
     personaFiltrada = null;
@@ -298,6 +341,16 @@ function renderVistaEvento(ev) {
                 onmouseout="this.style.color='var(--text-dim)';this.style.borderColor='var(--ink-5)'">
                 <i class="fa-solid fa-pen-to-square"></i>
                 <span>Editar</span>
+            </button>
+            <button onclick="crearSubcarpeta(${ev.id})"
+                style="height:68px;padding:0 16px;border:1px solid var(--gold-dim);color:var(--gold);
+                       font-size:11px;cursor:pointer;text-transform:uppercase;letter-spacing:1px;
+                       transition:0.3s;background:none;font-family:Inter,sans-serif;
+                       display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;"
+                onmouseover="this.style.background='rgba(212,168,67,0.08)'"
+                onmouseout="this.style.background='none'">
+                <i class="fa-solid fa-folder-plus"></i>
+                <span>Subcarpeta</span>
             </button>
             <button onclick="borrarEvento(${ev.id})"
                 style="height:68px;padding:0 16px;border:1px solid rgba(232,64,64,0.3);color:var(--red);
@@ -385,6 +438,103 @@ function renderVistaEvento(ev) {
         ${adminBar}
         <div id="faces-panel-wrap"></div>
         <div class="photos-grid">${fotosHTML}</div>`;
+}
+
+function mostrarSubcarpetas(ev) {
+    const ruta = breadcrumbEvento(ev.id, eventosData) || [ev];
+    document.getElementById('portfolio').style.display = 'none';
+    document.getElementById('about').style.display     = 'none';
+    const view = document.getElementById('event-view');
+    view.style.display = 'block';
+
+    const breadcrumbHTML = ruta.map((item, idx) => {
+        if (idx === ruta.length - 1)
+            return `<span style="color:var(--text)">${item.titulo}</span>`;
+        return `<button onclick="abrirEvento(${item.id})"
+            style="background:none;border:none;color:var(--gold);cursor:pointer;
+                   font-size:inherit;font-family:inherit;padding:0;">${item.titulo}</button>
+            <span style="color:var(--text-dim);margin:0 6px">/</span>`;
+    }).join('');
+
+    const subCardsHTML = (ev.subcarpetas || []).map((sub, i) => renderEventoCard(sub, i)).join('');
+
+    const adminBtns = isAdmin ? `
+        <button onclick="crearSubcarpeta(${ev.id})"
+            style="display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 14px;
+                   font-size:10px;letter-spacing:2px;text-transform:uppercase;
+                   color:var(--gold);border:1px solid var(--gold-dim);background:none;
+                   cursor:pointer;font-family:Inter,sans-serif;transition:0.3s;"
+            onmouseover="this.style.background='rgba(212,168,67,0.1)'"
+            onmouseout="this.style.background='none'">
+            <i class="fa-solid fa-folder-plus"></i> Nueva subcarpeta
+        </button>` : '';
+
+    view.innerHTML = `
+        <div class="event-view-header">
+            <div class="event-view-nav">
+                <button class="back-btn" onclick="${ev.parent_id ? 'abrirEvento('+ev.parent_id+')' : 'cerrarEvento()'}">
+                    <i class="fa-solid fa-arrow-left-long"></i>
+                    ${ev.parent_id ? 'Volver' : 'Todas las galerías'}
+                </button>
+                <span class="event-view-sport-tag">${ev.deporte}</span>
+                <div>
+                    <div style="font-size:11px;color:var(--text-dim);margin-bottom:3px;
+                                display:flex;align-items:center;flex-wrap:wrap;gap:2px;">
+                        ${breadcrumbHTML}
+                    </div>
+                </div>
+                ${adminBtns}
+            </div>
+            <div class="selection-info">
+                <i class="fa-solid fa-folder-open"></i>
+                <span>
+                    <strong>${(ev.subcarpetas||[]).length}</strong>
+                    subcarpeta${(ev.subcarpetas||[]).length!==1?'s':''} en esta carpeta
+                </span>
+            </div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:2px;padding:0 8% 40px;">
+            ${subCardsHTML}
+        </div>`;
+
+    initReveal();
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+async function crearSubcarpeta(parentId) {
+    const { value: vals } = await Swal.fire({
+        title: 'Nueva subcarpeta',
+        background: 'var(--ink-2)', color: 'var(--text)',
+        html: `
+            <input id="sub-titulo" class="swal2-input" placeholder="Nombre (ej: Talleres, Primera División...)"
+                style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);
+                       width:88%;margin-bottom:10px;font-family:Inter,sans-serif;">
+            <input id="sub-fecha" type="date" class="swal2-input"
+                style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);
+                       width:88%;font-family:Inter,sans-serif;">`,
+        focusConfirm: false, showCancelButton: true,
+        confirmButtonText: 'Crear subcarpeta', cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#D4A843', cancelButtonColor: '#555',
+        preConfirm: () => {
+            const titulo = document.getElementById('sub-titulo').value.trim();
+            if (!titulo) { Swal.showValidationMessage('El nombre es requerido'); return false; }
+            return { titulo, parent_id: parentId, fecha: document.getElementById('sub-fecha').value };
+        }
+    });
+    if (!vals) return;
+
+    const res = await fetch('/crear-evento', {
+        method: 'POST', credentials: 'include',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(vals)
+    });
+    if (res.ok) {
+        await cargarEventos();
+        const padre = buscarEvento(parentId, eventosData);
+        if (padre) mostrarSubcarpetas(padre);
+        toast('¡Subcarpeta creada!', 'success');
+    } else {
+        toast('Error al crear la subcarpeta', 'error');
+    }
 }
 
 function cerrarEvento() {
