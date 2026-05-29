@@ -371,6 +371,15 @@ def get_download_url(url_original):
 def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
     try:
         base = Image.open(ruta_entrada).convert('RGBA')
+
+        # Limitar resolución para no explotar la RAM en Railway (~512MB)
+        # 4000px es suficiente para un preview con marca de agua
+        MAX_PX = 4000
+        if max(base.size) > MAX_PX:
+            ratio = MAX_PX / max(base.size)
+            nuevo_size = (int(base.size[0] * ratio), int(base.size[1] * ratio))
+            base = base.resize(nuevo_size, Image.LANCZOS)
+            print(f'✓ Imagen redimensionada a {nuevo_size[0]}x{nuevo_size[1]} para preview')
         overlay = Image.new('RGBA', base.size, (255, 255, 255, 0))
         W, H = base.size
         
