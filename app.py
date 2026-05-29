@@ -40,7 +40,12 @@ def get_wasabi_client():
         aws_access_key_id     = WASABI_ACCESS_KEY,
         aws_secret_access_key = WASABI_SECRET_KEY,
         region_name           = WASABI_REGION,
-        config                = Config(signature_version='s3v4')
+        config                = Config(
+            signature_version   = 's3v4',
+            connect_timeout     = 10,
+            read_timeout        = 60,
+            retries             = {'max_attempts': 2, 'mode': 'standard'}
+        )
     )
 
 def subir_a_wasabi(ruta_local, key):
