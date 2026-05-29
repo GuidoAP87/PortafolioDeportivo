@@ -79,16 +79,33 @@ app = Flask(__name__, static_folder='.', static_url_path='')
 app.secret_key = os.environ.get('SECRET_KEY', 'nl-sports-2026-CAMBIAR-en-produccion')
 
 # ── BASE DE DATOS ─────────────────────────────────────────────────────────────
-database_url = os.environ.get('DATABASE_URL', 'sqlite:///datos.db')
+database_url = os.environ.get('DATABASE_URL', '')
+if not database_url:
+    raise RuntimeError(
+        '❌ DATABASE_URL no configurada. '
+        'Agregá la variable en Railway antes de deployar.'
+    )
 if database_url.startswith('postgres://'):
     database_url = database_url.replace('postgres://', 'postgresql://', 1)
+
+print(f'✓ Base de datos: {database_url.split("@")[-1]}')
 
 app.config['SQLALCHEMY_DATABASE_URI']        = database_url
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['MAX_CONTENT_LENGTH']             = 100 * 1024 * 1024  # 100MB por foto
 app.config['SQLALCHEMY_ENGINE_OPTIONS']      = {
-    'pool_pre_ping': True,
-    'pool_recycle':  300,
+    'pool_pre_ping':  True,
+    'pool_recycle':   300,
+    'pool_timeout':   30,
+    'pool_size':      5,
+    'max_overflow':   10,
+    'connect_args':   {
+        'connect_timeout':     10,
+        'keepalives':          1,
+        'keepalives_idle':     30,
+        'keepalives_interval': 10,
+        'keepalives_count':    5,
+    }
 }
 db = SQLAlchemy(app)
 
