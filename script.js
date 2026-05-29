@@ -196,9 +196,37 @@ async function cargarEventos() {
     const grid = document.getElementById('gallery-grid');
     if (!grid) return;
     try {
-        const r     = await fetch('/obtener-eventos');
-        eventosData = await r.json();
+        const [rEv, rCat] = await Promise.all([
+            fetch('/obtener-eventos'),
+            fetch('/categorias')
+        ]);
+        eventosData    = await rEv.json();
+        const cats     = await rCat.json();
+
+        // Construir menú dinámico de categorías
+        const cont = document.querySelector('.sport-filters');
+        if (cont) {
+            let html = `<button class="sport-btn active" data-filter="all">
+                <span class="sport-btn-icon">🏆</span>
+                <span class="sport-btn-label">Todos</span>
+            </button>`;
+            cats.forEach(cat => {
+                html += `<button class="sport-btn" data-filter="${cat.slug}" data-cat-id="${cat.id}">
+                    <span class="sport-btn-icon">${cat.icono}</span>
+                    <span class="sport-btn-label">${cat.nombre}</span>
+                </button>`;
+            });
+            if (isAdmin) {
+                html += `<button class="sport-btn sport-btn-add" onclick="adminCategorias()">
+                    <span class="sport-btn-icon">⚙️</span>
+                    <span class="sport-btn-label">Gestionar</span>
+                </button>`;
+            }
+            cont.innerHTML = html;
+        }
+
         renderEventos();
+        configurarFiltros();
     } catch {
         grid.innerHTML = '<div class="empty-state"><p>No se pudo cargar la galería. Recargá la página.</p></div>';
     }
@@ -276,14 +304,150 @@ function renderEventos(filtro = 'all') {
     configurarFiltros();
 }
 
+async function cargarCategorias() {
+    try {
+        const res  = await fetch('/categorias');
+        const cats = await res.json();
+        const cont = document.querySelector('.sport-filters');
+        if (!cont) return;
+
+        let html = `<button class="sport-btn active" data-filter="all">
+            <span class="sport-btn-icon">🏆</span>
+            <span class="sport-btn-label">Todos</span>
+        </button>`;
+
+        cats.forEach(cat => {
+            html += `<button class="sport-btn" data-filter="${cat.slug}" data-cat-id="${cat.id}">
+                <span class="sport-btn-icon">${cat.icono}</span>
+                <span class="sport-btn-label">${cat.nombre}</span>
+            </button>`;
+        });
+
+        if (isAdmin) {
+            html += `<button class="sport-btn sport-btn-add" onclick="adminCategorias()" title="Gestionar categorías">
+                <span class="sport-btn-icon">⚙️</span>
+                <span class="sport-btn-label">Gestionar</span>
+            </button>`;
+        }
+
+        cont.innerHTML = html;
+        configurarFiltros();
+    } catch(e) {
+        console.error('Error cargando categorías:', e);
+        configurarFiltros();
+    }
+}
+
 function configurarFiltros() {
-    document.querySelectorAll('.sport-btn').forEach(btn => {
+    document.querySelectorAll('.sport-btn:not(.sport-btn-add)').forEach(btn => {
         btn.onclick = () => {
             document.querySelectorAll('.sport-btn').forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             renderEventos(btn.dataset.filter);
         };
     });
+}
+
+async function adminCategorias() {map(cat => `
+        <div class="cat-admin-row" data-id="${cat.id}" style="
+            display:flex;align-items:center;gap:10px;padding:8px 0;
+            border-bottom:1px solid var(--ink-4);">
+            <input class="cat-icono-input swal2-input" value="${cat.icono}"
+                style="width:52px;padding:4px 8px;text-align:center;font-size:18px;
+                       background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);
+                       font-family:Inter,sans-serif;margin:0">
+            <input class="cat-nombre-input swal2-input" value="${cat.nombre}"
+                style="flex:1;padding:4px 10px;background:var(--ink-4);color:var(--text);
+                       border:1px solid var(--ink-5);font-family:Inter,sans-serif;margin:0">
+            <button onclick="borrarCat(${cat.id},this)"
+                style="background:none;border:1px solid rgba(232,64,64,0.4);color:var(--red);
+                       width:28px;height:28px;cursor:pointer;border-radius:50%;font-size:11px;
+                       display:flex;align-items:center;justify-content:center;flex-shrink:0">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>`).join('');
+
+    const { value: ok } = await Swal.fire({
+        title: 'Gestionar categorías',
+        background: 'var(--ink-2)', color: 'var(--text)',
+        width: 520,
+        html: `
+            <div id="cat-lista" style="margin-bottom:16px;max-height:300px;overflow-y:auto">${listaHtml}</div>
+            <div style="display:flex;gap:8px;align-items:center">
+                <input id="new-cat-icono" class="swal2-input" placeholder="🎯"
+                    style="width:52px;text-align:center;font-size:18px;
+                           background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);
+                           padding:6px 8px;margin:0;font-family:Inter,sans-serif">
+                <input id="new-cat-nombre" class="swal2-input" placeholder="Nueva categoría"
+                    style="flex:1;background:var(--ink-4);color:var(--text);
+                           border:1px solid var(--ink-5);padding:6px 10px;margin:0;font-family:Inter,sans-serif">
+                <button onclick="agregarCatInline()"
+                    style="padding:6px 14px;background:var(--gold);color:#000;border:none;
+                           font-weight:700;font-size:11px;letter-spacing:1px;cursor:pointer;
+                           text-transform:uppercase;white-space:nowrap;flex-shrink:0">
+                    + Agregar
+                </button>
+            </div>`,
+        confirmButtonText: 'Guardar cambios',
+        confirmButtonColor: '#D4A843',
+        showCancelButton: true, cancelButtonText: 'Cancelar', cancelButtonColor: '#555',
+        preConfirm: async () => {
+            const rows = document.querySelectorAll('.cat-admin-row[data-id]');
+            for (const row of rows) {
+                const id     = parseInt(row.dataset.id);
+                const icono  = row.querySelector('.cat-icono-input').value.trim();
+                const nombre = row.querySelector('.cat-nombre-input').value.trim();
+                if (nombre) {
+                    await fetch(`/categorias/${id}`, {
+                        method:'PATCH', credentials:'include',
+                        headers:{'Content-Type':'application/json'},
+                        body: JSON.stringify({nombre, icono})
+                    });
+                }
+            }
+            return true;
+        }
+    });
+
+    if (ok) { await cargarCategorias(); toast('Categorías actualizadas', 'success'); }
+}
+
+async function agregarCatInline() {
+    const icono  = document.getElementById('new-cat-icono')?.value.trim() || '📷';
+    const nombre = document.getElementById('new-cat-nombre')?.value.trim();
+    if (!nombre) return;
+    const res = await fetch('/categorias', {
+        method:'POST', credentials:'include',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({nombre, icono})
+    });
+    const cat = await res.json();
+    const row = document.createElement('div');
+    row.className = 'cat-admin-row';
+    row.dataset.id = cat.id;
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--ink-4);';
+    row.innerHTML = `
+        <input class="cat-icono-input swal2-input" value="${cat.icono}"
+            style="width:52px;padding:4px 8px;text-align:center;font-size:18px;
+                   background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);
+                   font-family:Inter,sans-serif;margin:0">
+        <input class="cat-nombre-input swal2-input" value="${cat.nombre}"
+            style="flex:1;padding:4px 10px;background:var(--ink-4);color:var(--text);
+                   border:1px solid var(--ink-5);font-family:Inter,sans-serif;margin:0">
+        <button onclick="borrarCat(${cat.id},this)"
+            style="background:none;border:1px solid rgba(232,64,64,0.4);color:var(--red);
+                   width:28px;height:28px;cursor:pointer;border-radius:50%;font-size:11px;
+                   display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i class="fa-solid fa-xmark"></i>
+        </button>`;
+    document.getElementById('cat-lista')?.appendChild(row);
+    document.getElementById('new-cat-nombre').value = '';
+    document.getElementById('new-cat-icono').value  = '';
+}
+
+async function borrarCat(id, btn) {
+    await fetch(`/categorias/${id}`, {method:'DELETE', credentials:'include'});
+    btn.closest('.cat-admin-row')?.remove();
 }
 
 function abrirEvento(eventoId) {
@@ -398,6 +562,15 @@ function renderVistaEvento(ev) {
                            width:28px;height:28px;border-radius:50%;
                            font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:auto;">
                     <i class="fa-solid fa-image"></i>
+                </button>
+                <button onclick="event.stopPropagation();editarPrecioFoto(${f.id},${f.precio||PRECIO_BASE})"
+                    title="Editar precio de esta foto"
+                    style="position:absolute;top:44px;left:8px;
+                           background:rgba(0,0,0,0.75);
+                           border:none;color:#aaa;
+                           width:28px;height:28px;border-radius:50%;
+                           font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:auto;">
+                    <i class="fa-solid fa-tag"></i>
                 </button>` : ''}
             </div>`;
           }).join('')
@@ -1043,6 +1216,73 @@ async function borrarEvento(id) {
     }
 }
 
+// ─── PRECIO MANUAL POR FOTO ───────────────────────────────────────────────────
+async function editarPrecioFoto(fotoId, precioActual) {
+    const { value: nuevoPrecio } = await Swal.fire({
+        title: 'Precio de esta foto',
+        background: 'var(--ink-2)', color: 'var(--text)',
+        html: `
+            <p style="font-size:13px;color:var(--text-dim);margin-bottom:12px">
+                Precio predeterminado: <strong style="color:var(--gold)">$${PRECIO_BASE.toLocaleString('es-AR')}</strong><br>
+                Dejá en blanco para volver al precio predeterminado.
+            </p>
+            <input id="precio-input" class="swal2-input" type="number" min="0"
+                value="${precioActual !== PRECIO_BASE ? precioActual : ''}"
+                placeholder="Precio en ARS"
+                style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);
+                       font-family:Inter,sans-serif;font-size:16px;text-align:center;width:80%">`,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Guardar precio',
+        confirmButtonColor: '#D4A843',
+        cancelButtonText: 'Cancelar',
+        cancelButtonColor: '#555',
+        preConfirm: () => {
+            const val = document.getElementById('precio-input').value;
+            return val === '' ? PRECIO_BASE : parseFloat(val);
+        }
+    });
+
+    if (nuevoPrecio === undefined) return;
+
+    const res  = await fetch(`/foto/${fotoId}/precio`, {
+        method: 'PATCH', credentials: 'include',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({precio: nuevoPrecio})
+    });
+    const data = await res.json();
+    if (data.ok) {
+        // Actualizar precio en eventosData
+        for (const ev of eventosData) {
+            const foto = (ev.fotos || []).find(f => f.id === fotoId);
+            if (foto) { foto.precio = nuevoPrecio; break; }
+        }
+        // Actualizar carrito si la foto está en él
+        if (carrito.has(fotoId)) {
+            const item = carrito.get(fotoId);
+            item.foto.precio = nuevoPrecio;
+        }
+        const msg = nuevoPrecio === PRECIO_BASE
+            ? 'Precio reseteado al predeterminado'
+            : `Precio actualizado: $${nuevoPrecio.toLocaleString('es-AR')}`;
+        toast(msg, 'success', 2500);
+    } else {
+        toast('Error al actualizar el precio', 'error');
+    }
+}
+
+// ─── QUITAR DEL CARRITO DESDE CHECKOUT ────────────────────────────────────────
+function quitarDelCarritoCheckout(fotoId) {
+    carrito.delete(fotoId);
+    guardarCarrito();
+    actualizarCarritoBar();
+    // Re-renderizar el checkout
+    if (window._renderCheckoutItems) window._renderCheckoutItems();
+    // Actualizar el estado visual de la foto en la galería
+    const card = document.getElementById(`foto-card-${fotoId}`);
+    if (card) card.classList.remove('selected');
+}
+
 // ─── ELEGIR PORTADA ───────────────────────────────────────────────────────────
 async function elegirPortada(eventoId, fotoId, btn) {
     const ev = eventosData.find(e => e.id === eventoId);
@@ -1111,16 +1351,43 @@ function abrirCheckout() {
     
     const items = [...carrito.values()];
 
-    document.getElementById('checkout-resumen').innerHTML = items.map(({foto,evento}) => `
-        <div class="checkout-summary-row">
-            <div class="row-title">
-                <div style="color:var(--text);font-size:13px">${evento.titulo}</div>
-                <div style="color:var(--text-dim);font-size:11px;margin-top:2px">Foto #${foto.id} · Alta resolución</div>
-            </div>
-            <div class="row-price">$${unitario.toLocaleString('es-AR')}</div>
-        </div>`).join('');
+    const renderCheckoutItems = () => {
+        const items2    = [...carrito.values()];
+        const count2    = items2.length;
+        const unitario2 = getPrecioUnitario(count2);
+        const total2    = items2.reduce((s, {foto}) => s + (foto.precio || unitario2), 0);
 
-    document.getElementById('checkout-total-amount').textContent = `$${total.toLocaleString('es-AR')} ARS`;
+        document.getElementById('checkout-resumen').innerHTML = items2.map(({foto,evento}) => {
+            const precio_foto = foto.precio || unitario2;
+            return `
+            <div class="checkout-summary-row" id="checkout-row-${foto.id}">
+                <div class="row-thumb">
+                    <img src="${foto.url_preview}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:3px;opacity:0.8">
+                </div>
+                <div class="row-title">
+                    <div style="color:var(--text);font-size:13px">${evento.titulo}</div>
+                    <div style="color:var(--text-dim);font-size:11px;margin-top:2px">Foto #${foto.id} · Alta resolución</div>
+                </div>
+                <div class="row-price">$${precio_foto.toLocaleString('es-AR')}</div>
+                <button onclick="quitarDelCarritoCheckout(${foto.id})"
+                    title="Quitar del carrito"
+                    style="background:none;border:none;color:var(--red);cursor:pointer;
+                           font-size:14px;padding:4px;flex-shrink:0;opacity:0.7;transition:opacity 0.2s;"
+                    onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>`;
+        }).join('');
+
+        document.getElementById('checkout-total-amount').textContent = `$${total2.toLocaleString('es-AR')} ARS`;
+
+        if (count2 === 0) { cerrarCheckout(); }
+    };
+
+    renderCheckoutItems();
+    window._renderCheckoutItems = renderCheckoutItems;
+
+    // total ya actualizado por renderCheckoutItems
 
     const modal = document.getElementById('checkout-modal');
     modal.style.display = 'flex';
@@ -1424,4 +1691,222 @@ async function logout() {
     await fetch('/logout', { method:'POST', credentials:'include' });
     isAdmin = false; toggleAdminUI(false); cerrarAdminPanel();
     toast('Sesión cerrada', 'info');
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// MÓDULO IA — BÚSQUEDA Y ROSTER
+// ════════════════════════════════════════════════════════════════════════════
+
+// ── BÚSQUEDA POR JUGADOR ─────────────────────────────────────────────────────
+let busquedaTimeout = null;
+
+function iniciarBusquedaJugador() {
+    const input = document.getElementById('search-jugador-input');
+    if (!input) return;
+    input.addEventListener('input', () => {
+        clearTimeout(busquedaTimeout);
+        const q = input.value.trim();
+        if (q.length < 2) {
+            document.getElementById('search-resultados')?.classList.remove('visible');
+            return;
+        }
+        busquedaTimeout = setTimeout(() => buscarJugador(q), 350);
+    });
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            input.value = '';
+            document.getElementById('search-resultados')?.classList.remove('visible');
+        }
+    });
+}
+
+async function buscarJugador(q) {
+    const ev_id   = eventoActual?.id || '';
+    const url     = `/buscar-jugador?q=${encodeURIComponent(q)}${ev_id ? '&evento_id='+ev_id : ''}`;
+    const res     = await fetch(url);
+    const data    = await res.json();
+    const cont    = document.getElementById('search-resultados');
+    if (!cont) return;
+
+    if (!data.fotos?.length) {
+        cont.innerHTML = `<div class="search-empty">Sin resultados para "<strong>${q}</strong>"</div>`;
+        cont.classList.add('visible');
+        return;
+    }
+
+    cont.innerHTML = data.fotos.slice(0, 12).map(f => `
+        <div class="search-result-item" onclick="verFotoDesdeSearch(${f.foto_id}, ${f.evento_id})">
+            <img src="${f.url_preview}" alt="" loading="lazy">
+            <div class="search-result-info">
+                <div class="search-result-nombre">${f.jugador || 'Jugador detectado'}</div>
+                <div class="search-result-meta">
+                    ${f.numero ? `<span class="search-tag-num">#${f.numero}</span>` : ''}
+                    <span class="search-tag-src ${f.fuente === 'manual' ? 'manual' : 'ia'}">
+                        ${f.fuente === 'manual' ? '✏ Manual' : '🤖 IA'}
+                    </span>
+                </div>
+                <div class="search-result-precio">$${Number(f.precio||3000).toLocaleString('es-AR')} ARS</div>
+            </div>
+            <button onclick="event.stopPropagation();agregarAlCarritoDesdeSearch(${f.foto_id}, ${f.evento_id})"
+                style="background:var(--gold);border:none;color:#000;font-size:10px;font-weight:700;
+                       letter-spacing:1px;text-transform:uppercase;padding:6px 12px;cursor:pointer;
+                       white-space:nowrap;font-family:Inter,sans-serif;flex-shrink:0">
+                + Carrito
+            </button>
+        </div>`).join('');
+    cont.classList.add('visible');
+}
+
+function verFotoDesdeSearch(foto_id, evento_id) {
+    const ev = buscarEvento(evento_id, eventosData);
+    if (ev) {
+        abrirEvento(evento_id);
+        // Scroll a la foto específica
+        setTimeout(() => {
+            const el = document.getElementById(`foto-card-${foto_id}`);
+            if (el) el.scrollIntoView({behavior:'smooth', block:'center'});
+        }, 600);
+    }
+    document.getElementById('search-resultados')?.classList.remove('visible');
+}
+
+function agregarAlCarritoDesdeSearch(foto_id, evento_id) {
+    const ev   = buscarEvento(evento_id, eventosData);
+    const foto = ev?.fotos?.find(f => f.id === foto_id);
+    if (!ev || !foto) return;
+    if (carrito.has(foto_id)) {
+        toast('Ya está en el carrito', 'info', 1500);
+        return;
+    }
+    carrito.set(foto_id, {foto, evento: ev});
+    guardarCarrito();
+    actualizarCarritoBar();
+    toast('✓ Agregada al carrito', 'success', 1500);
+}
+
+// ── PANEL DE ROSTER ──────────────────────────────────────────────────────────
+async function abrirRoster(eventoId) {
+    const res    = await fetch(`/evento/${eventoId}/roster`);
+    const roster = await res.json();
+
+    const listaHtml = roster.length
+        ? roster.map(j => `
+            <div class="roster-row" data-id="${j.id}" style="
+                display:flex;align-items:center;gap:8px;padding:7px 0;
+                border-bottom:1px solid var(--ink-4);">
+                <span style="font-family:'Bebas Neue',sans-serif;font-size:22px;
+                             color:var(--gold);width:36px;text-align:center;flex-shrink:0">
+                    ${j.numero || '—'}
+                </span>
+                <div style="flex:1;min-width:0">
+                    <div style="font-size:13px;color:var(--text)">${j.nombre}</div>
+                    ${j.equipo ? `<div style="font-size:10px;color:var(--text-dim)">${j.equipo}</div>` : ''}
+                </div>
+                <button onclick="borrarJugadorRoster(${eventoId},${j.id},this)"
+                    style="background:none;border:none;color:var(--red);cursor:pointer;
+                           font-size:13px;opacity:0.7;flex-shrink:0"
+                    onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.7'">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>`).join('')
+        : '<div style="color:var(--text-dim);font-size:13px;padding:12px 0;text-align:center">Sin jugadores aún</div>';
+
+    await Swal.fire({
+        title: `Roster del evento`,
+        background: 'var(--ink-2)', color: 'var(--text)',
+        width: 540,
+        html: `
+            <p style="font-size:12px;color:var(--text-dim);margin-bottom:14px">
+                El roster ayuda a la IA a identificar jugadores por número de camiseta.
+            </p>
+            <div id="roster-lista" style="max-height:280px;overflow-y:auto;margin-bottom:16px">
+                ${listaHtml}
+            </div>
+            <div style="background:var(--ink-3);padding:14px;border-radius:4px">
+                <div style="font-size:10px;letter-spacing:2px;text-transform:uppercase;
+                            color:var(--gold);margin-bottom:10px">Agregar jugador</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap">
+                    <input id="r-num" class="swal2-input" placeholder="N°" type="number" min="1" max="99"
+                        style="width:64px;padding:6px 8px;text-align:center;font-size:16px;
+                               background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);
+                               font-family:'Bebas Neue',sans-serif;margin:0;letter-spacing:1px">
+                    <input id="r-nombre" class="swal2-input" placeholder="Nombre del jugador"
+                        style="flex:1;min-width:140px;padding:6px 10px;background:var(--ink-4);
+                               color:var(--text);border:1px solid var(--ink-5);font-family:Inter,sans-serif;
+                               font-size:13px;margin:0">
+                    <input id="r-equipo" class="swal2-input" placeholder="Equipo (opcional)"
+                        style="flex:1;min-width:120px;padding:6px 10px;background:var(--ink-4);
+                               color:var(--text);border:1px solid var(--ink-5);font-family:Inter,sans-serif;
+                               font-size:13px;margin:0">
+                    <button onclick="agregarJugadorRosterInline(${eventoId})"
+                        style="padding:6px 16px;background:var(--gold);color:#000;border:none;
+                               font-weight:700;font-size:11px;letter-spacing:1px;cursor:pointer;
+                               text-transform:uppercase;white-space:nowrap;font-family:Inter,sans-serif">
+                        + Agregar
+                    </button>
+                </div>
+            </div>
+            <div style="margin-top:14px;display:flex;gap:10px;justify-content:center;flex-wrap:wrap">
+                <button onclick="procesarEventoIA(${eventoId})"
+                    style="padding:8px 18px;background:rgba(212,168,67,0.12);color:var(--gold);
+                           border:1px solid var(--gold-dim);font-size:11px;font-weight:700;
+                           letter-spacing:1px;cursor:pointer;text-transform:uppercase;
+                           font-family:Inter,sans-serif">
+                    🤖 Procesar todas las fotos con IA
+                </button>
+            </div>`,
+        showConfirmButton: false,
+        showCloseButton:   true,
+    });
+}
+
+async function agregarJugadorRosterInline(eventoId) {
+    const numero = document.getElementById('r-num')?.value.trim();
+    const nombre = document.getElementById('r-nombre')?.value.trim();
+    const equipo = document.getElementById('r-equipo')?.value.trim();
+    if (!numero || !nombre) { toast('Completá número y nombre', 'error'); return; }
+
+    const res = await fetch(`/evento/${eventoId}/roster`, {
+        method: 'POST', credentials: 'include',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({numero, nombre, equipo})
+    });
+    const data = await res.json();
+    if (data.ok) {
+        // Agregar fila en el modal
+        const row = document.createElement('div');
+        row.dataset.id = Date.now();
+        row.style.cssText = 'display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--ink-4);';
+        row.innerHTML = `
+            <span style="font-family:'Bebas Neue',sans-serif;font-size:22px;color:var(--gold);width:36px;text-align:center;flex-shrink:0">${numero}</span>
+            <div style="flex:1"><div style="font-size:13px;color:var(--text)">${nombre}</div>${equipo?`<div style="font-size:10px;color:var(--text-dim)">${equipo}</div>`:''}</div>
+            <button onclick="borrarJugadorRoster(${eventoId},null,this)" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:13px;opacity:0.7">
+                <i class="fa-solid fa-xmark"></i>
+            </button>`;
+        const lista = document.getElementById('roster-lista');
+        // Quitar el mensaje "Sin jugadores"
+        const vacio = lista?.querySelector('div[style*="text-align:center"]');
+        if (vacio) vacio.remove();
+        lista?.appendChild(row);
+        document.getElementById('r-num').value    = '';
+        document.getElementById('r-nombre').value = '';
+        document.getElementById('r-equipo').value = '';
+        toast('✓ Jugador agregado', 'success', 1500);
+    }
+}
+
+async function borrarJugadorRoster(eventoId, jugadorId, btn) {
+    if (!jugadorId) { btn.closest('div')?.remove(); return; }
+    await fetch(`/evento/${eventoId}/roster/${jugadorId}`, {method:'DELETE', credentials:'include'});
+    btn.closest('div[data-id]')?.remove();
+}
+
+async function procesarEventoIA(eventoId) {
+    const res  = await fetch(`/evento/${eventoId}/procesar-ia-todo`, {method:'POST', credentials:'include'});
+    const data = await res.json();
+    if (data.ok) {
+        toast(`🤖 Procesando ${data.total_fotos} fotos en background... Las etiquetas aparecerán solas`, 'success', 4000);
+    } else {
+        toast(data.error || 'Error al conectar con el microservicio IA', 'error');
+    }
 }

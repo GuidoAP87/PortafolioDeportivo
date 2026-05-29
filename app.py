@@ -180,6 +180,47 @@ class RostroDetectado(db.Model):
     cara_url   = db.Column(db.String(500))
     confianza  = db.Column(db.Float, default=1.0)
 
+class Categoria(db.Model):
+    __tablename__ = 'categoria'
+    id       = db.Column(db.Integer, primary_key=True)
+    nombre   = db.Column(db.String(80), nullable=False)
+    icono    = db.Column(db.String(10), default='📷')   # emoji
+    orden    = db.Column(db.Integer, default=0)
+    activa   = db.Column(db.Boolean, default=True)
+    slug     = db.Column(db.String(80), unique=True)    # ej: "futbol", "basquet"
+
+    @staticmethod
+    def slug_from(nombre):
+        import unicodedata, re
+        s = unicodedata.normalize('NFD', nombre.lower())
+        s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+        return re.sub(r'[^a-z0-9]+', '-', s).strip('-')
+
+
+class JugadorRoster(db.Model):
+    """Roster de jugadores por evento: número → nombre."""
+    __tablename__ = 'jugador_roster'
+    id         = db.Column(db.Integer, primary_key=True)
+    evento_id  = db.Column(db.Integer, db.ForeignKey('evento.id'), nullable=False)
+    numero     = db.Column(db.String(10))   # número de camiseta
+    nombre     = db.Column(db.String(150))  # nombre del jugador
+    equipo     = db.Column(db.String(100))  # nombre del equipo (opcional)
+    foto_cara  = db.Column(db.String(500))  # URL de foto de referencia (opcional)
+    creado_en  = db.Column(db.DateTime, server_default=db.func.now())
+
+class FotoEtiqueta(db.Model):
+    """Etiquetas IA asociadas a una foto."""
+    __tablename__ = 'foto_etiqueta'
+    id               = db.Column(db.Integer, primary_key=True)
+    foto_id          = db.Column(db.Integer, db.ForeignKey('foto.id'), nullable=False)
+    jugador_nombre   = db.Column(db.String(150))  # nombre detectado
+    numero_camiseta  = db.Column(db.String(10))   # número detectado
+    confianza_cara   = db.Column(db.Float, default=0.0)
+    confianza_numero = db.Column(db.Float, default=0.0)
+    fuente           = db.Column(db.String(20), default='ia')  # 'ia' o 'manual'
+    procesado_en     = db.Column(db.DateTime, server_default=db.func.now())
+    foto             = db.relationship('Foto', backref='etiquetas', lazy=True)
+
 class Compra(db.Model):
     __tablename__ = 'compra'
     id               = db.Column(db.Integer, primary_key=True)
@@ -288,6 +329,26 @@ def detectar_rostros(ruta_imagen, foto_id, evento_id):
             print(f'✓ Rostros procesados: foto #{foto_id}')
     except Exception as e:
         print(f'⚠ Error IA foto #{foto_id}: {e}')
+
+def get_download_url(url_original):
+    """
+    Devuelve URL de descarga:
+    - Si está en Wasabi → presigned URL de 30 días
+    - Si está en Cloudinary u otro → URL directa
+    """
+    if not url_original:
+        return url_original
+    if 'wasabisys.com' in url_original or (WASABI_BUCKET and WASABI_BUCKET in url_original):
+        try:
+            parts = url_original.split(f'{WASABI_BUCKET}/')
+            if len(parts) > 1:
+                key      = parts[1]
+                presigned = get_wasabi_presigned_url(key, expiry=3600*24*30)
+                if presigned:
+                    return presigned
+        except Exception as e:
+            print(f'Error presigned URL: {e}')
+    return url_original
 
 # ── MARCA DE AGUA ─────────────────────────────────────────────────────────────
 def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
@@ -498,7 +559,7 @@ def enviar_fotos_email(compra_id):
               <p style="margin:3px 0 0;font-size:11px;color:#555;">Foto #{f.id} · Alta resolución · Sin marca de agua</p>
             </td>
             <td style="text-align:right;padding-left:10px;white-space:nowrap;">
-              <a href="{f.url_original}"
+              <a href="{get_download_url(f.url_original)}"
                  style="display:inline-block;padding:9px 18px;background:#D4A843;
                         color:#000;font-size:10px;font-weight:700;letter-spacing:2px;
                         text-decoration:none;text-transform:uppercase;">
@@ -591,26 +652,29 @@ def galeria_privada(token):
     fotos = Foto.query.filter(Foto.id.in_(ids)).all()
     nombre = compra.nombre_cliente or 'Cliente'
 
+    # get_download_url está definida a nivel de módulo
+
     fotos_html = ''
     for f in fotos:
-        titulo = f.evento.titulo if f.evento else 'Evento deportivo'
+        titulo    = f.evento.titulo if f.evento else 'Evento deportivo'
+        dl_url    = get_download_url(f.url_original)
         fotos_html += f'''
         <div class="foto-card">
             <div class="foto-img-wrap">
                 <img src="{f.url_preview}" alt="Foto" loading="lazy">
                 <div class="foto-overlay">
-                    <a href="{f.url_original}" download target="_blank" class="btn-dl">
+                    <a href="{dl_url}" download target="_blank" class="btn-dl">
                         ↓ Descargar
                     </a>
                 </div>
             </div>
             <div class="foto-info">
                 <span>{titulo}</span>
-                <a href="{f.url_original}" download target="_blank" class="btn-dl-sm">↓ Alta resolución</a>
+                <a href="{dl_url}" download target="_blank" class="btn-dl-sm">↓ Alta resolución</a>
             </div>
         </div>'''
 
-    urls_json = json.dumps([f.url_original for f in fotos])
+    urls_json = json.dumps([get_download_url(f.url_original) for f in fotos])
 
     return f'''<!DOCTYPE html>
 <html lang="es">
@@ -711,6 +775,63 @@ def galeria_privada(token):
     }}
 </script>
 </body></html>'''
+
+
+# ── CATEGORÍAS ────────────────────────────────────────────────────────────────
+@app.route('/categorias', methods=['GET'])
+def get_categorias():
+    cats = Categoria.query.filter_by(activa=True).order_by(Categoria.orden).all()
+    return jsonify([{'id': c.id, 'nombre': c.nombre, 'icono': c.icono,
+                     'orden': c.orden, 'slug': c.slug} for c in cats])
+
+@app.route('/categorias', methods=['POST'])
+def crear_categoria():
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    d    = request.json
+    slug = Categoria.slug_from(d.get('nombre',''))
+    # Si ya existe ese slug, actualizarla
+    cat  = Categoria.query.filter_by(slug=slug).first()
+    if not cat:
+        max_orden = db.session.query(db.func.max(Categoria.orden)).scalar() or 0
+        cat = Categoria(nombre=d['nombre'], icono=d.get('icono','📷'),
+                        slug=slug, orden=max_orden+1)
+        db.session.add(cat)
+    else:
+        cat.activa = True
+        cat.icono  = d.get('icono', cat.icono)
+    db.session.commit()
+    return jsonify({'id': cat.id, 'nombre': cat.nombre, 'icono': cat.icono,
+                    'slug': cat.slug, 'orden': cat.orden})
+
+@app.route('/categorias/<int:cid>', methods=['PATCH'])
+def editar_categoria(cid):
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    cat = Categoria.query.get_or_404(cid)
+    d   = request.json
+    if 'nombre' in d: cat.nombre = d['nombre']; cat.slug = Categoria.slug_from(d['nombre'])
+    if 'icono'  in d: cat.icono  = d['icono']
+    if 'orden'  in d: cat.orden  = int(d['orden'])
+    if 'activa' in d: cat.activa = bool(d['activa'])
+    db.session.commit()
+    return jsonify({'ok': True})
+
+@app.route('/categorias/<int:cid>', methods=['DELETE'])
+def borrar_categoria(cid):
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    cat = Categoria.query.get_or_404(cid)
+    cat.activa = False   # soft delete
+    db.session.commit()
+    return jsonify({'ok': True})
+
+@app.route('/categorias/reordenar', methods=['POST'])
+def reordenar_categorias():
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    orden = request.json.get('orden', [])   # lista de IDs en nuevo orden
+    for i, cid in enumerate(orden):
+        cat = Categoria.query.get(cid)
+        if cat: cat.orden = i
+    db.session.commit()
+    return jsonify({'ok': True})
 
 # ── EVENTOS ───────────────────────────────────────────────────────────────────
 def serializar_evento(e):
@@ -815,6 +936,19 @@ def crear_subcarpeta(ev_id):
     )
     db.session.add(sub); db.session.commit()
     return jsonify({'id': sub.id, 'mensaje': 'Subcarpeta creada'})
+
+
+@app.route('/foto/<int:foto_id>/precio', methods=['PATCH'])
+def set_precio_foto(foto_id):
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    foto = Foto.query.get_or_404(foto_id)
+    data = request.json
+    nuevo_precio = data.get('precio')
+    if nuevo_precio is None or float(nuevo_precio) < 0:
+        return jsonify({'error': 'Precio inválido'}), 400
+    foto.precio = float(nuevo_precio)
+    db.session.commit()
+    return jsonify({'ok': True, 'precio': foto.precio})
 
 @app.route('/borrar-evento/<int:ev_id>', methods=['DELETE'])
 def borrar_evento(ev_id):
@@ -1047,6 +1181,243 @@ def contacto():
     db.session.add(Consulta(nombre=d.get('nombre',''), email=d.get('email',''), mensaje=d.get('mensaje','')))
     db.session.commit()
     return jsonify({'ok': True})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MÓDULO IA — ETIQUETAS, ROSTER Y BÚSQUEDA
+# ══════════════════════════════════════════════════════════════════════════════
+
+# ── WEBHOOK: recibe resultados del microservicio IA ───────────────────────────
+@app.route('/ia/resultados', methods=['POST'])
+def ia_resultados():
+    """
+    El microservicio IA llama a este endpoint con los resultados del análisis.
+    Autenticación: header X-IA-Secret debe coincidir con IA_SECRET en env vars.
+    """
+    secret = request.headers.get('X-IA-Secret', '')
+    if secret != os.environ.get('IA_SECRET', 'ia-secret-nacho-2026'):
+        return jsonify({'error': 'No autorizado'}), 403
+
+    data    = request.json
+    foto_id = data.get('foto_id')
+    if not foto_id:
+        return jsonify({'error': 'foto_id requerido'}), 400
+
+    foto = Foto.query.get(foto_id)
+    if not foto:
+        return jsonify({'error': 'Foto no encontrada'}), 404
+
+    # Borrar etiquetas anteriores de IA (no las manuales)
+    FotoEtiqueta.query.filter_by(foto_id=foto_id, fuente='ia').delete()
+
+    jugadores = data.get('jugadores', [])  # lista de jugadores detectados
+    for j in jugadores:
+        etiqueta = FotoEtiqueta(
+            foto_id          = foto_id,
+            jugador_nombre   = j.get('nombre'),
+            numero_camiseta  = j.get('numero'),
+            confianza_cara   = float(j.get('confianza_cara', 0)),
+            confianza_numero = float(j.get('confianza_numero', 0)),
+            fuente           = 'ia'
+        )
+        db.session.add(etiqueta)
+
+    db.session.commit()
+    print(f"✓ IA: {len(jugadores)} etiqueta(s) guardadas para foto #{foto_id}")
+    return jsonify({'ok': True, 'etiquetas': len(jugadores)})
+
+# ── ETIQUETA MANUAL (admin corrige o agrega) ──────────────────────────────────
+@app.route('/foto/<int:foto_id>/etiqueta', methods=['POST'])
+def agregar_etiqueta_manual(foto_id):
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    foto = Foto.query.get_or_404(foto_id)
+    d    = request.json
+    etiqueta = FotoEtiqueta(
+        foto_id         = foto_id,
+        jugador_nombre  = d.get('nombre', '').strip(),
+        numero_camiseta = d.get('numero', '').strip(),
+        confianza_cara  = 1.0,
+        confianza_numero= 1.0,
+        fuente          = 'manual'
+    )
+    db.session.add(etiqueta); db.session.commit()
+    return jsonify({'ok': True, 'id': etiqueta.id})
+
+@app.route('/foto/<int:foto_id>/etiqueta/<int:et_id>', methods=['DELETE'])
+def borrar_etiqueta(foto_id, et_id):
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    et = FotoEtiqueta.query.filter_by(id=et_id, foto_id=foto_id).first_or_404()
+    db.session.delete(et); db.session.commit()
+    return jsonify({'ok': True})
+
+# ── BÚSQUEDA POR NOMBRE O NÚMERO ─────────────────────────────────────────────
+@app.route('/buscar-jugador', methods=['GET'])
+def buscar_jugador():
+    q          = request.args.get('q', '').strip()
+    evento_id  = request.args.get('evento_id', type=int)
+    if not q or len(q) < 2:
+        return jsonify({'fotos': []})
+
+    query = FotoEtiqueta.query.join(Foto)
+    if evento_id:
+        query = query.filter(Foto.evento_id == evento_id)
+
+    # Buscar por nombre o número
+    query = query.filter(
+        db.or_(
+            FotoEtiqueta.jugador_nombre.ilike(f'%{q}%'),
+            FotoEtiqueta.numero_camiseta == q
+        )
+    )
+
+    etiquetas = query.all()
+    fotos_vistas = set()
+    resultado = []
+    for et in etiquetas:
+        if et.foto_id not in fotos_vistas:
+            fotos_vistas.add(et.foto_id)
+            resultado.append({
+                'foto_id':     et.foto_id,
+                'url_preview': et.foto.url_preview,
+                'precio':      et.foto.precio,
+                'evento_id':   et.foto.evento_id,
+                'jugador':     et.jugador_nombre,
+                'numero':      et.numero_camiseta,
+                'fuente':      et.fuente,
+            })
+    return jsonify({'fotos': resultado, 'total': len(resultado)})
+
+# ── ROSTER DE JUGADORES POR EVENTO ───────────────────────────────────────────
+@app.route('/evento/<int:ev_id>/roster', methods=['GET'])
+def get_roster(ev_id):
+    roster = JugadorRoster.query.filter_by(evento_id=ev_id).order_by(JugadorRoster.numero).all()
+    return jsonify([{
+        'id': r.id, 'numero': r.numero, 'nombre': r.nombre, 'equipo': r.equipo
+    } for r in roster])
+
+@app.route('/evento/<int:ev_id>/roster', methods=['POST'])
+def agregar_jugador(ev_id):
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    d = request.json
+    # Si ya existe ese número en ese evento, actualizar
+    existente = JugadorRoster.query.filter_by(evento_id=ev_id, numero=d.get('numero','')).first()
+    if existente:
+        existente.nombre = d.get('nombre', '')
+        existente.equipo = d.get('equipo', '')
+    else:
+        jugador = JugadorRoster(
+            evento_id = ev_id,
+            numero    = d.get('numero', '').strip(),
+            nombre    = d.get('nombre', '').strip(),
+            equipo    = d.get('equipo', '').strip()
+        )
+        db.session.add(jugador)
+    db.session.commit()
+    return jsonify({'ok': True})
+
+@app.route('/evento/<int:ev_id>/roster/<int:jid>', methods=['DELETE'])
+def borrar_jugador(ev_id, jid):
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    j = JugadorRoster.query.filter_by(id=jid, evento_id=ev_id).first_or_404()
+    db.session.delete(j); db.session.commit()
+    return jsonify({'ok': True})
+
+@app.route('/evento/<int:ev_id>/roster/bulk', methods=['POST'])
+def roster_bulk(ev_id):
+    """Carga masiva: lista de {numero, nombre, equipo}"""
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    jugadores = request.json.get('jugadores', [])
+    for j in jugadores:
+        numero = str(j.get('numero', '')).strip()
+        nombre = str(j.get('nombre', '')).strip()
+        if not numero or not nombre: continue
+        existente = JugadorRoster.query.filter_by(evento_id=ev_id, numero=numero).first()
+        if existente:
+            existente.nombre = nombre
+            existente.equipo = j.get('equipo', '')
+        else:
+            db.session.add(JugadorRoster(evento_id=ev_id, numero=numero,
+                                         nombre=nombre, equipo=j.get('equipo','')))
+    db.session.commit()
+    return jsonify({'ok': True, 'total': len(jugadores)})
+
+# ── TRIGGER: encolar foto para procesamiento IA ───────────────────────────────
+@app.route('/foto/<int:foto_id>/procesar-ia', methods=['POST'])
+def encolar_foto_ia(foto_id):
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    foto = Foto.query.get_or_404(foto_id)
+    ia_url = os.environ.get('IA_SERVICE_URL', '')
+    if not ia_url:
+        return jsonify({'error': 'Microservicio IA no configurado (IA_SERVICE_URL)'}), 503
+
+    # Roster del evento para ayudar a la IA
+    roster = JugadorRoster.query.filter_by(evento_id=foto.evento_id).all()
+    roster_data = [{'numero': r.numero, 'nombre': r.nombre, 'equipo': r.equipo}
+                   for r in roster]
+
+    payload = {
+        'foto_id':    foto_id,
+        'url_imagen': foto.url_original,
+        'evento_id':  foto.evento_id,
+        'roster':     roster_data,
+        'callback':   f"{os.environ.get('BASE_URL','')}/ia/resultados"
+    }
+
+    try:
+        req = urllib.request.Request(
+            f"{ia_url}/procesar",
+            data    = json.dumps(payload).encode('utf-8'),
+            headers = {
+                'Content-Type':  'application/json',
+                'X-IA-Secret':   os.environ.get('IA_SECRET', 'ia-secret-nacho-2026')
+            },
+            method = 'POST'
+        )
+        with urllib.request.urlopen(req, timeout=10) as r:
+            resp = json.loads(r.read().decode())
+            return jsonify({'ok': True, 'mensaje': 'Foto encolada para procesamiento'})
+    except Exception as e:
+        return jsonify({'error': f'No se pudo conectar con el microservicio: {e}'}), 503
+
+@app.route('/evento/<int:ev_id>/procesar-ia-todo', methods=['POST'])
+def procesar_evento_completo(ev_id):
+    """Encola TODAS las fotos de un evento para procesamiento IA en background."""
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    ia_url = os.environ.get('IA_SERVICE_URL', '')
+    if not ia_url:
+        return jsonify({'error': 'Microservicio IA no configurado'}), 503
+
+    ev    = Evento.query.get_or_404(ev_id)
+    fotos = ev.fotos
+    roster = JugadorRoster.query.filter_by(evento_id=ev_id).all()
+    roster_data = [{'numero': r.numero, 'nombre': r.nombre, 'equipo': r.equipo}
+                   for r in roster]
+
+    def encolar_todas():
+        with app.app_context():
+            for foto in fotos:
+                try:
+                    payload = {
+                        'foto_id':    foto.id,
+                        'url_imagen': foto.url_original,
+                        'evento_id':  ev_id,
+                        'roster':     roster_data,
+                        'callback':   f"{os.environ.get('BASE_URL','')}/ia/resultados"
+                    }
+                    req = urllib.request.Request(
+                        f"{ia_url}/procesar",
+                        data    = json.dumps(payload).encode(),
+                        headers = {'Content-Type': 'application/json',
+                                   'X-IA-Secret': os.environ.get('IA_SECRET','ia-secret-nacho-2026')},
+                        method  = 'POST'
+                    )
+                    urllib.request.urlopen(req, timeout=10)
+                except Exception as e:
+                    print(f"Error encolando foto {foto.id}: {e}")
+    
+    threading.Thread(target=encolar_todas, daemon=True).start()
+    return jsonify({'ok': True, 'total_fotos': len(fotos),
+                    'mensaje': f'Procesando {len(fotos)} fotos en background'})
 
 # ── ADMIN ─────────────────────────────────────────────────────────────────────
 @app.route('/admin/stats', methods=['GET'])

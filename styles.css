@@ -1087,103 +1087,98 @@ footer { background: #000; padding: 52px 8% 32px; border-top: 1px solid var(--in
     .footer-inner { flex-direction: column; }
     .admin-stats-strip { grid-template-columns: repeat(2, 1fr); }
 }
-/* ─── SUBCARPETAS ────────────────────────────────────────────── */
-/* Grid de subcarpetas (igual que gallery-grid pero reutilizable dentro de event-view) */
-.subcarpetas-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-    gap: 2px;
-    padding: 0 8% 40px;
+/* ─── NUEVO MENÚ DE CATEGORÍAS ───────────────────────────────────────── */
+.sport-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 0 8% 32px;
+    align-items: center;
 }
 
-/* Card de carpeta que contiene subcarpetas — borde dorado sutil */
-.event-card-folder {
-    border: 1px solid rgba(212, 168, 67, 0.2);
+.sport-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    background: var(--ink-3, #121218);
+    border: 1px solid var(--ink-4, #1c1c24);
+    color: var(--text-dim, #888);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    font-family: 'Inter', sans-serif;
+    border-radius: 2px;
+    white-space: nowrap;
 }
 
-.event-card-folder:hover {
-    border-color: rgba(212, 168, 67, 0.5);
+.sport-btn:hover {
+    border-color: var(--gold, #D4A843);
+    color: var(--gold, #D4A843);
+    background: rgba(212, 168, 67, 0.06);
 }
 
-/* Badge de carpeta en la esquina superior derecha */
-.event-card-folder-badge {
-    position: absolute;
-    top: 12px;
-    right: 12px;
-    background: rgba(212, 168, 67, 0.15);
-    border: 1px solid rgba(212, 168, 67, 0.35);
-    color: var(--gold);
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
+.sport-btn.active {
+    background: var(--gold, #D4A843);
+    border-color: var(--gold, #D4A843);
+    color: #000;
+}
+
+.sport-btn-icon {
+    font-size: 16px;
+    line-height: 1;
+}
+
+.sport-btn-label {
+    font-size: 11px;
+}
+
+.sport-btn-add {
+    background: transparent;
+    border-style: dashed;
+    color: #555;
+    padding: 10px 16px;
+}
+
+.sport-btn-add:hover {
+    color: var(--gold, #D4A843);
+    border-color: var(--gold, #D4A843);
+    background: rgba(212, 168, 67, 0.04);
+}
+
+/* Thumbnail en checkout */
+.row-thumb {
+    flex-shrink: 0;
+}
+
+.checkout-summary-row {
     display: flex;
     align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    backdrop-filter: blur(4px);
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--ink-4, #1c1c24);
 }
 
-/* ─── MENÚ LATERAL DE ÁLBUMES ────────────────────────────────────────── */
-.sidebar-overlay {
-    position: fixed; inset: 0; background: rgba(0,0,0,0.8);
-    backdrop-filter: blur(4px); z-index: 4000;
-    opacity: 0; visibility: hidden; transition: all 0.3s ease;
+.checkout-summary-row:last-child {
+    border-bottom: none;
 }
-.sidebar-overlay.open { opacity: 1; visibility: visible; }
 
-.sidebar {
-    position: fixed; top: 0; left: -380px; bottom: 0; width: 100%; max-width: 360px;
-    background: var(--ink-2); border-right: 1px solid var(--ink-5);
-    z-index: 4001; transition: left 0.4s cubic-bezier(0.25, 1, 0.5, 1);
-    display: flex; flex-direction: column; box-shadow: 10px 0 30px rgba(0,0,0,0.6);
+.checkout-summary-row .row-title {
+    flex: 1;
+    min-width: 0;
 }
-.sidebar.open { left: 0; }
 
-.sidebar-header {
-    padding: 24px 28px; border-bottom: 1px solid var(--ink-4);
-    display: flex; justify-content: space-between; align-items: center;
-}
-.sidebar-header h3 { font-family: 'Bebas Neue', sans-serif; font-size: 26px; letter-spacing: 2px; color: #fff; margin:0; line-height: 1;}
-.sidebar-close { background: none; border: none; color: var(--text-dim); font-size: 28px; cursor: pointer; transition: color 0.2s; line-height: 1; }
-.sidebar-close:hover { color: var(--gold); }
-
-.sidebar-search { padding: 16px 24px; border-bottom: 1px solid var(--ink-4); position: relative; }
-.sidebar-search i { position: absolute; left: 40px; top: 50%; transform: translateY(-50%); color: var(--text-dim); font-size: 14px;}
-.sidebar-search input {
-    width: 100%; background: var(--ink-4); border: 1px solid var(--ink-5);
-    padding: 12px 12px 12px 36px; color: var(--text); font-size: 13px; outline: none;
-    border-radius: 4px; transition: border-color 0.2s; font-family: 'Inter', sans-serif;
-}
-.sidebar-search input:focus { border-color: var(--gold-dim); }
-
-.sidebar-content {
-    flex: 1; overflow-y: auto; padding: 12px 0;
-    scrollbar-width: thin; scrollbar-color: var(--ink-5) transparent;
-}
-.sidebar-content::-webkit-scrollbar { width: 5px; }
-.sidebar-content::-webkit-scrollbar-thumb { background: var(--ink-5); border-radius: 4px; }
-
-.sidebar-item {
-    padding: 14px 24px; display: flex; flex-direction: column; gap: 6px;
-    cursor: pointer; transition: background 0.2s; border-bottom: 1px solid transparent;
-}
-.sidebar-item:hover { background: var(--ink-3); border-bottom-color: var(--ink-4); }
-.sidebar-item-title { font-size: 15px; font-weight: 500; color: var(--text); transition: color 0.2s;}
-.sidebar-item:hover .sidebar-item-title { color: var(--gold); }
-.sidebar-item-meta { font-size: 11px; color: var(--text-dim); display: flex; gap: 10px; align-items: center; }
-.sidebar-item-sport { color: var(--gold); font-size: 9px; text-transform: uppercase; letter-spacing: 1px; border: 1px solid var(--gold-dim); padding: 2px 6px; border-radius: 2px; }
-
-.sidebar-subitem {
-    padding: 10px 24px 10px 44px; font-size: 13px; color: var(--text-sub);
-    cursor: pointer; transition: all 0.2s; display: flex; align-items: center; gap: 10px;
-}
-.sidebar-subitem:hover { color: var(--gold); background: rgba(212,168,67,0.05); }
-.sidebar-subitem i { font-size: 12px; color: var(--text-dim); }
-
-@media (max-width: 900px) {
-    .subcarpetas-grid { padding: 0 5% 32px; }
+.checkout-summary-row .row-price {
+    font-weight: 600;
+    color: var(--gold, #D4A843);
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 @media (max-width: 600px) {
-    .subcarpetas-grid { grid-template-columns: 1fr; }
+    .sport-filters { padding: 0 5% 24px; gap: 8px; }
+    .sport-btn { padding: 8px 14px; font-size: 10px; }
 }
