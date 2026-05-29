@@ -374,7 +374,7 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
         # Limitar resolución para no explotar la RAM en Railway (~512MB)
         # 4000px es suficiente para un preview con marca de agua
-        MAX_PX = 4000
+        MAX_PX = 2000
         if max(base.size) > MAX_PX:
             ratio = MAX_PX / max(base.size)
             nuevo_size = (int(base.size[0] * ratio), int(base.size[1] * ratio))
