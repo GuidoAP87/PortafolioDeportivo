@@ -33,7 +33,7 @@ document.addEventListener('visibilitychange', () => {
 
 // ⚠ CONFIGURACIÓN
 const WA_NUMBER   = '5493510000000';   
-const PRECIO_BASE = 3000; // Solo de referencia para subir fotos             
+const PRECIO_BASE = 3000;
 
 // ─── LÓGICA DE PRECIOS POR VOLUMEN ───────────────────────────────────────────
 function getPrecioUnitario(cantidad) {
@@ -41,8 +41,33 @@ function getPrecioUnitario(cantidad) {
     if (cantidad === 2) return 2700;
     if (cantidad === 3) return 2500;
     if (cantidad === 4) return 2300;
-    if (cantidad >= 5)  return 2000; // <-- Cambiar a 5000 acá si realmente era el valor deseado
+    if (cantidad >= 5)  return 2000;
     return 3000;
+}
+
+/**
+ * Calcula el precio de cada foto en el carrito correctamente:
+ * - Si tiene precio personalizado (distinto al base): usa ese precio fijo
+ * - Si tiene precio base: aplica descuento por volumen según cuántas fotos SIN precio custom hay
+ */
+function calcularPreciosCarrito() {
+    const items = [...carrito.values()];
+
+    // Separar fotos con precio custom de las normales
+    const conPrecioCustom = items.filter(({foto}) => foto.precio_custom === true);
+    const sinPrecioCustom = items.filter(({foto}) => !foto.precio_custom);
+
+    // El descuento por volumen aplica solo a las fotos sin precio custom
+    const precioUnitarioNormal = getPrecioUnitario(sinPrecioCustom.length);
+
+    return items.map(({foto, evento}) => {
+        const precio = foto.precio_custom ? foto.precio : precioUnitarioNormal;
+        return { foto, evento, precio };
+    });
+}
+
+function calcularTotalCarrito() {
+    return calcularPreciosCarrito().reduce((s, {precio}) => s + precio, 0);
 }
 
 // ─── ESTADO ───────────────────────────────────────────────────────────────────
@@ -563,11 +588,11 @@ function renderVistaEvento(ev) {
                            font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:auto;">
                     <i class="fa-solid fa-image"></i>
                 </button>
-                <button onclick="event.stopPropagation();editarPrecioFoto(${f.id},${f.precio||PRECIO_BASE})"
-                    title="Editar precio de esta foto"
+                <button onclick="event.stopPropagation();editarPrecioFoto(${f.id},${f.precio||PRECIO_BASE},${!!f.precio_custom})"
+                    title="${f.precio_custom ? 'Precio especial: $'+f.precio.toLocaleString('es-AR') : 'Editar precio'}"
                     style="position:absolute;top:44px;left:8px;
-                           background:rgba(0,0,0,0.75);
-                           border:none;color:#aaa;
+                           background:${f.precio_custom ? 'var(--gold)' : 'rgba(0,0,0,0.75)'};
+                           border:none;color:${f.precio_custom ? '#000' : '#aaa'};
                            width:28px;height:28px;border-radius:50%;
                            font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:auto;">
                     <i class="fa-solid fa-tag"></i>
@@ -800,14 +825,18 @@ function limpiarCarrito() {
 
 function actualizarCarritoBar() {
     const count = carrito.size;
-    const unitario = count > 0 ? getPrecioUnitario(count) : 0;
-    const total = count * unitario;
-    
-    const bar = document.getElementById('cart-bar');
+    const bar   = document.getElementById('cart-bar');
     if (!bar) return;
+
+    if (count === 0) {
+        bar.classList.remove('visible');
+        return;
+    }
+
+    const total = calcularTotalCarrito();
     document.getElementById('cart-count').textContent = count;
     document.getElementById('cart-total').textContent = `$${total.toLocaleString('es-AR')} ARS`;
-    bar.classList.toggle('visible', count > 0);
+    bar.classList.add('visible');
 
     if (document.getElementById('lightbox')?.classList.contains('open')) {
         actualizarLbBtn();
@@ -1217,7 +1246,7 @@ async function borrarEvento(id) {
 }
 
 // ─── PRECIO MANUAL POR FOTO ───────────────────────────────────────────────────
-async function editarPrecioFoto(fotoId, precioActual) {
+async function editarPrecioFoto(fotoId, precioActual, isCustom = false) {
     const { value: nuevoPrecio } = await Swal.fire({
         title: 'Precio de esta foto',
         background: 'var(--ink-2)', color: 'var(--text)',
@@ -1252,20 +1281,28 @@ async function editarPrecioFoto(fotoId, precioActual) {
     });
     const data = await res.json();
     if (data.ok) {
+        const esCustom = nuevoPrecio !== PRECIO_BASE;
         // Actualizar precio en eventosData
         for (const ev of eventosData) {
             const foto = (ev.fotos || []).find(f => f.id === fotoId);
-            if (foto) { foto.precio = nuevoPrecio; break; }
+            if (foto) {
+                foto.precio        = nuevoPrecio;
+                foto.precio_custom = esCustom;
+                break;
+            }
         }
         // Actualizar carrito si la foto está en él
         if (carrito.has(fotoId)) {
             const item = carrito.get(fotoId);
-            item.foto.precio = nuevoPrecio;
+            item.foto.precio        = nuevoPrecio;
+            item.foto.precio_custom = esCustom;
         }
-        const msg = nuevoPrecio === PRECIO_BASE
+        const msg = !esCustom
             ? 'Precio reseteado al predeterminado'
-            : `Precio actualizado: $${nuevoPrecio.toLocaleString('es-AR')}`;
+            : `Precio especial: $${nuevoPrecio.toLocaleString('es-AR')}`;
         toast(msg, 'success', 2500);
+        actualizarCarritoBar();
+        if (window._renderCheckoutItems) window._renderCheckoutItems();
     } else {
         toast('Error al actualizar el precio', 'error');
     }
@@ -1352,13 +1389,13 @@ function abrirCheckout() {
     const items = [...carrito.values()];
 
     const renderCheckoutItems = () => {
-        const items2    = [...carrito.values()];
-        const count2    = items2.length;
-        const unitario2 = getPrecioUnitario(count2);
-        const total2    = items2.reduce((s, {foto}) => s + (foto.precio || unitario2), 0);
+        const itemsConPrecio = calcularPreciosCarrito();
+        const total2         = itemsConPrecio.reduce((s, {precio}) => s + precio, 0);
+        const count2         = itemsConPrecio.length;
+        const precioNormal   = getPrecioUnitario(itemsConPrecio.filter(i => !i.foto.precio_custom).length);
 
-        document.getElementById('checkout-resumen').innerHTML = items2.map(({foto,evento}) => {
-            const precio_foto = foto.precio || unitario2;
+        document.getElementById('checkout-resumen').innerHTML = itemsConPrecio.map(({foto, evento, precio}) => {
+            const esCustom = foto.precio_custom === true;
             return `
             <div class="checkout-summary-row" id="checkout-row-${foto.id}">
                 <div class="row-thumb">
@@ -1366,9 +1403,12 @@ function abrirCheckout() {
                 </div>
                 <div class="row-title">
                     <div style="color:var(--text);font-size:13px">${evento.titulo}</div>
-                    <div style="color:var(--text-dim);font-size:11px;margin-top:2px">Foto #${foto.id} · Alta resolución</div>
+                    <div style="color:var(--text-dim);font-size:11px;margin-top:2px">
+                        Foto #${foto.id} · Alta resolución
+                        ${esCustom ? '<span style="color:var(--gold);margin-left:6px">★ Precio especial</span>' : ''}
+                    </div>
                 </div>
-                <div class="row-price">$${precio_foto.toLocaleString('es-AR')}</div>
+                <div class="row-price">$${precio.toLocaleString('es-AR')}</div>
                 <button onclick="quitarDelCarritoCheckout(${foto.id})"
                     title="Quitar del carrito"
                     style="background:none;border:none;color:var(--red);cursor:pointer;
@@ -1380,7 +1420,6 @@ function abrirCheckout() {
         }).join('');
 
         document.getElementById('checkout-total-amount').textContent = `$${total2.toLocaleString('es-AR')} ARS`;
-
         if (count2 === 0) { cerrarCheckout(); }
     };
 
@@ -1416,7 +1455,12 @@ async function procesarPago() {
         return;
     }
 
-    const foto_ids = [...carrito.keys()];
+    const itemsConPrecio = calcularPreciosCarrito();
+    const foto_ids       = itemsConPrecio.map(({foto}) => foto.id);
+    const precios_custom = {};
+    itemsConPrecio.forEach(({foto, precio}) => {
+        if (foto.precio_custom) precios_custom[foto.id] = precio;
+    });
     const btn      = document.getElementById('checkout-pay-btn');
     btn.disabled   = true;
     btn.innerHTML  = '<i class="fa-solid fa-spinner fa-spin"></i> Procesando...';
@@ -1425,7 +1469,7 @@ async function procesarPago() {
         const res  = await fetch('/crear-orden', {
             method:'POST', credentials:'include',
             headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ foto_ids, email, nombre, whatsapp })
+            body: JSON.stringify({ foto_ids, email, nombre, whatsapp, precios_custom })
         });
         const data = await res.json();
 
