@@ -373,7 +373,11 @@ function configurarFiltros() {
     });
 }
 
-async function adminCategorias() {map(cat => `
+async function adminCategorias() {
+    const res  = await fetch('/categorias');
+    const cats = await res.json();
+
+    const listaHtml = cats.map(cat => `
         <div class="cat-admin-row" data-id="${cat.id}" style="
             display:flex;align-items:center;gap:10px;padding:8px 0;
             border-bottom:1px solid var(--ink-4);">
