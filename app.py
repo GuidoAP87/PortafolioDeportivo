@@ -408,9 +408,26 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
             py = int(cy - rc_h//2)
             overlay.paste(txt_rotated, (px, py), txt_rotated)
 
-        Image.alpha_composite(base, overlay).convert('RGB').save(
-            ruta_salida, 'JPEG', quality=82
-        )
+        imagen_final = Image.alpha_composite(base, overlay).convert('RGB')
+
+        # ── COMPRESIÓN ADAPTATIVA ────────────────────────────────────────────
+        # Cloudinary Free rechaza archivos > 10MB. Comprimimos el preview hasta
+        # quedar por debajo de 8MB (margen de seguridad).
+        LIMITE_BYTES = 8 * 1024 * 1024  # 8 MB
+        quality = 82
+        buf = io.BytesIO()
+        imagen_final.save(buf, 'JPEG', quality=quality, optimize=True)
+
+        while buf.tell() > LIMITE_BYTES and quality > 30:
+            quality -= 8
+            buf = io.BytesIO()
+            imagen_final.save(buf, 'JPEG', quality=quality, optimize=True)
+
+        with open(ruta_salida, 'wb') as f:
+            f.write(buf.getvalue())
+
+        size_mb = buf.tell() / 1024 / 1024
+        print(f'✓ Preview comprimido: {size_mb:.1f} MB (quality={quality})')
         return True
     except Exception as e:
         print(f'Error watermark: {e}')
