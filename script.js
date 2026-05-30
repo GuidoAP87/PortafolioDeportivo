@@ -36,13 +36,29 @@ const WA_NUMBER   = '5493510000000';
 const PRECIO_BASE = 3000;
 
 // ─── LÓGICA DE PRECIOS POR VOLUMEN ───────────────────────────────────────────
+let NL_CONFIG = null;  // se carga desde /config-precios (parametrizable)
+
 function getPrecioUnitario(cantidad) {
+    // Lee la escala de volumen desde la config del backend; si no cargó, usa fallback.
+    if (NL_CONFIG && Array.isArray(NL_CONFIG.escala_volumen) && NL_CONFIG.escala_volumen.length) {
+        const escala = [...NL_CONFIG.escala_volumen].sort((a, b) => a.min - b.min);
+        let precio = escala[0].precio;
+        for (const t of escala) if (cantidad >= t.min) precio = t.precio;
+        return precio;
+    }
     if (cantidad === 1) return 3000;
     if (cantidad === 2) return 2700;
     if (cantidad === 3) return 2500;
     if (cantidad === 4) return 2300;
     if (cantidad >= 5)  return 2000;
     return 3000;
+}
+
+async function cargarConfigPrecios() {
+    try {
+        const r = await fetch('/config-precios');
+        if (r.ok) NL_CONFIG = await r.json();
+    } catch (e) { console.warn('No se pudo cargar config de precios', e); }
 }
 
 /**
@@ -81,11 +97,14 @@ let personasData    = [];
 let personaFiltrada = null;
 let adminClicks     = 0;
 let adminClickTimer = null;
+let nlTipoCompra     = 'individual';  // individual | pack_digital | pack_impresion
+let nlFotosImpresion = [];            // ids elegidos para imprimir (pack_impresion)
+let nlUpsellMostrado = false;         // evita repetir el modal de upsell
 
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     cargarCarrito();
-    await Promise.all([verificarSesion(), cargarEventos()]);
+    await Promise.all([verificarSesion(), cargarEventos(), cargarConfigPrecios()]);
 
     initNavScroll();
     initReveal();
@@ -638,6 +657,7 @@ function renderVistaEvento(ev) {
             </div>
         </div>
         ${adminBar}
+        ${renderPackCTA(ev)}
         <div id="faces-panel-wrap"></div>
         <div class="photos-grid">${fotosHTML}</div>`;
 }
@@ -1421,8 +1441,10 @@ async function borrarFoto(id) {
     }
 }
 
-function abrirCheckout() {
+function abrirCheckout(tipo = 'individual') {
     if (!carrito.size) return;
+    nlTipoCompra = tipo;
+    if (tipo === 'individual') nlFotosImpresion = [];
     
     // Acá aplicamos el precio dinámico al momento de abrir el modal de pago
     const count = carrito.size;
@@ -1462,7 +1484,12 @@ function abrirCheckout() {
             </div>`;
         }).join('');
 
-        document.getElementById('checkout-total-amount').textContent = `$${total2.toLocaleString('es-AR')} ARS`;
+        if (nlTipoCompra !== 'individual' && NL_CONFIG) {
+            const pp = nlTipoCompra === 'pack_impresion' ? NL_CONFIG.pack_impresion_precio : NL_CONFIG.pack_digital_precio;
+            document.getElementById('checkout-total-amount').textContent = `$${pp.toLocaleString('es-AR')} ARS`;
+        } else {
+            document.getElementById('checkout-total-amount').textContent = `$${total2.toLocaleString('es-AR')} ARS`;
+        }
         if (count2 === 0) { cerrarCheckout(); }
     };
 
@@ -1483,6 +1510,8 @@ function cerrarCheckout() {
     m.classList.remove('open');
     setTimeout(() => { m.style.display = 'none'; }, 300);
     document.body.style.overflow = '';
+    nlTipoCompra = 'individual';
+    nlFotosImpresion = [];
 }
 
 async function procesarPago() {
@@ -1512,7 +1541,7 @@ async function procesarPago() {
         const res  = await fetch('/crear-orden', {
             method:'POST', credentials:'include',
             headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ foto_ids, email, nombre, whatsapp, precios_custom })
+            body: JSON.stringify({ foto_ids, email, nombre, whatsapp, precios_custom, tipo: nlTipoCompra, fotos_impresion_ids: nlFotosImpresion })
         });
         const data = await res.json();
 
@@ -1997,3 +2026,190 @@ async function procesarEventoIA(eventoId) {
         toast(data.error || 'Error al conectar con el microservicio IA', 'error');
     }
 }
+
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  MÓDULO PACK JUGADOR (cara al cliente)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// CTA destacado en la galería (req 3.2): "opción recomendada"
+function renderPackCTA(ev) {
+    const fotos = (ev.fotos || []);
+    if (!fotos.length) return '';                 // sin fotos no tiene sentido
+    if (NL_CONFIG && !NL_CONFIG.pack_digital_activo && !NL_CONFIG.pack_impresion_activo) return '';
+
+    const pDig = NL_CONFIG ? NL_CONFIG.pack_digital_precio   : 20000;
+    const pImp = NL_CONFIG ? NL_CONFIG.pack_impresion_precio : 25000;
+    const digActivo = !NL_CONFIG || NL_CONFIG.pack_digital_activo;
+    const impActivo = !NL_CONFIG || NL_CONFIG.pack_impresion_activo;
+
+    const btnDig = digActivo ? `
+        <button onclick="comprarConPack('pack_digital')" class="pack-cta-btn pack-cta-primary">
+            <i class="fa-solid fa-layer-group"></i>
+            <span>Llevá TODAS las fotos seleccionadas · Pack Jugador</span>
+            <strong>$${pDig.toLocaleString('es-AR')}</strong>
+        </button>` : '';
+
+    const btnImp = impActivo ? `
+        <button onclick="comprarConPack('pack_impresion')" class="pack-cta-btn pack-cta-secondary">
+            <i class="fa-solid fa-print"></i>
+            <span>Pack Jugador + 2 impresiones 13x18</span>
+            <strong>$${pImp.toLocaleString('es-AR')}</strong>
+        </button>` : '';
+
+    return `
+    <div class="pack-cta-wrap" style="
+        margin:0 8% 18px; padding:18px 22px; border:1px solid var(--gold-dim);
+        border-radius:10px; background:linear-gradient(135deg, rgba(212,168,67,0.10), rgba(212,168,67,0.02));">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
+            <span style="background:var(--gold);color:#000;font-size:10px;font-weight:700;
+                         letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:4px;">
+                Opción recomendada
+            </span>
+            <span style="color:var(--gold);font-weight:600;font-size:15px;">La historia completa del partido</span>
+        </div>
+        <p style="color:var(--text-dim);font-size:13px;line-height:1.6;margin:4px 0 14px;">
+            Seleccioná las fotos de tu hijo/a con el <i class="fa-solid fa-cart-shopping"></i> y llevátelas
+            <strong style="color:var(--text)">todas juntas</strong> a un precio fijo. Mucho más conveniente que comprar de a una.
+        </p>
+        <div class="pack-cta-buttons" style="display:flex;gap:10px;flex-wrap:wrap;">
+            ${btnDig}
+            ${btnImp}
+        </div>
+    </div>`;
+}
+
+// Compra agrupada: usa las fotos que ya están en el carrito como contenido del pack
+function comprarConPack(tipo) {
+    if (!carrito.size) {
+        toast('Primero marcá las fotos de tu hijo/a con el ícono del carrito', 'info', 2600);
+        return;
+    }
+    if (tipo === 'pack_impresion') { abrirSelectorImpresiones(); return; }
+    nlFotosImpresion = [];
+    abrirCheckout('pack_digital');
+    aplicarBannerPackCheckout();
+}
+
+// Banner informativo arriba del resumen del checkout cuando es un pack
+function aplicarBannerPackCheckout() {
+    const resumen = document.getElementById('checkout-resumen');
+    if (!resumen || resumen.querySelector('.pack-checkout-banner')) return;
+    const nombre = nlTipoCompra === 'pack_impresion'
+        ? 'Pack Jugador + 2 impresiones 13x18'
+        : 'Pack Jugador Digital';
+    const extra = nlTipoCompra === 'pack_impresion'
+        ? `<div style="color:var(--text-dim);font-size:11px;margin-top:4px;">Imprimís 2 fotos a elección · el resto en digital</div>` : '';
+    const banner = document.createElement('div');
+    banner.className = 'pack-checkout-banner';
+    banner.style = 'padding:12px 14px;margin-bottom:12px;border:1px solid var(--gold-dim);border-radius:8px;background:rgba(212,168,67,0.08);';
+    banner.innerHTML = `
+        <div style="display:flex;align-items:center;gap:8px;color:var(--gold);font-weight:600;font-size:14px;">
+            <i class="fa-solid fa-layer-group"></i> ${nombre}
+        </div>
+        <div style="color:var(--text-dim);font-size:12px;margin-top:4px;">
+            ${carrito.size} foto${carrito.size>1?'s':''} incluida${carrito.size>1?'s':''} en el pack
+        </div>${extra}`;
+    resumen.prepend(banner);
+}
+
+// Selector obligatorio de 2 fotos para imprimir (req 3.3)
+async function abrirSelectorImpresiones() {
+    if (carrito.size < 2) {
+        toast('Para este pack necesitás al menos 2 fotos en el carrito', 'info', 2800);
+        return;
+    }
+    const items = [...carrito.values()];
+    const grid = items.map(({foto}) => `
+        <div class="imp-pick" data-id="${foto.id}" onclick="toggleImpresion(${foto.id}, this)"
+             style="position:relative;cursor:pointer;border:2px solid transparent;border-radius:6px;overflow:hidden;">
+            <img src="${foto.url_preview}" style="width:100%;height:90px;object-fit:cover;display:block;opacity:0.85;">
+            <div class="imp-check" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;
+                 background:var(--gold);color:#000;display:none;align-items:center;justify-content:center;font-size:11px;">
+                <i class="fa-solid fa-check"></i>
+            </div>
+        </div>`).join('');
+
+    nlFotosImpresion = [];
+    await Swal.fire({
+        title: 'Elegí 2 fotos para imprimir',
+        background: 'var(--ink-2)', color: 'var(--text)',
+        html: `<p style="color:#999;font-size:13px;margin-bottom:12px;">Las 2 que marques se imprimen en 13x18. El resto va en digital.</p>
+               <div id="imp-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;max-height:300px;overflow:auto;">${grid}</div>`,
+        showCancelButton: true,
+        confirmButtonText: 'Continuar al pago',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#D4A843', cancelButtonColor: '#555',
+        preConfirm: () => {
+            if (nlFotosImpresion.length !== 2) {
+                Swal.showValidationMessage('Tenés que elegir exactamente 2 fotos');
+                return false;
+            }
+            return true;
+        }
+    }).then(res => {
+        if (res.isConfirmed) {
+            abrirCheckout('pack_impresion');
+            aplicarBannerPackCheckout();
+        } else {
+            nlFotosImpresion = [];
+        }
+    });
+}
+
+function toggleImpresion(fotoId, el) {
+    const check = el.querySelector('.imp-check');
+    const i = nlFotosImpresion.indexOf(fotoId);
+    if (i >= 0) {
+        nlFotosImpresion.splice(i, 1);
+        el.style.borderColor = 'transparent';
+        if (check) check.style.display = 'none';
+    } else {
+        if (nlFotosImpresion.length >= 2) {
+            toast('Solo 2 fotos para imprimir', 'info', 1500);
+            return;
+        }
+        nlFotosImpresion.push(fotoId);
+        el.style.borderColor = 'var(--gold)';
+        if (check) check.style.display = 'flex';
+    }
+}
+
+// Upsell dinámico (req 3.2): sugerir el pack cuando se acerca al precio
+async function chequearUpsell() {
+    if (!NL_CONFIG || !NL_CONFIG.pack_digital_activo) return;
+    const n = carrito.size;
+    if (n === 0) { nlUpsellMostrado = false; return; }
+    if (nlUpsellMostrado) return;
+    if (n < (NL_CONFIG.upsell_trigger_qty || 6)) return;
+
+    const totalActual = calcularTotalCarrito();
+    const pack = NL_CONFIG.pack_digital_precio;
+    if (totalActual < pack) return;   // solo si ya conviene el pack
+
+    nlUpsellMostrado = true;
+    const { isConfirmed } = await Swal.fire({
+        icon: 'info',
+        title: '¡Estás a un paso del Pack!',
+        html: `<p style="color:#999;font-size:14px;line-height:1.7;">
+                 Llevás <strong style="color:#fff">${n} fotos</strong> por
+                 <strong style="color:#fff">$${totalActual.toLocaleString('es-AR')}</strong>.<br>
+                 Con el <strong style="color:var(--gold)">Pack Jugador</strong> te llevás
+                 <strong style="color:#fff">TODAS las que elijas</strong> por
+                 <strong style="color:var(--gold)">$${pack.toLocaleString('es-AR')}</strong>.
+               </p>`,
+        background: 'var(--ink-2)', color: 'var(--text)',
+        showCancelButton: true,
+        confirmButtonText: '<i class="fa-solid fa-layer-group"></i>&nbsp; Quiero el Pack',
+        cancelButtonText: 'Seguir eligiendo',
+        confirmButtonColor: '#D4A843', cancelButtonColor: '#333'
+    });
+    if (isConfirmed) { abrirCheckout('pack_digital'); aplicarBannerPackCheckout(); }
+}
+
+// Enganche del upsell: envolver actualizarCarritoBar sin tocar el original
+const _nl_actualizarCarritoBar = actualizarCarritoBar;
+actualizarCarritoBar = function () {
+    _nl_actualizarCarritoBar();
+    chequearUpsell();
+};
