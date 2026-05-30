@@ -1020,8 +1020,9 @@ def subir_foto():
     ruta_orig    = os.path.join(CARPETA_TEMP, 'orig_'    + filename)
     ruta_preview = os.path.join(CARPETA_TEMP, 'preview_' + filename)
 
-    # Guardar archivo en disco (rápido)
-    archivo.save(ruta_orig)
+    # Leer en memoria y guardar en background — evita bloqueo por I/O lento
+    import io as _io
+    file_bytes = _io.BytesIO(archivo.read())
 
     # Guardar en BD con placeholders — se actualizan en background
     key_orig     = f"nacho_lingua/originales/evento_{evento_id}/{filename}"
@@ -1033,7 +1034,9 @@ def subir_foto():
     foto_id_guardado = foto.id
 
     # Todo el procesamiento pesado en background — el worker nunca muere
-    def procesar_foto_background(ruta_orig, ruta_preview, key_orig, foto_id, evento_id, precio):
+    def procesar_foto_background(file_bytes, ruta_orig, ruta_preview, key_orig, foto_id, evento_id, precio):
+        with open(ruta_orig, 'wb') as f_out:
+            f_out.write(file_bytes.getvalue())
         with app.app_context():
             try:
                 # Watermark
@@ -1071,7 +1074,7 @@ def subir_foto():
 
     t = threading.Thread(
         target=procesar_foto_background,
-        args=(ruta_orig, ruta_preview, key_orig, foto_id_guardado, evento_id, precio),
+        args=(file_bytes, ruta_orig, ruta_preview, key_orig, foto_id_guardado, evento_id, precio),
         daemon=True
     )
     t.start()
