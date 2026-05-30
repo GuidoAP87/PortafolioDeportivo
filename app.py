@@ -1603,7 +1603,7 @@ def cloudinary_signature():
     timestamp = int(_time.time())
     
     # Parámetros que se firman
-    params_to_sign = f"folder={folder}&timestamp={timestamp}"
+    params_to_sign = f"folder={folder}&timestamp={timestamp}&upload_preset=ml_default"
     api_secret     = os.environ.get('CLOUD_API_SECRET', '')
     signature      = hashlib.sha256(f"{params_to_sign}{api_secret}".encode()).hexdigest()
     

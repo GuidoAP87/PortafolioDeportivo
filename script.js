@@ -1197,11 +1197,12 @@ async function subirFotos(event, eventoId) {
         try {
             // 1. Subir directo a Cloudinary desde el browser (sin pasar por Railway)
             const fd = new FormData();
-            fd.append('file',       files[i]);
-            fd.append('api_key',    sigData.api_key);
-            fd.append('timestamp',  sigData.timestamp);
-            fd.append('signature',  sigData.signature);
-            fd.append('folder',     sigData.folder);
+            fd.append('file',         files[i]);
+            fd.append('api_key',      sigData.api_key);
+            fd.append('timestamp',    sigData.timestamp);
+            fd.append('signature',    sigData.signature);
+            fd.append('folder',       sigData.folder);
+            fd.append('upload_preset','ml_default');
 
             const cloudRes = await fetch(
                 `https://api.cloudinary.com/v1_1/${sigData.cloud_name}/image/upload`,
