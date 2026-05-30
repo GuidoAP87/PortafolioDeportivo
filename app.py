@@ -1019,67 +1019,65 @@ def subir_foto():
 
     ruta_orig    = os.path.join(CARPETA_TEMP, 'orig_'    + filename)
     ruta_preview = os.path.join(CARPETA_TEMP, 'preview_' + filename)
+    archivo.save(ruta_orig)
 
-    # Leer en memoria y guardar en background — evita bloqueo por I/O lento
-    import io as _io
-    file_bytes = _io.BytesIO(archivo.read())
+    # ── PASO 1: Generar preview con watermark (rápido, ~2s) ──────────────────
+    if not agregar_watermark(ruta_orig, ruta_preview):
+        try: os.remove(ruta_orig)
+        except: pass
+        return jsonify({'error': 'Error al procesar imagen'}), 500
 
-    # Guardar en BD con placeholders — se actualizan en background
+    # ── PASO 2: Subir preview a Cloudinary (rápido, ~2s) ─────────────────────
+    try:
+        r_prev      = cloudinary.uploader.upload(ruta_preview, folder=f'nacho_lingua/previews/evento_{evento_id}')
+        url_preview = r_prev['secure_url']
+    except Exception as e:
+        for f in [ruta_orig, ruta_preview]:
+            try: os.remove(f)
+            except: pass
+        return jsonify({'error': f'Error Cloudinary preview: {e}'}), 500
+
+    # ── PASO 3: Guardar en BD con URL de Wasabi pendiente ────────────────────
+    # El original se sube a Wasabi en background para no bloquear el worker
     key_orig     = f"nacho_lingua/originales/evento_{evento_id}/{filename}"
-    url_original = f"wasabi_pending:{key_orig}"
-    url_preview  = f"processing:{filename}"
+    url_original = f"wasabi_pending:{key_orig}"  # placeholder hasta que suba
 
     foto = Foto(url_preview=url_preview, url_original=url_original, precio=precio, evento_id=evento_id)
     db.session.add(foto); db.session.commit()
     foto_id_guardado = foto.id
 
-    # Todo el procesamiento pesado en background — el worker nunca muere
-    def procesar_foto_background(file_bytes, ruta_orig, ruta_preview, key_orig, foto_id, evento_id, precio):
-        with open(ruta_orig, 'wb') as f_out:
-            f_out.write(file_bytes.getvalue())
+    # ── PASO 4: Subir original a Wasabi en background (lento, no bloquea) ────
+    def subir_wasabi_background(ruta, key, foto_id):
         with app.app_context():
             try:
-                # Watermark
-                if not agregar_watermark(ruta_orig, ruta_preview):
-                    print(f'✗ Watermark falló: foto {foto_id}')
-                    return
-
-                # Cloudinary preview
-                try:
-                    r_prev      = cloudinary.uploader.upload(ruta_preview, folder=f'nacho_lingua/previews/evento_{evento_id}')
-                    url_preview = r_prev['secure_url']
-                except Exception as e:
-                    print(f'✗ Cloudinary falló: {e}')
-                    return
-
-                # Wasabi original
-                url_wasabi = subir_a_wasabi(ruta_orig, key_orig)
-                if not url_wasabi:
-                    url_wasabi = url_preview  # fallback a Cloudinary si Wasabi falla
-
-                # Actualizar BD con URLs reales
-                f = Foto.query.get(foto_id)
-                if f:
-                    f.url_preview  = url_preview
-                    f.url_original = url_wasabi
-                    db.session.commit()
-                    print(f'✓ Foto {foto_id} procesada OK')
-
+                url = subir_a_wasabi(ruta, key)
+                if url:
+                    f = Foto.query.get(foto_id)
+                    if f:
+                        f.url_original = url
+                        db.session.commit()
+                        print(f'✓ Wasabi background OK: foto {foto_id}')
+                else:
+                    print(f'✗ Wasabi background falló: foto {foto_id}')
             except Exception as e:
-                print(f'✗ Error procesando foto {foto_id}: {e}')
+                print(f'✗ Wasabi background error: {e}')
             finally:
-                for ruta_tmp in [ruta_orig, ruta_preview]:
+                for ruta_tmp in [ruta, ruta_preview]:
                     try: os.remove(ruta_tmp)
                     except: pass
 
-    t = threading.Thread(
-        target=procesar_foto_background,
-        args=(file_bytes, ruta_orig, ruta_preview, key_orig, foto_id_guardado, evento_id, precio),
+    t_wasabi = threading.Thread(
+        target=subir_wasabi_background,
+        args=(ruta_orig, key_orig, foto_id_guardado),
         daemon=True
     )
-    t.start()
+    t_wasabi.start()
 
-    return jsonify({'ok': True, 'id': foto_id_guardado, 'url_preview': url_preview, 'ia_procesando': False})
+    if FACES_ENABLED:
+        t_faces = threading.Thread(target=detectar_rostros, args=(ruta_orig, foto_id_guardado, int(evento_id)), daemon=True)
+        t_faces.start()
+
+    return jsonify({'ok': True, 'id': foto_id_guardado, 'url_preview': url_preview, 'ia_procesando': FACES_ENABLED})
 
 @app.route('/editar-precio/<int:foto_id>', methods=['PATCH'])
 def editar_precio(foto_id):
@@ -1592,6 +1590,53 @@ def test_wasabi():
         resultados['escritura_disco'] = f'ERROR: {str(e)}'
 
     return jsonify(resultados)
+
+
+@app.route('/cloudinary-signature', methods=['POST'])
+def cloudinary_signature():
+    """Genera una firma para upload directo desde el browser a Cloudinary"""
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    
+    data      = request.json or {}
+    evento_id = data.get('evento_id', 'general')
+    folder    = f'nacho_lingua/previews/evento_{evento_id}'
+    timestamp = int(_time.time())
+    
+    # Parámetros que se firman
+    params_to_sign = f"folder={folder}&timestamp={timestamp}"
+    api_secret     = os.environ.get('CLOUD_API_SECRET', '')
+    signature      = hashlib.sha256(f"{params_to_sign}{api_secret}".encode()).hexdigest()
+    
+    return jsonify({
+        'signature':  signature,
+        'timestamp':  timestamp,
+        'folder':     folder,
+        'api_key':    os.environ.get('CLOUD_API_KEY', ''),
+        'cloud_name': os.environ.get('CLOUD_NAME', '')
+    })
+
+@app.route('/registrar-foto', methods=['POST'])
+def registrar_foto():
+    """Registra en BD una foto ya subida a Cloudinary desde el browser"""
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    
+    data        = request.json or {}
+    url_preview = data.get('url_preview')
+    evento_id   = data.get('evento_id')
+    precio      = float(data.get('precio', 3000))
+    public_id   = data.get('public_id', '')
+    
+    if not url_preview or not evento_id:
+        return jsonify({'error': 'Faltan datos'}), 400
+    
+    # url_original = misma foto en Cloudinary (sin watermark en calidad original)
+    # En producción esto debería ser Wasabi, pero como fallback usamos Cloudinary
+    url_original = url_preview.replace('/upload/', '/upload/q_100/')
+    
+    foto = Foto(url_preview=url_preview, url_original=url_original, precio=precio, evento_id=evento_id)
+    db.session.add(foto); db.session.commit()
+    
+    return jsonify({'ok': True, 'id': foto.id, 'url_preview': url_preview})
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)

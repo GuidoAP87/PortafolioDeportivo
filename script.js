@@ -1173,22 +1173,60 @@ async function subirFotos(event, eventoId) {
 
     let exitosas = 0, errores = 0;
 
+    // Obtener firma de Cloudinary una sola vez para todas las fotos
+    let sigData;
+    try {
+        const sigRes = await fetch('/cloudinary-signature', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ evento_id: eventoId }),
+            credentials: 'include'
+        });
+        sigData = await sigRes.json();
+    } catch(e) {
+        toast('Error al iniciar subida. Verificá la conexión.', 'error', 4000);
+        return;
+    }
+
     for (let i = 0; i < files.length; i++) {
         const labelStr = `Subiendo ${i+1} de ${files.length} — ${files[i].name.substring(0,30)}`;
         if (label)    label.textContent = labelStr;
         if (progText) progText.textContent = labelStr;
         if (progBar)  progBar.style.width = `${(i/files.length)*100}%`;
 
-        const fd = new FormData();
-        fd.append('foto',      files[i]);
-        fd.append('evento_id', eventoId);
-        fd.append('precio',    PRECIO_BASE);
-
         try {
-            const res = await fetch('/subir-foto', { method:'POST', body:fd, credentials:'include' });
-            if (res.ok) exitosas++;
+            // 1. Subir directo a Cloudinary desde el browser (sin pasar por Railway)
+            const fd = new FormData();
+            fd.append('file',       files[i]);
+            fd.append('api_key',    sigData.api_key);
+            fd.append('timestamp',  sigData.timestamp);
+            fd.append('signature',  sigData.signature);
+            fd.append('folder',     sigData.folder);
+
+            const cloudRes = await fetch(
+                `https://api.cloudinary.com/v1_1/${sigData.cloud_name}/image/upload`,
+                { method: 'POST', body: fd }
+            );
+            const cloudData = await cloudRes.json();
+
+            if (!cloudData.secure_url) { errores++; continue; }
+
+            // 2. Registrar en BD (solo envía la URL, no la foto)
+            const regRes = await fetch('/registrar-foto', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    url_preview: cloudData.secure_url,
+                    evento_id:   eventoId,
+                    precio:      PRECIO_BASE,
+                    public_id:   cloudData.public_id
+                }),
+                credentials: 'include'
+            });
+            if (regRes.ok) exitosas++;
             else errores++;
-        } catch { errores++; }
+
+        } catch(e) { errores++; }
 
         if (progBar) progBar.style.width = `${((i+1)/files.length)*100}%`;
     }
