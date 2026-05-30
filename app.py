@@ -1021,29 +1021,13 @@ def subir_foto():
     ruta_preview = os.path.join(CARPETA_TEMP, 'preview_' + filename)
     archivo.save(ruta_orig)
 
-    # Subir original a Wasabi (sin marca de agua)
-    if WASABI_ENABLED:
-        key_orig     = f"nacho_lingua/originales/evento_{evento_id}/{filename}"
-        url_original = subir_a_wasabi(ruta_orig, key_orig)
-        if not url_original:
-            try: os.remove(ruta_orig)
-            except: pass
-            return jsonify({'error': 'Error subiendo a Wasabi'}), 500
-    else:
-        # Fallback a Cloudinary si Wasabi no está configurado
-        try:
-            r_orig       = cloudinary.uploader.upload(ruta_orig, folder=f'nacho_lingua/originales/evento_{evento_id}', quality='auto:best')
-            url_original = r_orig['secure_url']
-        except Exception as e:
-            try: os.remove(ruta_orig)
-            except: pass
-            return jsonify({'error': f'Error subiendo original: {e}'}), 500
-
+    # ── PASO 1: Generar preview con watermark (rápido, ~2s) ──────────────────
     if not agregar_watermark(ruta_orig, ruta_preview):
         try: os.remove(ruta_orig)
         except: pass
         return jsonify({'error': 'Error al procesar imagen'}), 500
 
+    # ── PASO 2: Subir preview a Cloudinary (rápido, ~2s) ─────────────────────
     try:
         r_prev      = cloudinary.uploader.upload(ruta_preview, folder=f'nacho_lingua/previews/evento_{evento_id}')
         url_preview = r_prev['secure_url']
@@ -1053,18 +1037,47 @@ def subir_foto():
             except: pass
         return jsonify({'error': f'Error Cloudinary preview: {e}'}), 500
 
+    # ── PASO 3: Guardar en BD con URL de Wasabi pendiente ────────────────────
+    # El original se sube a Wasabi en background para no bloquear el worker
+    key_orig     = f"nacho_lingua/originales/evento_{evento_id}/{filename}"
+    url_original = f"wasabi_pending:{key_orig}"  # placeholder hasta que suba
+
     foto = Foto(url_preview=url_preview, url_original=url_original, precio=precio, evento_id=evento_id)
     db.session.add(foto); db.session.commit()
+    foto_id_guardado = foto.id
+
+    # ── PASO 4: Subir original a Wasabi en background (lento, no bloquea) ────
+    def subir_wasabi_background(ruta, key, foto_id):
+        with app.app_context():
+            try:
+                url = subir_a_wasabi(ruta, key)
+                if url:
+                    f = Foto.query.get(foto_id)
+                    if f:
+                        f.url_original = url
+                        db.session.commit()
+                        print(f'✓ Wasabi background OK: foto {foto_id}')
+                else:
+                    print(f'✗ Wasabi background falló: foto {foto_id}')
+            except Exception as e:
+                print(f'✗ Wasabi background error: {e}')
+            finally:
+                for ruta_tmp in [ruta, ruta_preview]:
+                    try: os.remove(ruta_tmp)
+                    except: pass
+
+    t_wasabi = threading.Thread(
+        target=subir_wasabi_background,
+        args=(ruta_orig, key_orig, foto_id_guardado),
+        daemon=True
+    )
+    t_wasabi.start()
 
     if FACES_ENABLED:
-        t = threading.Thread(target=detectar_rostros, args=(ruta_orig, foto.id, int(evento_id)), daemon=True)
-        t.start()
-    else:
-        for f in [ruta_orig, ruta_preview]:
-            try: os.remove(f)
-            except: pass
+        t_faces = threading.Thread(target=detectar_rostros, args=(ruta_orig, foto_id_guardado, int(evento_id)), daemon=True)
+        t_faces.start()
 
-    return jsonify({'ok': True, 'id': foto.id, 'url_preview': url_preview, 'ia_procesando': FACES_ENABLED})
+    return jsonify({'ok': True, 'id': foto_id_guardado, 'url_preview': url_preview, 'ia_procesando': FACES_ENABLED})
 
 @app.route('/editar-precio/<int:foto_id>', methods=['PATCH'])
 def editar_precio(foto_id):
