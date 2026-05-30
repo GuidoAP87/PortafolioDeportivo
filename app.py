@@ -255,6 +255,8 @@ class Compra(db.Model):
     whatsapp_cliente = db.Column(db.String(30))   # número con código país, sin +
     foto_ids         = db.Column(db.Text)
     monto_total      = db.Column(db.Float)
+    tipo                = db.Column(db.String(30), default='individual')  # individual | pack_digital | pack_impresion
+    fotos_impresion_ids = db.Column(db.Text)                              # JSON, solo para pack_impresion
     estado           = db.Column(db.String(50), default='pendiente')
     token_galeria    = db.Column(db.String(64), unique=True)  # link privado único
     email_enviado    = db.Column(db.Boolean, default=False)
@@ -270,8 +272,58 @@ class Consulta(db.Model):
     leida     = db.Column(db.Boolean, default=False)
     creada_en = db.Column(db.DateTime, server_default=db.func.now())
 
+class ConfigPrecios(db.Model):
+    """Configuración de precios parametrizable (una sola fila, id=1)."""
+    __tablename__ = 'config_precios'
+    id                    = db.Column(db.Integer, primary_key=True)
+    escala_volumen        = db.Column(db.Text, default='[{"min":1,"precio":3000},{"min":2,"precio":2700},{"min":3,"precio":2500},{"min":4,"precio":2300},{"min":5,"precio":2000}]')
+    pack_digital_precio   = db.Column(db.Float,   default=20000.0)
+    pack_digital_activo   = db.Column(db.Boolean, default=True)
+    pack_impresion_precio = db.Column(db.Float,   default=25000.0)
+    pack_impresion_activo = db.Column(db.Boolean, default=True)
+    upsell_trigger_qty    = db.Column(db.Integer, default=6)
+    actualizado_en        = db.Column(db.DateTime, server_default=db.func.now())
+
 with app.app_context():
     db.create_all()
+
+# ── PRICING CENTRALIZADO (única fuente de verdad) ─────────────────────────────
+def get_config():
+    """Devuelve la fila de configuración, creándola con defaults si no existe."""
+    cfg = ConfigPrecios.query.get(1)
+    if not cfg:
+        cfg = ConfigPrecios(id=1)
+        db.session.add(cfg)
+        db.session.commit()
+    return cfg
+
+def precio_unitario_volumen(cantidad, cfg=None):
+    """Precio unitario según la escala de volumen configurada."""
+    cfg = cfg or get_config()
+    escala = sorted(json.loads(cfg.escala_volumen), key=lambda t: t['min'])
+    precio = escala[0]['precio'] if escala else 3000
+    for tramo in escala:
+        if cantidad >= tramo['min']:
+            precio = tramo['precio']
+    return precio
+
+def calcular_total(foto_ids, tipo='individual', cfg=None):
+    """Calcula (total, items_mp). tipo: individual | pack_digital | pack_impresion."""
+    cfg = cfg or get_config()
+    cantidad = len(foto_ids)
+    if tipo == 'pack_digital':
+        total = float(cfg.pack_digital_precio)
+        return total, [{'title': 'Pack Jugador Digital', 'quantity': 1,
+                        'unit_price': total, 'currency_id': 'ARS'}]
+    if tipo == 'pack_impresion':
+        total = float(cfg.pack_impresion_precio)
+        return total, [{'title': 'Pack Jugador + 2 impresiones 13x18', 'quantity': 1,
+                        'unit_price': total, 'currency_id': 'ARS'}]
+    pu = precio_unitario_volumen(cantidad, cfg)
+    total = pu * cantidad
+    return total, [{'title': f'Nacho Lingua — {cantidad} foto(s)', 'quantity': cantidad,
+                    'unit_price': float(pu), 'currency_id': 'ARS'}]
+
 
 # ── IA: COSINE SIMILARITY ─────────────────────────────────────────────────────
 def cosine_sim(a, b):
@@ -1161,20 +1213,16 @@ def crear_orden():
     fotos = Foto.query.filter(Foto.id.in_(foto_ids)).all()
     if not fotos: return jsonify({'error': 'Fotos no encontradas'}), 404
 
-    # ⚠ APLICACIÓN DE LA ESCALA DE DESCUENTOS EN EL BACKEND
-    cantidad = len(fotos)
-    if cantidad == 1:
-        precio_unit = 3000
-    elif cantidad == 2:
-        precio_unit = 2700
-    elif cantidad == 3:
-        precio_unit = 2500
-    elif cantidad == 4:
-        precio_unit = 2300
-    else: # 5 o más
-        precio_unit = 2000 # <-- Cambiar a 5000 acá si realmente era el valor deseado
-        
-    total = precio_unit * cantidad
+    # Cálculo de precio centralizado (escala de volumen / packs) — parametrizable
+    tipo            = d.get('tipo', 'individual')
+    fotos_impresion = d.get('fotos_impresion_ids', [])
+
+    # El pack con impresiones exige exactamente 2 fotos a imprimir (req. 3.3)
+    if tipo == 'pack_impresion' and len(fotos_impresion) != 2:
+        return jsonify({'error': 'Debés elegir exactamente 2 fotos para imprimir'}), 400
+
+    cfg = get_config()
+    total, mp_items = calcular_total([f.id for f in fotos], tipo=tipo, cfg=cfg)
     base_url = request.host_url.rstrip('/')
 
     wa = d.get('whatsapp', '').strip().replace(' ','').replace('+','').replace('-','').replace('(','').replace(')','')
@@ -1184,6 +1232,8 @@ def crear_orden():
         whatsapp_cliente = wa if wa else None,
         foto_ids         = json.dumps([f.id for f in fotos]),
         monto_total      = total,
+        tipo             = tipo,
+        fotos_impresion_ids = json.dumps(fotos_impresion) if fotos_impresion else None,
         estado           = 'pendiente',
         token_galeria    = generar_token()
     )
@@ -1192,7 +1242,7 @@ def crear_orden():
     if not MP_HABILITADO: return jsonify({'error': 'mp_no_configurado', 'compra_id': compra.id, 'total': total}), 503
 
     result = MP_SDK.preference().create({
-        'items': [{'title': f'Nacho Lingua — Foto #{f.id}', 'description': f.evento.titulo if f.evento else 'Foto deportiva', 'quantity': 1, 'unit_price': float(precio_unit), 'currency_id': 'ARS'} for f in fotos],
+        'items': mp_items,
         'payer': {'email': email, 'name': nombre},
         'back_urls': {'success': f'{base_url}/pago-exitoso?cid={compra.id}', 'failure': f'{base_url}/pago-fallido?cid={compra.id}', 'pending': f'{base_url}/pago-exitoso?cid={compra.id}'},
         'auto_return': 'approved',
@@ -1236,6 +1286,73 @@ def pago_exitoso():
 @app.route('/pago-fallido')
 def pago_fallido():
     return send_from_directory('.', 'pago-fallido.html')
+
+# ── CONFIGURACIÓN DE PRECIOS (parametrización, req. 3.4) ──────────────────────
+@app.route('/config-precios', methods=['GET'])
+def obtener_config_precios():
+    cfg = get_config()
+    return jsonify({
+        'escala_volumen':        json.loads(cfg.escala_volumen),
+        'pack_digital_precio':   cfg.pack_digital_precio,
+        'pack_digital_activo':   cfg.pack_digital_activo,
+        'pack_impresion_precio': cfg.pack_impresion_precio,
+        'pack_impresion_activo': cfg.pack_impresion_activo,
+        'upsell_trigger_qty':    cfg.upsell_trigger_qty,
+    })
+
+@app.route('/config-precios', methods=['PATCH'])
+def actualizar_config_precios():
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    cfg = get_config()
+    d   = request.json or {}
+    if 'escala_volumen' in d:
+        escala = d['escala_volumen']
+        if not (isinstance(escala, list) and escala and
+                all(isinstance(t, dict) and 'min' in t and 'precio' in t for t in escala)):
+            return jsonify({'error': 'escala_volumen inválida'}), 400
+        cfg.escala_volumen = json.dumps(escala)
+    if 'pack_digital_precio'   in d: cfg.pack_digital_precio   = float(d['pack_digital_precio'])
+    if 'pack_digital_activo'   in d: cfg.pack_digital_activo   = bool(d['pack_digital_activo'])
+    if 'pack_impresion_precio' in d: cfg.pack_impresion_precio = float(d['pack_impresion_precio'])
+    if 'pack_impresion_activo' in d: cfg.pack_impresion_activo = bool(d['pack_impresion_activo'])
+    if 'upsell_trigger_qty'    in d: cfg.upsell_trigger_qty    = int(d['upsell_trigger_qty'])
+    db.session.commit()
+    return jsonify({'ok': True})
+
+# ── MÉTRICAS DE VENTAS (req. 4) ───────────────────────────────────────────────
+@app.route('/admin/metricas', methods=['GET'])
+def admin_metricas():
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    from collections import defaultdict
+    pagadas = Compra.query.filter_by(estado='approved').all()
+    total   = len(pagadas)
+    por_tipo = {'individual': 0, 'pack_digital': 0, 'pack_impresion': 0}
+    suma_total = 0.0
+    for c in pagadas:
+        t = c.tipo if c.tipo in por_tipo else 'individual'
+        por_tipo[t] += 1
+        suma_total  += (c.monto_total or 0)
+    packs_vendidos = por_tipo['pack_digital'] + por_tipo['pack_impresion']
+    aov = round(suma_total / total, 2) if total else 0
+    por_mes = defaultdict(lambda: {'n': 0, 'suma': 0.0, 'packs': 0})
+    for c in pagadas:
+        if not c.creada_en: continue
+        k = c.creada_en.strftime('%Y-%m')
+        por_mes[k]['n']    += 1
+        por_mes[k]['suma'] += (c.monto_total or 0)
+        if c.tipo in ('pack_digital', 'pack_impresion'):
+            por_mes[k]['packs'] += 1
+    serie = [{'mes': k, 'compras': v['n'], 'packs': v['packs'],
+              'aov': round(v['suma'] / v['n'], 2) if v['n'] else 0}
+             for k, v in sorted(por_mes.items())]
+    return jsonify({
+        'total_compras':               total,
+        'packs_vendidos':              packs_vendidos,
+        'fotos_individuales_vendidas': por_tipo['individual'],
+        'aov':                         aov,
+        'por_tipo':                    por_tipo,
+        'serie_mensual':               serie,
+    })
 
 # ── CONTACTO ──────────────────────────────────────────────────────────────────
 @app.route('/contacto', methods=['POST'])
