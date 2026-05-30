@@ -4,6 +4,8 @@ Persistencia: PostgreSQL (Render) + Cloudinary (imágenes)
 """
 
 import os, json, smtplib, io, threading, math
+import time as _time
+import hashlib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import timedelta
