@@ -1536,5 +1536,47 @@ def check_auth(): return jsonify({'isAdmin': session.get('admin', False)})
 @app.route('/logout', methods=['POST'])
 def logout(): session.pop('admin', None); return jsonify({'success': True})
 
+@app.route('/test-wasabi')
+def test_wasabi():
+    import time
+    resultados = {}
+
+    # Test 1: Variables de entorno
+    resultados['wasabi_enabled'] = WASABI_ENABLED
+    resultados['bucket'] = WASABI_BUCKET
+    resultados['endpoint'] = WASABI_ENDPOINT
+    resultados['region'] = WASABI_REGION
+    resultados['access_key_ok'] = bool(WASABI_ACCESS_KEY)
+
+    # Test 2: Conexión a Wasabi
+    try:
+        t0 = time.time()
+        client = get_wasabi_client()
+        client.list_objects_v2(Bucket=WASABI_BUCKET, MaxKeys=1)
+        resultados['conexion_wasabi'] = f'OK ({time.time()-t0:.1f}s)'
+    except Exception as e:
+        resultados['conexion_wasabi'] = f'ERROR: {str(e)}'
+
+    # Test 3: Cloudinary
+    try:
+        t0 = time.time()
+        import cloudinary.api
+        cloudinary.api.ping()
+        resultados['conexion_cloudinary'] = f'OK ({time.time()-t0:.1f}s)'
+    except Exception as e:
+        resultados['conexion_cloudinary'] = f'ERROR: {str(e)}'
+
+    # Test 4: Escritura en disco
+    try:
+        ruta = os.path.join(CARPETA_TEMP, 'test_write.txt')
+        with open(ruta, 'w') as f:
+            f.write('test')
+        os.remove(ruta)
+        resultados['escritura_disco'] = 'OK'
+    except Exception as e:
+        resultados['escritura_disco'] = f'ERROR: {str(e)}'
+
+    return jsonify(resultados)
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
