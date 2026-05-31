@@ -520,83 +520,76 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
-# ── MARCA DE AGUA: 5 franjas grandes, opacidad agresiva ──────────────────────
-def agregar_watermark_5x(imagen_bytes, texto='NACHO LINGUA', opacidad=75, angulo=25):
+# ── MARCA DE AGUA: franjas continuas, texto gigante, máxima protección ───────
+def agregar_watermark_5x(imagen_bytes, texto='NACHO LINGUA', opacidad=75,
+                         angulo=20, franjas=5, alto_rel=1.15):
     """
-    5 franjas horizontales con el texto MUY GRANDE (llena ~85% del ancho).
-    Opacidad agresiva al 75% + sombra oscura para que se lea en cualquier fondo.
-    Ajustes rápidos:
-      opacidad : 0-100  (75 = muy agresivo, 50 = más sutil)
-      angulo   : grados de inclinación (25 = diagonal suave, 40 = más pronunciado)
+    Marca de agua anti-robo:
+      - 'texto' repetido de forma CONTINUA (borde a borde) en cada franja
+      - franjas intercaladas (ladrillo) → no deja bloque limpio para clonar/IA
+      - texto GIGANTE (cada franja casi llena su alto) + sombra + diagonal
+    Parámetros para dosificar:
+      opacidad : 0-100   (75 = muy agresivo; bajalo a 55-60 si tapa demasiado)
+      angulo   : grados   (20 = diagonal suave; 30-40 más pronunciada)
+      franjas  : cantidad de franjas (5 default; más = más denso)
+      alto_rel : qué tan grande es el texto respecto a la franja
+                 (1.15 = gigante; 0.8 = más chico; 1.3 = brutal)
     """
     img  = Image.open(imagen_bytes).convert('RGBA')
     W, H = img.size
     base = img.copy()
 
-    # Fuente Bold que llena ~85% del ancho de la imagen
-    font_size = 10; font = None
-    for font_path in [
+    # Canvas cuadrado del tamaño de la diagonal (rotar sin esquinas vacías)
+    diag = int((W * W + H * H) ** 0.5) + 100
+
+    # Fuente gigante: cada franja mide diag/franjas; el texto ocupa alto_rel de eso
+    band_h    = diag / franjas
+    font_size = max(40, int(band_h * alto_rel))
+    font = None
+    for fp in [
         '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
         '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
-        '/usr/share/fonts/truetype/ubuntu/Ubuntu-Bold.ttf',
     ]:
         try:
-            while True:
-                f  = ImageFont.truetype(font_path, font_size + 5)
-                bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=f)
-                if (bb[2] - bb[0]) >= W * 0.85:
-                    break
-                font_size += 5
-            font = ImageFont.truetype(font_path, font_size)
-            break
+            font = ImageFont.truetype(fp, font_size); break
         except Exception:
-            font_size = 10
+            continue
     if not font:
         font = ImageFont.load_default()
 
     probe = ImageDraw.Draw(Image.new('RGBA', (1, 1)))
-    bb    = probe.textbbox((0, 0), texto, font=font)
-    tw    = bb[2] - bb[0]
-    th    = bb[3] - bb[1]
+    bb = probe.textbbox((0, 0), texto, font=font)
+    tw, th = bb[2] - bb[0], bb[3] - bb[1]
 
-    for i in range(5):
-        cy  = int(H * (i + 0.5) / 5)
-        cx  = W // 2
-        pad = 16
+    # Dibujar todo a ALPHA TOTAL sobre el canvas
+    canvas = Image.new('RGBA', (diag, diag), (0, 0, 0, 0))
+    draw   = ImageDraw.Draw(canvas)
+    sep    = int(tw * 0.06)        # separación mínima → repetición continua
+    step_x = tw + sep
 
-        # 1. Dibujar a alpha MÁXIMO (sombra + blanco)
-        layer = Image.new('RGBA', (tw + pad * 2, th + pad * 2), (0, 0, 0, 0))
-        d     = ImageDraw.Draw(layer)
-        d.text((pad - bb[0] + 2, pad - bb[1] + 2), texto, font=font,
-               fill=(0, 0, 0, 255))           # sombra oscura
-        d.text((pad - bb[0],     pad - bb[1]),     texto, font=font,
-               fill=(255, 255, 255, 255))      # texto blanco
+    for i in range(franjas):
+        cy     = int(diag * (i + 0.5) / franjas)
+        ty     = cy - th // 2 - bb[1]
+        offset = (step_x // 2) if (i % 2) else 0    # ladrillo intercalado
+        x = -step_x + offset
+        while x < diag:
+            draw.text((x + 5, ty + 5), texto, font=font, fill=(0, 0, 0, 255))      # sombra
+            draw.text((x,     ty    ), texto, font=font, fill=(255, 255, 255, 255)) # blanco
+            x += step_x
 
-        # 2. Rotar el ladrillo
-        rotado = layer.rotate(angulo, expand=True, resample=Image.BICUBIC)
-        rw, rh = rotado.size
+    # Rotar el bloque completo
+    rotado  = canvas.rotate(angulo, expand=False, resample=Image.BICUBIC,
+                            fillcolor=(0, 0, 0, 0))
+    rx, ry  = (diag - W) // 2, (diag - H) // 2
+    recorte = rotado.crop((rx, ry, rx + W, ry + H))
 
-        # 3. Escalar canal alpha a la opacidad deseada
-        r, g, b, a = rotado.split()
-        a      = a.point(lambda v: int(v * opacidad / 100))
-        rotado = Image.merge('RGBA', (r, g, b, a))
+    # Escalar el canal alpha a la opacidad deseada
+    r, g, b, a = recorte.split()
+    a = a.point(lambda v: int(v * opacidad / 100))
+    recorte = Image.merge('RGBA', (r, g, b, a))
 
-        # 4. Copiar al canvas completo (paste SIN máscara → preserva RGBA)
-        canvas = Image.new('RGBA', (W, H), (0, 0, 0, 0))
-        px_pos = cx - rw // 2
-        py_pos = cy - rh // 2
-        sx     = max(0, -px_pos);  sy = max(0, -py_pos)
-        dx     = max(0, px_pos);   dy = max(0, py_pos)
-        cw     = min(rw - sx, W - dx)
-        ch     = min(rh - sy, H - dy)
-        if cw > 0 and ch > 0:
-            canvas.paste(rotado.crop((sx, sy, sx + cw, sy + ch)), (dx, dy))
-
-        # 5. Composite acumulativo
-        base = Image.alpha_composite(base, canvas)
-
-    resultado = base.convert('RGB')
+    resultado = Image.alpha_composite(base, recorte).convert('RGB')
     buf = io.BytesIO()
     resultado.save(buf, format='JPEG', quality=88)
     buf.seek(0)
