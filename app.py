@@ -520,31 +520,28 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
-# ── MARCA DE AGUA: franjas continuas, texto gigante, máxima protección ───────
-def agregar_watermark_5x(imagen_bytes, texto='NACHO LINGUA', opacidad=75,
-                         angulo=20, franjas=5, alto_rel=1.15):
+# ── MARCA DE AGUA: 5 filas, letra GIGANTE, sin sombra ────────────────────────
+def agregar_watermark_5x(imagen_bytes, texto='NACHO LINGUA', opacidad=70,
+                         angulo=0, franjas=5, alto_rel=0.92):
     """
     Marca de agua anti-robo:
-      - 'texto' repetido de forma CONTINUA (borde a borde) en cada franja
-      - franjas intercaladas (ladrillo) → no deja bloque limpio para clonar/IA
-      - texto GIGANTE (cada franja casi llena su alto) + sombra + diagonal
-    Parámetros para dosificar:
-      opacidad : 0-100   (75 = muy agresivo; bajalo a 55-60 si tapa demasiado)
-      angulo   : grados   (20 = diagonal suave; 30-40 más pronunciada)
-      franjas  : cantidad de franjas (5 default; más = más denso)
-      alto_rel : qué tan grande es el texto respecto a la franja
-                 (1.15 = gigante; 0.8 = más chico; 1.3 = brutal)
+      - 'franjas' filas (5 por default), cada una con el texto repetido CONTINUO
+      - letra GIGANTE (cada fila casi llena su banda) — sin sombra
+      - filas intercaladas (ladrillo) para que no queden huecos limpios
+    Perillas para dosificar:
+      opacidad : 0-100   (70 agresivo; bajá a 50-55 si tapa demasiado)
+      alto_rel : 0.92 = letra gigante; subí a 1.1 para BRUTAL, bajá a 0.7 para más chico
+      franjas  : cantidad de filas (5 default)
+      angulo   : 0 = filas horizontales; 15-25 = diagonal
     """
     img  = Image.open(imagen_bytes).convert('RGBA')
     W, H = img.size
-    base = img.copy()
+    overlay = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    draw    = ImageDraw.Draw(overlay)
 
-    # Canvas cuadrado del tamaño de la diagonal (rotar sin esquinas vacías)
-    diag = int((W * W + H * H) ** 0.5) + 100
-
-    # Fuente gigante: cada franja mide diag/franjas; el texto ocupa alto_rel de eso
-    band_h    = diag / franjas
-    font_size = max(40, int(band_h * alto_rel))
+    # Fuente ENORME: cada fila mide H/franjas; el texto ocupa alto_rel de eso
+    band_h    = H / franjas
+    font_size = max(30, int(band_h * alto_rel))
     font = None
     for fp in [
         '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
@@ -558,38 +555,30 @@ def agregar_watermark_5x(imagen_bytes, texto='NACHO LINGUA', opacidad=75,
     if not font:
         font = ImageFont.load_default()
 
-    probe = ImageDraw.Draw(Image.new('RGBA', (1, 1)))
-    bb = probe.textbbox((0, 0), texto, font=font)
+    bb = draw.textbbox((0, 0), texto, font=font)
     tw, th = bb[2] - bb[0], bb[3] - bb[1]
-
-    # Dibujar todo a ALPHA TOTAL sobre el canvas
-    canvas = Image.new('RGBA', (diag, diag), (0, 0, 0, 0))
-    draw   = ImageDraw.Draw(canvas)
-    sep    = int(tw * 0.06)        # separación mínima → repetición continua
+    sep    = int(tw * 0.35)        # repetición continua de borde a borde
     step_x = tw + sep
 
     for i in range(franjas):
-        cy     = int(diag * (i + 0.5) / franjas)
+        cy     = int(H * (i + 0.5) / franjas)
         ty     = cy - th // 2 - bb[1]
         offset = (step_x // 2) if (i % 2) else 0    # ladrillo intercalado
         x = -step_x + offset
-        while x < diag:
-            draw.text((x + 5, ty + 5), texto, font=font, fill=(0, 0, 0, 255))      # sombra
-            draw.text((x,     ty    ), texto, font=font, fill=(255, 255, 255, 255)) # blanco
+        while x < W:
+            draw.text((x, ty), texto, font=font, fill=(255, 255, 255, 255))  # SIN sombra
             x += step_x
 
-    # Rotar el bloque completo
-    rotado  = canvas.rotate(angulo, expand=False, resample=Image.BICUBIC,
-                            fillcolor=(0, 0, 0, 0))
-    rx, ry  = (diag - W) // 2, (diag - H) // 2
-    recorte = rotado.crop((rx, ry, rx + W, ry + H))
+    if angulo:
+        overlay = overlay.rotate(angulo, expand=False, resample=Image.BICUBIC,
+                                 fillcolor=(0, 0, 0, 0))
 
-    # Escalar el canal alpha a la opacidad deseada
-    r, g, b, a = recorte.split()
+    # Escalar alpha a la opacidad deseada
+    r, g, b, a = overlay.split()
     a = a.point(lambda v: int(v * opacidad / 100))
-    recorte = Image.merge('RGBA', (r, g, b, a))
+    overlay = Image.merge('RGBA', (r, g, b, a))
 
-    resultado = Image.alpha_composite(base, recorte).convert('RGB')
+    resultado = Image.alpha_composite(img, overlay).convert('RGB')
     buf = io.BytesIO()
     resultado.save(buf, format='JPEG', quality=88)
     buf.seek(0)
