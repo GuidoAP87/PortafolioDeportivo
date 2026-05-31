@@ -2213,3 +2213,67 @@ actualizarCarritoBar = function () {
     _nl_actualizarCarritoBar();
     chequearUpsell();
 };
+
+// ── Re-aplicar marca de agua a todas las fotos existentes (panel admin) ──────
+async function reAplicarWatermark() {
+    const btn = document.getElementById('btn-rewatermark');
+
+    const confirm = await Swal.fire({
+        icon: 'warning',
+        title: '¿Re-aplicar marca de agua?',
+        html: '<p style="color:#999;font-size:14px;line-height:1.6;">Se va a re-procesar <b>TODAS</b> las fotos del sitio con la marca de agua actual.<br>Puede tardar varios segundos según la cantidad de fotos.</p>',
+        background: 'var(--ink-2)', color: 'var(--text)',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, aplicar',
+        cancelButtonText: 'Cancelar',
+        confirmButtonColor: '#D4A843', cancelButtonColor: '#555'
+    });
+    if (!confirm.isConfirmed) return;
+
+    const textoOriginal = btn ? btn.innerHTML : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.style.opacity = '0.6';
+        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Procesando...';
+    }
+
+    try {
+        const res = await fetch('/admin/re-watermark', {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 'Content-Type': 'application/json' },
+            body: '{}'
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Error del servidor');
+
+        await Swal.fire({
+            icon: data.fallidas > 0 ? 'info' : 'success',
+            title: 'Marca de agua aplicada',
+            html: `<div style="color:#999;font-size:14px;line-height:1.8;text-align:left;display:inline-block;">
+                     <b style="color:var(--gold)">${data.ok}</b> fotos re-procesadas<br>
+                     ${data.fallidas ? `<b style="color:#e57">${data.fallidas}</b> fallaron<br>` : ''}
+                     ${data.saltadas ? `<b>${data.saltadas}</b> saltadas<br>` : ''}
+                     <span style="color:#666">Total: ${data.total}</span>
+                   </div>`,
+            background: 'var(--ink-2)', color: 'var(--text)',
+            confirmButtonText: 'Recargar galería',
+            confirmButtonColor: '#D4A843'
+        });
+        location.reload();
+    } catch (e) {
+        await Swal.fire({
+            icon: 'error',
+            title: 'Error',
+            text: e.message || 'No se pudo completar el re-procesamiento',
+            background: 'var(--ink-2)', color: 'var(--text)',
+            confirmButtonColor: '#D4A843'
+        });
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.innerHTML = textoOriginal;
+        }
+    }
+}
