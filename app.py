@@ -520,6 +520,56 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
+# ── MARCA DE AGUA 5x (5 franjas diagonales) ──────────────────────────────────
+def agregar_watermark_5x(imagen_bytes, texto='NACHO LINGUA', opacidad=60, angulo=25):
+    """
+    Divide la imagen en 5 franjas horizontales y escribe el texto grande y
+    diagonal en cada una. Devuelve BytesIO con el JPEG resultante.
+      opacidad : 0-255  (60 ≈ 24%, visible sin tapar la foto)
+      angulo   : grados de inclinación (25 = diagonal suave)
+    """
+    img     = Image.open(imagen_bytes).convert('RGBA')
+    W, H    = img.size
+    overlay = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    draw    = ImageDraw.Draw(overlay)
+
+    # Tamaño dinámico: el texto ocupa ~80 % del ancho de la imagen
+    font_size = 10
+    try:
+        font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
+        while True:
+            f  = ImageFont.truetype(font_path, font_size + 10)
+            bb = draw.textbbox((0, 0), texto, font=f)
+            if (bb[2] - bb[0]) >= W * 0.80:
+                break
+            font_size += 10
+        font = ImageFont.truetype(font_path, font_size)
+    except Exception:
+        font = ImageFont.load_default()
+
+    bb = draw.textbbox((0, 0), texto, font=font)
+    tw = bb[2] - bb[0]
+    th = bb[3] - bb[1]
+
+    for i in range(5):
+        cy        = int(H * (i + 0.5) / 5)   # centro vertical de la franja
+        cx        = W // 2
+        pad       = 20
+        txt_layer = Image.new('RGBA', (tw + pad * 2, th + pad * 2), (0, 0, 0, 0))
+        ImageDraw.Draw(txt_layer).text(
+            (pad, pad), texto, font=font, fill=(255, 255, 255, opacidad)
+        )
+        rotado = txt_layer.rotate(angulo, expand=True)
+        rw, rh = rotado.size
+        overlay.paste(rotado, (cx - rw // 2, cy - rh // 2), rotado)
+
+    resultado = Image.alpha_composite(img, overlay).convert('RGB')
+    buf = io.BytesIO()
+    resultado.save(buf, format='JPEG', quality=88)
+    buf.seek(0)
+    return buf
+
+
 def generar_token():
     return secrets.token_urlsafe(32)
 
@@ -1736,25 +1786,52 @@ def cloudinary_signature():
 
 @app.route('/registrar-foto', methods=['POST'])
 def registrar_foto():
-    """Registra en BD una foto ya subida a Cloudinary desde el browser"""
-    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
-    
-    data        = request.json or {}
-    url_preview = data.get('url_preview')
-    evento_id   = data.get('evento_id')
-    precio      = float(data.get('precio', 3000))
-    public_id   = data.get('public_id', '')
-    
-    if not url_preview or not evento_id:
+    """Registra en BD una foto subida a Cloudinary desde el browser,
+    aplicando marca de agua 5x antes de guardar el preview."""
+    if not session.get('admin'):
+        return jsonify({'error': 'No autorizado'}), 403
+
+    data      = request.json or {}
+    url_clean = data.get('url_preview')   # URL original limpia del browser
+    evento_id = data.get('evento_id')
+    precio    = float(data.get('precio', 3000))
+    public_id = data.get('public_id', '')
+
+    if not url_clean or not evento_id:
         return jsonify({'error': 'Faltan datos'}), 400
-    
-    # url_original = misma foto en Cloudinary (sin watermark en calidad original)
-    # En producción esto debería ser Wasabi, pero como fallback usamos Cloudinary
-    url_original = url_preview.replace('/upload/', '/upload/q_100/')
-    
-    foto = Foto(url_preview=url_preview, url_original=url_original, precio=precio, evento_id=evento_id)
-    db.session.add(foto); db.session.commit()
-    
+
+    # ── APLICAR MARCA DE AGUA 5x ─────────────────────────────────────────────
+    url_preview = url_clean   # fallback si falla el procesamiento
+    try:
+        import urllib.request
+        with urllib.request.urlopen(url_clean) as resp:
+            img_bytes = io.BytesIO(resp.read())
+
+        img_marcada  = agregar_watermark_5x(img_bytes)
+        wm_public_id = (public_id + '_wm') if public_id else None
+        r_wm = cloudinary.uploader.upload(
+            img_marcada,
+            folder        = 'nacholingua',
+            public_id     = wm_public_id,
+            resource_type = 'image',
+        )
+        url_preview = r_wm['secure_url']
+        print(f'[registrar-foto] watermark OK → {url_preview[:60]}...')
+    except Exception as e:
+        print(f'[registrar-foto] watermark falló, guardando sin marca: {e}')
+
+    # url_original = foto limpia en alta calidad (para descarga post-compra)
+    url_original = url_clean.replace('/upload/', '/upload/q_100/')
+
+    foto = Foto(
+        url_preview  = url_preview,
+        url_original = url_original,
+        precio       = precio,
+        evento_id    = evento_id,
+    )
+    db.session.add(foto)
+    db.session.commit()
+
     return jsonify({'ok': True, 'id': foto.id, 'url_preview': url_preview})
 
 if __name__ == '__main__':
