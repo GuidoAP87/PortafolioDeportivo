@@ -522,7 +522,7 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 # ── MARCA DE AGUA: mosaico diagonal, letra grande, SIN sombra ────────────────
 def agregar_watermark_5x(img_bytes, texto='NACHO LINGUA', opacidad=200,
-                         angulo=45, escala=0.20, gap_x=0.5, gap_y=1.3):
+                         angulo=45, escala=0.50, gap_x=0.5, gap_y=1.3):
     """
     Repite 'NACHO LINGUA' por toda la imagen en diagonal, letra GRANDE y gruesa,
     blanca, SIN sombra. Cubre toda la superficie (no deja bloque limpio).
