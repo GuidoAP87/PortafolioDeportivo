@@ -520,50 +520,76 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
-# ── MARCA DE AGUA 5x (5 franjas diagonales) ──────────────────────────────────
-def agregar_watermark_5x(imagen_bytes, texto='NACHO LINGUA', opacidad=60, angulo=25):
+# ── MARCA DE AGUA PROFESIONAL (mosaico diagonal intercalado) ──────────────────
+def agregar_watermark_5x(imagen_bytes, texto='NACHO LINGUA', opacidad=35, angulo=40):
     """
-    Divide la imagen en 5 franjas horizontales y escribe el texto grande y
-    diagonal en cada una. Devuelve BytesIO con el JPEG resultante.
-      opacidad : 0-255  (60 ≈ 24%, visible sin tapar la foto)
-      angulo   : grados de inclinación (25 = diagonal suave)
+    Marca de agua tipo "papel tapiz":
+      - Mosaico de ladrillos intercalados (offset rows) → no deja píxel limpio
+      - Doble contraste: blanco + sombra oscura → visible en claros y oscuros
+      - Rotación global del bloque a 40° → efecto diagonal clásico anti-IA
+    Parámetros ajustables sin tocar el resto del código:
+      opacidad : 0-100  (35 = 35%, buena protección sin tapar la foto)
+      angulo   : grados de rotación del mosaico (40 es el estándar profesional)
     """
-    img     = Image.open(imagen_bytes).convert('RGBA')
-    W, H    = img.size
-    overlay = Image.new('RGBA', (W, H), (0, 0, 0, 0))
-    draw    = ImageDraw.Draw(overlay)
+    img  = Image.open(imagen_bytes).convert('RGBA')
+    W, H = img.size
 
-    # Tamaño dinámico: el texto ocupa ~80 % del ancho de la imagen
-    font_size = 10
-    try:
-        font_path = '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf'
-        while True:
-            f  = ImageFont.truetype(font_path, font_size + 10)
-            bb = draw.textbbox((0, 0), texto, font=f)
-            if (bb[2] - bb[0]) >= W * 0.80:
-                break
-            font_size += 10
-        font = ImageFont.truetype(font_path, font_size)
-    except Exception:
+    # ── 1. Fuente pesada ──────────────────────────────────────────────────────
+    font_size = max(30, int(max(W, H) * 0.038))
+    font = None
+    for path in [
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+        '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
+        '/usr/share/fonts/truetype/ubuntu/Ubuntu-Bold.ttf',
+    ]:
+        try:
+            font = ImageFont.truetype(path, font_size); break
+        except Exception:
+            continue
+    if not font:
         font = ImageFont.load_default()
 
-    bb = draw.textbbox((0, 0), texto, font=font)
-    tw = bb[2] - bb[0]
-    th = bb[3] - bb[1]
+    # Medir el ladrillo base
+    probe = ImageDraw.Draw(Image.new('RGBA', (1, 1)))
+    bb    = probe.textbbox((0, 0), texto, font=font)
+    tw    = bb[2] - bb[0]
+    th    = bb[3] - bb[1]
 
-    for i in range(5):
-        cy        = int(H * (i + 0.5) / 5)   # centro vertical de la franja
-        cx        = W // 2
-        pad       = 20
-        txt_layer = Image.new('RGBA', (tw + pad * 2, th + pad * 2), (0, 0, 0, 0))
-        ImageDraw.Draw(txt_layer).text(
-            (pad, pad), texto, font=font, fill=(255, 255, 255, opacidad)
-        )
-        rotado = txt_layer.rotate(angulo, expand=True)
-        rw, rh = rotado.size
-        overlay.paste(rotado, (cx - rw // 2, cy - rh // 2), rotado)
+    pad_x  = int(tw * 0.55)   # espacio entre ladrillos en la misma fila
+    pad_y  = int(th * 1.10)   # espacio entre filas
+    step_x = tw + pad_x
+    step_y = th + pad_y
 
-    resultado = Image.alpha_composite(img, overlay).convert('RGB')
+    # ── 2. Canvas grande (cubre toda la diagonal para no dejar esquinas vacías) ──
+    diagonal = int(math.sqrt(W * W + H * H)) + step_x * 2 + step_y * 2
+    tile = Image.new('RGBA', (diagonal, diagonal), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(tile)
+
+    alpha_blanco = int(255 * opacidad / 100)
+    alpha_sombra = int(alpha_blanco * 0.55)
+    col_blanco   = (255, 255, 255, alpha_blanco)
+    col_sombra   = (  0,   0,   0, alpha_sombra)
+
+    filas = diagonal // step_y + 3
+    cols  = diagonal // step_x + 3
+
+    for row in range(-1, filas):
+        offset = (step_x // 2) * (row % 2)   # ← desfase intercalado (ladrillo)
+        for col in range(-1, cols):
+            x = col * step_x + offset
+            y = row * step_y
+            draw.text((x + 2, y + 2), texto, font=font, fill=col_sombra)  # sombra
+            draw.text((x,     y    ), texto, font=font, fill=col_blanco)   # blanco
+
+    # ── 3. Rotar el mosaico completo ──────────────────────────────────────────
+    rotado  = tile.rotate(-angulo, expand=False, resample=Image.BICUBIC)
+    rx      = (diagonal - W) // 2
+    ry      = (diagonal - H) // 2
+    recorte = rotado.crop((rx, ry, rx + W, ry + H))
+
+    # ── 4. Composite final ────────────────────────────────────────────────────
+    resultado = Image.alpha_composite(img, recorte).convert('RGB')
     buf = io.BytesIO()
     resultado.save(buf, format='JPEG', quality=88)
     buf.seek(0)
@@ -1787,12 +1813,12 @@ def cloudinary_signature():
 @app.route('/registrar-foto', methods=['POST'])
 def registrar_foto():
     """Registra en BD una foto subida a Cloudinary desde el browser,
-    aplicando marca de agua 5x antes de guardar el preview."""
+    aplicando marca de agua profesional antes de guardar el preview."""
     if not session.get('admin'):
         return jsonify({'error': 'No autorizado'}), 403
 
     data      = request.json or {}
-    url_clean = data.get('url_preview')   # URL original limpia del browser
+    url_clean = data.get('url_preview')   # URL limpia recibida del browser
     evento_id = data.get('evento_id')
     precio    = float(data.get('precio', 3000))
     public_id = data.get('public_id', '')
@@ -1800,13 +1826,12 @@ def registrar_foto():
     if not url_clean or not evento_id:
         return jsonify({'error': 'Faltan datos'}), 400
 
-    # ── APLICAR MARCA DE AGUA 5x ─────────────────────────────────────────────
-    url_preview = url_clean   # fallback si falla el procesamiento
+    # ── APLICAR MARCA DE AGUA PROFESIONAL ────────────────────────────────────
+    url_preview = url_clean   # fallback: si falla el procesamiento, se guarda sin marca
     try:
         import urllib.request
         with urllib.request.urlopen(url_clean) as resp:
             img_bytes = io.BytesIO(resp.read())
-
         img_marcada  = agregar_watermark_5x(img_bytes)
         wm_public_id = (public_id + '_wm') if public_id else None
         r_wm = cloudinary.uploader.upload(
@@ -1816,7 +1841,7 @@ def registrar_foto():
             resource_type = 'image',
         )
         url_preview = r_wm['secure_url']
-        print(f'[registrar-foto] watermark OK → {url_preview[:60]}...')
+        print(f'[registrar-foto] watermark OK → {url_preview[:70]}...')
     except Exception as e:
         print(f'[registrar-foto] watermark falló, guardando sin marca: {e}')
 
