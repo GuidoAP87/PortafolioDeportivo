@@ -520,17 +520,15 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
-# ── MARCA DE AGUA: mosaico diagonal, letra grande, SIN sombra ────────────────
-def agregar_watermark_5x(img_bytes, texto='NACHO LINGUA', opacidad=200,
-                         angulo=45, escala=2.50, gap_x=0.5, gap_y=1.3):
+# ── MARCA DE AGUA: mosaico diagonal, letra GIGANTE, sin sombra ───────────────
+def agregar_watermark_5x(img_bytes, texto='NACHO LINGUA', opacidad=175,
+                         angulo=30, escala=0.25, gap_x=0.5, gap_y=1.3):
     """
-    Repite 'NACHO LINGUA' por toda la imagen en diagonal, letra GRANDE y gruesa,
-    blanca, SIN sombra. Cubre toda la superficie (no deja bloque limpio).
+    Repite 'NACHO LINGUA' por toda la imagen en diagonal, letra GIGANTE, sin sombra.
     Perillas:
       opacidad : 0-255  (175 ≈ 69%; subí a 210 para casi opaco, bajá a 130 sutil)
-      escala   : tamaño de letra (fracción del ancho). 0.115 grande; 0.15 enorme
-      gap_x    : separación horizontal (0.5)
-      gap_y    : separación vertical entre filas (1.3; más bajo = más juntas)
+      escala   : tamaño de letra (fracción del ancho). 0.25 = gigante; 0.15 = grande; 0.11 = mediana
+      gap_x/gap_y : separación entre repeticiones
       angulo   : inclinación de la diagonal (30 clásico)
     """
     image = Image.open(img_bytes).convert("RGBA")
@@ -560,10 +558,10 @@ def agregar_watermark_5x(img_bytes, texto='NACHO LINGUA', opacidad=200,
 
     row = 0; y = 0
     while y < diag:
-        offset = (step_x // 2) if (row % 2) else 0   # filas intercaladas
+        offset = (step_x // 2) if (row % 2) else 0
         x = -offset
         while x < diag:
-            draw.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))  # sin sombra
+            draw.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
             x += step_x
         y += step_y; row += 1
 
@@ -1410,12 +1408,15 @@ def admin_re_watermark():
             with urllib.request.urlopen(dl_url, timeout=30) as resp:
                 img_bytes = io.BytesIO(resp.read())
             img_marcada  = agregar_watermark_5x(img_bytes)
-            wm_public_id = f'nacholingua/foto_{foto.id}_wm'
+            import time as _t
+            # public_id ÚNICO cada vez (timestamp) → URL nueva → sin caché vieja
+            wm_public_id = f'nacholingua/foto_{foto.id}_wm_{int(_t.time())}'
             r_wm = cloudinary.uploader.upload(
                 img_marcada,
                 public_id     = wm_public_id,
                 resource_type = 'image',
                 overwrite     = True,
+                invalidate    = True,
             )
             foto.url_preview = r_wm['secure_url']
             db.session.commit()
@@ -1872,12 +1873,14 @@ def registrar_foto():
         with urllib.request.urlopen(url_clean) as resp:
             img_bytes = io.BytesIO(resp.read())
         img_marcada  = agregar_watermark_5x(img_bytes)
-        wm_public_id = (public_id + '_wm') if public_id else None
+        import time as _t2
+        wm_public_id = (public_id + f'_wm_{int(_t2.time())}') if public_id else None
         r_wm = cloudinary.uploader.upload(
             img_marcada,
             folder        = 'nacholingua',
             public_id     = wm_public_id,
             resource_type = 'image',
+            invalidate    = True,
         )
         url_preview = r_wm['secure_url']
         print(f'[registrar-foto] watermark OK → {url_preview[:70]}...')
