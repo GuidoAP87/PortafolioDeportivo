@@ -520,28 +520,24 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
-# ── MARCA DE AGUA: 5 filas, letra GIGANTE (6x), sin sombra ───────────────────
+# ── MARCA DE AGUA: cobertura TOTAL en diagonal (anti-robo) ───────────────────
 def agregar_watermark_5x(imagen_bytes, texto='NACHO LINGUA', opacidad=65,
-                         angulo=0, franjas=5, escala=0.22):
+                         angulo=30, escala=0.12, dens=0.5):
     """
-    Marca de agua anti-robo MÁXIMA:
-      - 'franjas' filas (5 default) con el texto GIGANTE
-      - 'escala' = altura de la letra como fracción del ANCHO de la imagen.
-        El texto se desborda por los costados a propósito (look "muralla").
-        0.038 ≈ marca vieja chica · 0.16 ≈ 4x · 0.22 ≈ 6x · 0.28 ≈ brutal
-      - sin sombra, solo blanco translúcido
+    Marca de agua que cubre TODA la foto (no solo el centro):
+      - texto repetido a lo ancho Y alto (mosaico), filas intercaladas (ladrillo)
+      - todo en diagonal → no queda ningún rectángulo limpio para recortar/clonar
+      - letra grande y legible
     Perillas:
-      opacidad : 0-100  (65 deja ver la foto; subí a 80 para casi opaco)
-      escala   : tamaño de letra (0.22 = 6x; bajá a 0.14 si tapa demasiado)
-      franjas  : cantidad de filas (5 default; 6-7 = más denso)
-      angulo   : 0 = horizontal; 15-25 = diagonal
+      opacidad : 0-100  (65 deja ver la foto; 80 = casi opaco)
+      escala   : tamaño de letra (fracción del ancho). 0.12 grande; 0.15 enorme
+      dens     : separación vertical entre filas. 0.5 denso; 1.0 más aireado; 0.3 brutal
+      angulo   : grados de la diagonal (30 clásico; 0 = horizontal)
     """
     img  = Image.open(imagen_bytes).convert('RGBA')
     W, H = img.size
-    overlay = Image.new('RGBA', (W, H), (0, 0, 0, 0))
-    draw    = ImageDraw.Draw(overlay)
+    diag = int((W * W + H * H) ** 0.5) + 200   # canvas para rotar sin esquinas vacías
 
-    # Fuente GIGANTE basada en el ancho de la imagen
     font_size = max(40, int(W * escala))
     font = None
     for fp in [
@@ -556,24 +552,31 @@ def agregar_watermark_5x(imagen_bytes, texto='NACHO LINGUA', opacidad=65,
     if not font:
         font = ImageFont.load_default()
 
+    canvas = Image.new('RGBA', (diag, diag), (0, 0, 0, 0))
+    draw   = ImageDraw.Draw(canvas)
     bb = draw.textbbox((0, 0), texto, font=font)
     tw, th = bb[2] - bb[0], bb[3] - bb[1]
+    step_x = tw + int(tw * 0.12)
+    step_y = th + int(th * dens)
 
-    for i in range(franjas):
-        cy = int(H * (i + 0.5) / franjas)
-        tx = (W - tw) // 2 - bb[0]    # centrado; si desborda, queda gigante a propósito
-        ty = cy - th // 2 - bb[1]
-        draw.text((tx, ty), texto, font=font, fill=(255, 255, 255, 255))  # sin sombra
+    row = 0; y = -step_y
+    while y < diag:
+        offset = (step_x // 2) if (row % 2) else 0   # ladrillo intercalado
+        x = -step_x + offset
+        while x < diag:
+            draw.text((x, y), texto, font=font, fill=(255, 255, 255, 255))
+            x += step_x
+        y += step_y; row += 1
 
-    if angulo:
-        overlay = overlay.rotate(angulo, expand=False, resample=Image.BICUBIC,
-                                 fillcolor=(0, 0, 0, 0))
+    rot  = canvas.rotate(angulo, expand=False, resample=Image.BICUBIC, fillcolor=(0, 0, 0, 0))
+    rx, ry = (diag - W) // 2, (diag - H) // 2
+    crop = rot.crop((rx, ry, rx + W, ry + H))
 
-    r, g, b, a = overlay.split()
+    r, g, b, a = crop.split()
     a = a.point(lambda v: int(v * opacidad / 100))
-    overlay = Image.merge('RGBA', (r, g, b, a))
+    crop = Image.merge('RGBA', (r, g, b, a))
 
-    resultado = Image.alpha_composite(img, overlay).convert('RGB')
+    resultado = Image.alpha_composite(img, crop).convert('RGB')
     buf = io.BytesIO()
     resultado.save(buf, format='JPEG', quality=88)
     buf.seek(0)
