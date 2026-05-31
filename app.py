@@ -520,53 +520,59 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
-# ── MARCA DE AGUA: 6 franjas, texto al 95% del ancho, centrado ───────────────
+# ── MARCA DE AGUA: mosaico diagonal de cobertura total (tipo stock photo) ────
 def agregar_watermark_5x(img_bytes, texto='NACHO LINGUA', opacidad=120,
-                         filas=6, ancho_rel=0.95):
+                         angulo=30, escala=0.055, gap_x=0.30, gap_y=0.80):
     """
-    6 franjas horizontales con 'NACHO LINGUA' grande (ocupa ~95% del ancho).
+    Mosaico que repite 'NACHO LINGUA' por TODA la imagen, en diagonal, parejo
+    de borde a borde (como las marcas de los bancos de fotos). No deja ningún
+    rectángulo limpio para recortar ni para que la IA clone.
     Perillas:
-      opacidad : 0-255  (120 ≈ 47%; subí a 160 para más fuerte, bajá a 90 para sutil)
-      filas    : cantidad de franjas (6 default)
-      ancho_rel: qué porción del ancho ocupa el texto (0.95 = casi todo)
+      opacidad : 0-255  (120 ≈ 47%; subí a 160 para más fuerte, bajá a 90 sutil)
+      escala   : tamaño de letra (fracción del ancho). 0.055 medio; 0.07 más grande
+      gap_x    : separación horizontal entre repeticiones (0.30 denso)
+      gap_y    : separación vertical entre filas (0.80 denso; 1.5 más aireado)
+      angulo   : inclinación de la diagonal (30 clásico)
     """
     image = Image.open(img_bytes).convert("RGBA")
-    width, height = image.size
-    layer = Image.new("RGBA", image.size, (255, 255, 255, 0))
-    draw  = ImageDraw.Draw(layer)
+    W, H  = image.size
+    diag  = int((W * W + H * H) ** 0.5) + 300   # canvas para rotar sin esquinas vacías
 
-    # Fuente que ocupa ancho_rel del ancho — rutas de Linux (Railway)
-    font_size = 10
+    font_size = max(28, int(W * escala))
     font = None
-    for font_path in [
+    for fp in [
         '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
         '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
     ]:
         try:
-            font = ImageFont.truetype(font_path, font_size)
-            while True:
-                bbox = draw.textbbox((0, 0), texto, font=font)
-                if (bbox[2] - bbox[0]) >= width * ancho_rel:
-                    break
-                font_size += 5
-                font = ImageFont.truetype(font_path, font_size)
-            break
-        except IOError:
-            font = None
+            font = ImageFont.truetype(fp, font_size); break
+        except Exception:
+            continue
     if not font:
         font = ImageFont.load_default()
 
-    bbox = draw.textbbox((0, 0), texto, font=font)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    paso_y = height // filas
+    tile = Image.new("RGBA", (diag, diag), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(tile)
+    bb = draw.textbbox((0, 0), texto, font=font)
+    tw, th = bb[2] - bb[0], bb[3] - bb[1]
+    step_x = tw + int(tw * gap_x)
+    step_y = th + int(th * gap_y)
 
-    for i in range(filas):
-        x = (width - tw) // 2 - bbox[0]
-        y = (i * paso_y) + (paso_y - th) // 2 - bbox[1]
-        draw.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
+    row = 0; y = 0
+    while y < diag:
+        offset = (step_x // 2) if (row % 2) else 0   # filas intercaladas (ladrillo)
+        x = -offset
+        while x < diag:
+            draw.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
+            x += step_x
+        y += step_y; row += 1
 
-    resultado = Image.alpha_composite(image, layer).convert("RGB")
+    rot  = tile.rotate(angulo, resample=Image.BICUBIC, expand=False)
+    rx, ry = (diag - W) // 2, (diag - H) // 2
+    crop = rot.crop((rx, ry, rx + W, ry + H))
+
+    resultado = Image.alpha_composite(image, crop).convert("RGB")
     buf = io.BytesIO()
     resultado.save(buf, format='JPEG', quality=90)
     buf.seek(0)
