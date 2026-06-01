@@ -587,6 +587,7 @@ function renderVistaEvento(ev) {
             <div class="photo-item${sel?' selected':''}" id="photo-${f.id}" onclick="abrirLightbox(${idx})" style="cursor: pointer;">
                 <img src="${f.url_preview}" alt="Foto deportiva" loading="lazy"
                      title="Clic para ampliar">
+                ${wmOverlay()}
                 <div class="photo-item-overlay">
                     <div class="photo-select-icon" onclick="event.stopPropagation(); toggleFoto(${f.id})" title="Agregar/quitar del carrito">
                         <i class="fa-solid ${sel?'fa-check':'fa-cart-shopping'}"></i>
@@ -875,6 +876,16 @@ function abrirLightbox(idx) {
     document.body.style.overflow = 'hidden';
     mostrarLbFoto();
 }
+
+// ── Overlay de marca de agua (5 filas grandes encima de cada foto) ───────────
+function wmOverlay() {
+    // 5 filas de "NACHO LINGUA" repetido, en una capa absoluta sobre la foto
+    const fila = '<span>NACHO&nbsp;LINGUA</span>'.repeat(4);
+    let filas = '';
+    for (let i = 0; i < 5; i++) filas += `<div class="wm-row">${fila}</div>`;
+    return `<div class="wm-overlay">${filas}</div>`;
+}
+
 
 function mostrarLbFoto() {
     const foto = lbFotos[lbIdx];
@@ -2214,66 +2225,35 @@ actualizarCarritoBar = function () {
     chequearUpsell();
 };
 
-// ── Re-aplicar marca de agua a todas las fotos existentes (panel admin) ──────
-async function reAplicarWatermark() {
-    const btn = document.getElementById('btn-rewatermark');
-
-    const confirm = await Swal.fire({
-        icon: 'warning',
-        title: '¿Re-aplicar marca de agua?',
-        html: '<p style="color:#999;font-size:14px;line-height:1.6;">Se va a re-procesar <b>TODAS</b> las fotos del sitio con la marca de agua actual.<br>Puede tardar varios segundos según la cantidad de fotos.</p>',
-        background: 'var(--ink-2)', color: 'var(--text)',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, aplicar',
-        cancelButtonText: 'Cancelar',
-        confirmButtonColor: '#D4A843', cancelButtonColor: '#555'
-    });
-    if (!confirm.isConfirmed) return;
-
-    const textoOriginal = btn ? btn.innerHTML : '';
-    if (btn) {
-        btn.disabled = true;
-        btn.style.opacity = '0.6';
-        btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Procesando...';
-    }
-
-    try {
-        const res = await fetch('/admin/re-watermark', {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 'Content-Type': 'application/json' },
-            body: '{}'
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Error del servidor');
-
-        await Swal.fire({
-            icon: data.fallidas > 0 ? 'info' : 'success',
-            title: 'Marca de agua aplicada',
-            html: `<div style="color:#999;font-size:14px;line-height:1.8;text-align:left;display:inline-block;">
-                     <b style="color:var(--gold)">${data.ok}</b> fotos re-procesadas<br>
-                     ${data.fallidas ? `<b style="color:#e57">${data.fallidas}</b> fallaron<br>` : ''}
-                     ${data.saltadas ? `<b>${data.saltadas}</b> saltadas<br>` : ''}
-                     <span style="color:#666">Total: ${data.total}</span>
-                   </div>`,
-            background: 'var(--ink-2)', color: 'var(--text)',
-            confirmButtonText: 'Recargar galería',
-            confirmButtonColor: '#D4A843'
-        });
-        location.reload();
-    } catch (e) {
-        await Swal.fire({
-            icon: 'error',
-            title: 'Error',
-            text: e.message || 'No se pudo completar el re-procesamiento',
-            background: 'var(--ink-2)', color: 'var(--text)',
-            confirmButtonColor: '#D4A843'
-        });
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.style.opacity = '1';
-            btn.innerHTML = textoOriginal;
-        }
-    }
-}
+// ── CSS del overlay de marca de agua (inyectado una vez) ─────────────────────
+(function injectWatermarkCSS() {
+    if (document.getElementById('wm-style')) return;
+    const st = document.createElement('style');
+    st.id = 'wm-style';
+    st.textContent = `
+      .photo-item { position: relative; overflow: hidden; }
+      .wm-overlay {
+        position: absolute; inset: 0; z-index: 5;
+        display: flex; flex-direction: column; justify-content: space-around;
+        pointer-events: none; overflow: hidden;
+        transform: rotate(-18deg) scale(1.6);
+      }
+      .wm-row {
+        white-space: nowrap; text-align: center;
+        font-family: Arial, sans-serif; font-weight: 800;
+        font-size: clamp(14px, 5.5vw, 60px);
+        color: rgba(255,255,255,0.45);
+        letter-spacing: 1px; line-height: 1;
+      }
+      .wm-row span { margin: 0 0.4em; }
+      /* lightbox */
+      .lb-wm-overlay {
+        position: absolute; inset: 0; z-index: 5;
+        display: flex; flex-direction: column; justify-content: space-around;
+        pointer-events: none; overflow: hidden;
+        transform: rotate(-18deg) scale(1.6);
+      }
+      .lb-wm-overlay .wm-row { font-size: clamp(20px, 6vw, 90px); color: rgba(255,255,255,0.4); }
+    `;
+    document.head.appendChild(st);
+})();

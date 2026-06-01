@@ -520,24 +520,23 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
-# ── MARCA DE AGUA: grilla pareja de NACHO LINGUA (tipo banco de fotos) ───────
-def agregar_watermark_5x(img_bytes, texto='NACHO LINGUA', opacidad=120,
-                         cols=4, rows=5, ancho_celda=0.82):
+# ── MARCA DE AGUA: 5 filas GIGANTES a lo largo de toda la foto ───────────────
+def agregar_watermark_5x(img_bytes, texto='NACHO LINGUA', opacidad=130,
+                         filas=5, ancho_rel=0.96):
     """
-    Repite 'NACHO LINGUA' en una GRILLA pareja (cols x rows), recta, cubriendo
-    toda la foto — como el patrón del símbolo de copyright pero con el texto.
+    5 filas de 'NACHO LINGUA' bien grandes, cada una a lo ancho de toda la foto.
+    Se adapta sola a cualquier tamaño de imagen (la letra escala con el ancho).
     Perillas:
-      opacidad    : 0-255  (120 ≈ 47%; subí a 160 más visible, bajá a 90 sutil)
-      cols / rows : cantidad de columnas y filas (4x5 = 20 repeticiones)
-      ancho_celda : qué porción del ancho de cada celda ocupa el texto (0.82)
+      opacidad : 0-255  (130 ≈ 51%; subí a 170 para más visible, bajá a 90 sutil)
+      filas    : cantidad de filas (5)
+      ancho_rel: porción del ancho que ocupa el texto (0.96 = casi todo)
     """
     image = Image.open(img_bytes).convert("RGBA")
     W, H  = image.size
     layer = Image.new("RGBA", (W, H), (255, 255, 255, 0))
     draw  = ImageDraw.Draw(layer)
 
-    # Tamaño de letra para que 'NACHO LINGUA' ocupe ancho_celda del ancho de celda
-    cell_w = W / cols
+    # Fuente para que el texto ocupe ancho_rel del ancho de la foto
     fs = 10
     font = None
     for fp in [
@@ -549,9 +548,9 @@ def agregar_watermark_5x(img_bytes, texto='NACHO LINGUA', opacidad=120,
             font = ImageFont.truetype(fp, fs)
             while True:
                 bb = draw.textbbox((0, 0), texto, font=font)
-                if (bb[2] - bb[0]) >= cell_w * ancho_celda:
+                if (bb[2] - bb[0]) >= W * ancho_rel:
                     break
-                fs += 2
+                fs += 4
                 font = ImageFont.truetype(fp, fs)
             break
         except Exception:
@@ -561,13 +560,12 @@ def agregar_watermark_5x(img_bytes, texto='NACHO LINGUA', opacidad=120,
 
     bb = draw.textbbox((0, 0), texto, font=font)
     tw, th = bb[2] - bb[0], bb[3] - bb[1]
+    paso = H // filas
 
-    for r in range(rows):
-        for c in range(cols):
-            cx = (c + 0.5) * W / cols
-            cy = (r + 0.5) * H / rows
-            draw.text((cx - tw / 2 - bb[0], cy - th / 2 - bb[1]),
-                      texto, font=font, fill=(255, 255, 255, opacidad))
+    for i in range(filas):
+        x = (W - tw) // 2 - bb[0]
+        y = i * paso + (paso - th) // 2 - bb[1]
+        draw.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
 
     resultado = Image.alpha_composite(image, layer).convert("RGB")
     buf = io.BytesIO()
@@ -1411,11 +1409,8 @@ def admin_re_watermark():
             import time as _t
             wm_public_id = f'nacholingua/foto_{foto.id}_wm_{int(_t.time())}'
             r_wm = cloudinary.uploader.upload(
-                img_marcada,
-                public_id     = wm_public_id,
-                resource_type = 'image',
-                overwrite     = True,
-                invalidate    = True,
+                img_marcada, public_id=wm_public_id, resource_type='image',
+                overwrite=True, invalidate=True,
             )
             foto.url_preview = r_wm['secure_url']
             db.session.commit()
@@ -1875,11 +1870,8 @@ def registrar_foto():
         import time as _t2
         wm_public_id = (public_id + f'_wm_{int(_t2.time())}') if public_id else None
         r_wm = cloudinary.uploader.upload(
-            img_marcada,
-            folder        = 'nacholingua',
-            public_id     = wm_public_id,
-            resource_type = 'image',
-            invalidate    = True,
+            img_marcada, folder='nacholingua', public_id=wm_public_id,
+            resource_type='image', invalidate=True,
         )
         url_preview = r_wm['secure_url']
         print(f'[registrar-foto] watermark OK → {url_preview[:70]}...')
