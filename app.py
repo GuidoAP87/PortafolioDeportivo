@@ -522,7 +522,7 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 # ── MARCA DE AGUA: @NACHO LINGUA en filas rectas (tipo banco de fotos) ───────
 def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=130,
-                         filas=6, marcas_ancho=1.5, max_lado=2000):
+                         filas=5, marcas_ancho=1.0, max_lado=2000):
     """
     Estampa '@NACHO LINGUA' en filas RECTAS horizontales, repetido a lo ancho,
     parejo, con filas intercaladas. Tamaño fijado por cantidad de marcas
@@ -568,16 +568,12 @@ def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=130,
 
     bb = draw.textbbox((0, 0), texto, font=font)
     tw, th = bb[2] - bb[0], bb[3] - bb[1]
-    step_x = tw + int(tw * 0.25)
     paso_y = H // filas
 
     for r in range(filas):
         y = r * paso_y + (paso_y - th) // 2 - bb[1]
-        offset = (step_x // 2) if (r % 2) else 0   # filas intercaladas
-        x = -offset
-        while x < W:
-            draw.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
-            x += step_x
+        x = (W - tw) // 2 - bb[0]   # una marca gigante centrada por fila
+        draw.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
 
     resultado = Image.alpha_composite(image, layer).convert("RGB")
     buf = io.BytesIO()
