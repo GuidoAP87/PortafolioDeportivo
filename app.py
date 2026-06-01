@@ -520,24 +520,23 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
-# ── MARCA DE AGUA: 5 filas GIGANTES a lo largo de toda la foto ───────────────
+# ── MARCA DE AGUA: mosaico diagonal quemado en la foto (cobertura total) ─────
 def agregar_watermark_5x(img_bytes, texto='NACHO LINGUA', opacidad=130,
-                         filas=5, ancho_rel=0.96):
+                         angulo=30, escala=0.075, gap_x=0.45, gap_y=0.9):
     """
-    5 filas de 'NACHO LINGUA' bien grandes, cada una a lo ancho de toda la foto.
-    Se adapta sola a cualquier tamaño de imagen (la letra escala con el ancho).
+    Estampa 'NACHO LINGUA' en mosaico diagonal sobre TODA la foto.
+    Queda grabado en los píxeles (no se puede quitar bajando la URL).
     Perillas:
-      opacidad : 0-255  (130 ≈ 51%; subí a 170 para más visible, bajá a 90 sutil)
-      filas    : cantidad de filas (5)
-      ancho_rel: porción del ancho que ocupa el texto (0.96 = casi todo)
+      opacidad : 0-255  (130 ≈ 51%; subí a 170 más fuerte, bajá a 90 sutil)
+      escala   : tamaño de letra (fracción del ancho). 0.075 medio; 0.11 grande
+      gap_x/gap_y : separación entre repeticiones (más bajo = más denso)
+      angulo   : inclinación de la diagonal (30 clásico)
     """
     image = Image.open(img_bytes).convert("RGBA")
     W, H  = image.size
-    layer = Image.new("RGBA", (W, H), (255, 255, 255, 0))
-    draw  = ImageDraw.Draw(layer)
+    diag  = int((W * W + H * H) ** 0.5) + 400
 
-    # Fuente para que el texto ocupe ancho_rel del ancho de la foto
-    fs = 10
+    font_size = max(28, int(W * escala))
     font = None
     for fp in [
         '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
@@ -545,29 +544,33 @@ def agregar_watermark_5x(img_bytes, texto='NACHO LINGUA', opacidad=130,
         '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
     ]:
         try:
-            font = ImageFont.truetype(fp, fs)
-            while True:
-                bb = draw.textbbox((0, 0), texto, font=font)
-                if (bb[2] - bb[0]) >= W * ancho_rel:
-                    break
-                fs += 4
-                font = ImageFont.truetype(fp, fs)
-            break
+            font = ImageFont.truetype(fp, font_size); break
         except Exception:
-            font = None
+            continue
     if not font:
         font = ImageFont.load_default()
 
+    tile = Image.new("RGBA", (diag, diag), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(tile)
     bb = draw.textbbox((0, 0), texto, font=font)
     tw, th = bb[2] - bb[0], bb[3] - bb[1]
-    paso = H // filas
+    step_x = tw + int(tw * gap_x)
+    step_y = th + int(th * gap_y)
 
-    for i in range(filas):
-        x = (W - tw) // 2 - bb[0]
-        y = i * paso + (paso - th) // 2 - bb[1]
-        draw.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
+    row = 0; y = 0
+    while y < diag:
+        offset = (step_x // 2) if (row % 2) else 0   # filas intercaladas
+        x = -offset
+        while x < diag:
+            draw.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
+            x += step_x
+        y += step_y; row += 1
 
-    resultado = Image.alpha_composite(image, layer).convert("RGB")
+    rot  = tile.rotate(angulo, resample=Image.BICUBIC, expand=False)
+    rx, ry = (diag - W) // 2, (diag - H) // 2
+    crop = rot.crop((rx, ry, rx + W, ry + H))
+
+    resultado = Image.alpha_composite(image, crop).convert("RGB")
     buf = io.BytesIO()
     resultado.save(buf, format='JPEG', quality=90)
     buf.seek(0)
