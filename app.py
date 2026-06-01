@@ -6,6 +6,7 @@ Persistencia: PostgreSQL (Render) + Cloudinary (imágenes)
 import os, json, smtplib, io, threading, math
 import time as _time
 import hashlib
+import secrets
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import timedelta
@@ -520,66 +521,65 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
-# ── MARCA DE AGUA: @NACHO LINGUA en filas rectas (tipo banco de fotos) ───────
-def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=170,
-                         filas=6, marcas_ancho=1.1):
+# ── MARCA DE AGUA: mosaico recto en la foto (cobertura total) ─────
+def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=160,
+                         escala=0.08, gap_x=0.15, gap_y=1.2):
     """
-    Estampa '@NACHO LINGUA' en filas RECTAS horizontales, repetido a lo ancho,
-    parejo, con filas intercaladas. Tamaño fijado por cantidad de marcas
-    (no por píxeles) → sale igual de grande en fotos de cualquier resolución.
+    Estampa '@NACHO LINGUA' en mosaico recto sobre TODA la foto.
+    Queda grabado en los píxeles (no se puede quitar bajando la URL).
+    
     Perillas:
-      marcas_ancho : cuántas veces entra el texto a lo ancho (2.3 medio-grande;
-                     1.8 más grande; 3.0 más chico)
-      filas        : cantidad de filas (6)
-      opacidad     : 0-255 (130 ≈ 51%; subí a 170 más fuerte, bajá a 90 sutil)
+      opacidad : 0-255  (160 ≈ 62%; subí a 200 más fuerte, bajá a 90 sutil)
+      escala   : tamaño de letra (fracción del ancho). 0.08 medio; 0.11 grande
+      gap_x/gap_y : separación entre repeticiones (más bajo = más denso)
     """
     image = Image.open(img_bytes).convert("RGBA")
     W, H  = image.size
-    layer = Image.new("RGBA", (W, H), (255, 255, 255, 0))
-    draw  = ImageDraw.Draw(layer)
 
-    # Tamaño de fuente para que el texto entre 'marcas_ancho' veces en el ancho
-    fs = 10
+    # Ajuste de fuente
+    font_size = max(28, int(W * escala))
     font = None
-    target = W / marcas_ancho * 0.9
     for fp in [
         '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
         '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
+        'arial.ttf' # Añadido para mayor compatibilidad en Windows/Mac
     ]:
         try:
-            font = ImageFont.truetype(fp, fs)
-            while True:
-                bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=font)
-                if (bb[2] - bb[0]) >= target:
-                    break
-                fs += 6
-                font = ImageFont.truetype(fp, fs)
+            font = ImageFont.truetype(fp, font_size)
             break
         except Exception:
-            font = None
+            continue
+            
     if not font:
         font = ImageFont.load_default()
 
+    # Capa de texto del mismo tamaño que la imagen original
+    txt_overlay = Image.new("RGBA", (W, H), (255, 255, 255, 0))
+    draw = ImageDraw.Draw(txt_overlay)
+    
+    # Calcular dimensiones del texto
     bb = draw.textbbox((0, 0), texto, font=font)
     tw, th = bb[2] - bb[0], bb[3] - bb[1]
-    step_x = tw + int(tw * 0.25)
-    paso_y = H // filas
+    
+    step_x = tw + int(tw * gap_x)
+    step_y = th + int(th * gap_y)
 
-    for r in range(filas):
-        y = r * paso_y + (paso_y - th) // 2 - bb[1]
-        offset = (step_x // 2) if (r % 2) else 0   # filas intercaladas
-        x = -offset
+    # Bucle para dibujar el texto en cuadrícula recta (sin offset ni rotación)
+    y = 0
+    while y < H:
+        x = 0
         while x < W:
             draw.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
             x += step_x
+        y += step_y
 
-    resultado = Image.alpha_composite(image, layer).convert("RGB")
+    # Composición final
+    resultado = Image.alpha_composite(image, txt_overlay).convert("RGB")
     buf = io.BytesIO()
     resultado.save(buf, format='JPEG', quality=90)
     buf.seek(0)
     return buf
-
 
 def generar_token():
     return secrets.token_urlsafe(32)
@@ -591,7 +591,6 @@ def url_galeria(token):
         domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost:5000')
         base   = f"https://{domain}"
     return f"{base}/galeria/{token}"
-
 # ── ENVÍO POR WHATSAPP (Meta Cloud API) ───────────────────────────────────────
 def enviar_wa_cliente(compra):
     """Envía el link de galería al cliente por WhatsApp vía Meta Cloud API."""
