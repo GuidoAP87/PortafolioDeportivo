@@ -521,8 +521,8 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 # ── MARCA DE AGUA: @NACHO LINGUA en filas rectas (tipo banco de fotos) ───────
-def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=130,
-                         filas=6, marcas_ancho=2.3):
+def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=170,
+                         filas=6, marcas_ancho=1.1):
     """
     Estampa '@NACHO LINGUA' en filas RECTAS horizontales, repetido a lo ancho,
     parejo, con filas intercaladas. Tamaño fijado por cantidad de marcas
