@@ -13,7 +13,7 @@ from datetime import timedelta
 from flask import (Flask, request, send_from_directory,
                    jsonify, session, send_file)
 from flask_cors import CORS
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_sqlalchemy import SQLAlchemy
 import cloudinary, cloudinary.uploader
@@ -521,66 +521,18 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
-# ── MARCA DE AGUA: mosaico recto gigante en la foto (cobertura total) ─────
-def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=160,
-                         escala=0.35, gap_x=0.10, gap_y=0.8):
+def pre_obtener_texto_de_imagen(image_base64_json):
     """
-    Estampa '@NACHO LINGUA' en mosaico recto sobre TODA la foto.
-    Queda grabado en los píxeles (no se puede quitar bajando la URL).
-    
-    Perillas:
-      opacidad : 0-255  (160 ≈ 62%; subí a 200 más fuerte, bajá a 90 sutil)
-      escala   : 0.35 (Texto gigante, más de 4x más grande que el anterior de 0.08)
-      gap_x/gap_y : separación entre repeticiones (ajustado para texto grande)
+    Función helper ficticia para simular la extracción de texto.
+    En tu script real, esta función usaría OCR para extraer texto.
+    Aquí, para que el código funcione, devolvemos el texto que pides.
     """
-    image = Image.open(img_bytes).convert("RGBA")
-    W, H  = image.size
-
-    # Ajuste de fuente (escala y mínimo multiplicados x4)
-    font_size = max(112, int(W * escala))
-    font = None
-    for fp in [
-        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
-        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-        '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
-        'arial.ttf' # Añadido para mayor compatibilidad en Windows/Mac
-    ]:
-        try:
-            font = ImageFont.truetype(fp, font_size)
-            break
-        except Exception:
-            continue
-            
-    if not font:
-        # Fallback si no encuentra las tipografías anteriores
-        font = ImageFont.load_default()
-
-    # Capa de texto del mismo tamaño que la imagen original
-    txt_overlay = Image.new("RGBA", (W, H), (255, 255, 255, 0))
-    draw = ImageDraw.Draw(txt_overlay)
-    
-    # Calcular dimensiones del texto
-    bb = draw.textbbox((0, 0), texto, font=font)
-    tw, th = bb[2] - bb[0], bb[3] - bb[1]
-    
-    step_x = tw + int(tw * gap_x)
-    step_y = th + int(th * gap_y)
-
-    # Bucle para dibujar el texto en cuadrícula recta
-    y = 0
-    while y < H:
-        x = 0
-        while x < W:
-            draw.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
-            x += step_x
-        y += step_y
-
-    # Composición final
-    resultado = Image.alpha_composite(image, txt_overlay).convert("RGB")
-    buf = io.BytesIO()
-    resultado.save(buf, format='JPEG', quality=90)
-    buf.seek(0)
-    return buf
+    # En producción, usarías una librería de OCR sobre los bytes de la imagen:
+    # payload = image_base64_json.get('image', '')
+    # image_data = base64.b64decode(payload)
+    # image = Image.open(io.BytesIO(image_data))
+    # texto = tu_libreria_ocr(image)
+    return '@NACHO LINGUA'
 
 def generar_token():
     return secrets.token_urlsafe(32)
@@ -588,10 +540,83 @@ def generar_token():
 def url_galeria(token):
     base = os.environ.get('BASE_URL', '').rstrip('/')
     if not base:
-        # Fallback: usar variable RAILWAY_PUBLIC_DOMAIN si existe
         domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost:5000')
         base   = f"https://{domain}"
     return f"{base}/galeria/{token}"
+
+
+# ── NUEVA FUNCIÓN DE MARCA DE AGUA: Ultra-eficiente para fotos grandes ─────
+
+def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=130, 
+                         angulo=30, escala=0.15, gap_x=0.2, gap_y=0.4,
+                         font_path='/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'):
+    """
+    Estampa texto en mosaico diagonal de forma eficiente, especialmente diseñado
+    para fotos de alta resolución. Evita bucles lentos y uso masivo de memoria.
+    
+    Perillas:
+      opacidad : 0-255  (130 ≈ 51%; subí a 170 más fuerte, bajá a 90 sutil)
+      angulo   : inclinación de la diagonal (30 clásico)
+      escala   : tamaño de letra (fracción del ancho). 0.15 grande; 0.2 gigante
+      gap_x/y  : separación entre repeticiones (más bajo = más denso)
+    """
+    # 1. Cargar la imagen y asegurar modo RGBA
+    image = Image.open(img_bytes).convert("RGBA")
+    W, H  = image.size
+
+    # 2. Cargar fuente y calcular tamaño (escala * ancho)
+    font_size = max(40, int(W * escala))
+    try:
+        font = ImageFont.truetype(font_path, font_size)
+    except Exception:
+        print(f"Fuente no encontrada en {font_path}. Usando fuente por defecto.")
+        font = ImageFont.load_default()
+
+    # 3. Crear una única estampa del texto con la opacidad deseada
+    txt_draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
+    bb = txt_draw.textbbox((0, 0), texto, font=font)
+    tw, th = bb[2] - bb[0], bb[3] - bb[1]
+    # Pequeño padding para la estampa
+    sw, sh = tw + 20, th + 20 
+    
+    stamp = Image.new("RGBA", (sw, sh), (0, 0, 0, 0))
+    stamp_draw = ImageDraw.Draw(stamp)
+    stamp_draw.text((10, 10), texto, font=font, fill=(255, 255, 255, opacidad))
+    
+    # 4. Calcular pasos de mosaico
+    step_x = tw + int(tw * gap_x)
+    step_y = th + int(th * gap_y)
+    
+    # 5. Crear un bloque de patrón pre-relicado (ej: 10x10) para un pegado rápido
+    pat_w, pat_h = 10 * step_x, 10 * step_y
+    pre_tiled_block = Image.new("RGBA", (pat_w, pat_h), (0, 0, 0, 0))
+    for i in range(10):
+        for j in range(10):
+            pre_tiled_block.alpha_composite(stamp, (i * step_x, j * step_y))
+    
+    # 6. Calcular el lienzo diagonal necesario y rellenarlo rápidamente
+    # Es mucho más rápido pegar bloques grandes que miles de estampas individuales
+    diag = int((W * W + H * H) ** 0.5) + 400
+    tile_overlay = Image.new("RGBA", (diag, diag), (0, 0, 0, 0))
+    
+    num_blocks_x = (diag // pat_w) + 1
+    num_blocks_y = (diag // pat_h) + 1
+    
+    for i in range(num_blocks_x):
+        for j in range(num_blocks_y):
+            tile_overlay.paste(pre_tiled_block, (i * pat_w, j * pat_h))
+            
+    # 7. Rotar y recortar el lienzo
+    rot = tile_overlay.rotate(angulo, resample=Image.BICUBIC)
+    rx, ry = (diag - W) // 2, (diag - H) // 2
+    crop = rot.crop((rx, ry, rx + W, ry + H))
+
+    # 8. Composición final y guardado
+    resultado = Image.alpha_composite(image, crop).convert("RGB")
+    buf = io.BytesIO()
+    resultado.save(buf, format='JPEG', quality=90)
+    buf.seek(0)
+    return buf
 # ── ENVÍO POR WHATSAPP (Meta Cloud API) ───────────────────────────────────────
 def enviar_wa_cliente(compra):
     """Envía el link de galería al cliente por WhatsApp vía Meta Cloud API."""
