@@ -6,14 +6,13 @@ Persistencia: PostgreSQL (Render) + Cloudinary (imágenes)
 import os, json, smtplib, io, threading, math
 import time as _time
 import hashlib
-import secrets
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import timedelta
 from flask import (Flask, request, send_from_directory,
                    jsonify, session, send_file)
 from flask_cors import CORS
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageFont
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_sqlalchemy import SQLAlchemy
 import cloudinary, cloudinary.uploader
@@ -521,87 +520,68 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
-# ── MARCA DE AGUA: Mosaico diagonal GIGANTE (Anti-Glitch) ─────────────
-
-def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=140, 
-                         angulo=30, escala=0.8, gap_x=0.05, gap_y=0.2):
+# ── MARCA DE AGUA: @NACHO LINGUA en filas rectas (tipo banco de fotos) ───────
+def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=130,
+                         filas=6, marcas_ancho=1.5, max_lado=2000):
     """
-    Estampa texto gigante en mosaico diagonal.
-    
-    Perillas ajustadas para tamaño masivo:
-      escala  : 0.8 (Hace que la letra sea inmensa en relación a la foto)
-      gap_x/y : 0.05 y 0.2 (Mantiene el texto gigante muy pegado entre sí)
+    Estampa '@NACHO LINGUA' en filas RECTAS horizontales, repetido a lo ancho,
+    parejo, con filas intercaladas. Tamaño fijado por cantidad de marcas
+    (no por píxeles) → sale igual de grande en fotos de cualquier resolución.
+    Perillas:
+      marcas_ancho : cuántas veces entra el texto a lo ancho (2.3 medio-grande;
+                     1.8 más grande; 3.0 más chico)
+      filas        : cantidad de filas (6)
+      opacidad     : 0-255 (130 ≈ 51%; subí a 170 más fuerte, bajá a 90 sutil)
+      max_lado     : redimensiona el preview a este lado máximo (2000px = liviano)
     """
-    # 1. Cargar la imagen
     image = Image.open(img_bytes).convert("RGBA")
+    # Redimensionar el PREVIEW: lado más largo a max_lado (ahorra espacio en Cloudinary).
+    # El original full queda intacto (se guarda aparte como url_original).
+    if max(image.size) > max_lado:
+        image.thumbnail((max_lado, max_lado), Image.LANCZOS)
     W, H  = image.size
+    layer = Image.new("RGBA", (W, H), (255, 255, 255, 0))
+    draw  = ImageDraw.Draw(layer)
 
-    # 2. Forzar un tamaño de fuente colosal
-    font_size = max(150, int(W * escala))
+    # Tamaño de fuente para que el texto entre 'marcas_ancho' veces en el ancho
+    fs = 10
     font = None
-    
-    # Lista exhaustiva para forzar la carga de una fuente escalable (.ttf)
-    # Esto evita el error de la "fuente de hormiga" por defecto
-    fuentes_comunes = [
-        'arial.ttf', 'impact.ttf', 'tahoma.ttf', 'verdana.ttf',
+    target = W / marcas_ancho * 0.9
+    for fp in [
         '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
         '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
-        '/System/Library/Fonts/Supplemental/Arial Bold.ttf' # Para Mac
-    ]
-    
-    for fp in fuentes_comunes:
+    ]:
         try:
-            font = ImageFont.truetype(fp, font_size)
+            font = ImageFont.truetype(fp, fs)
+            while True:
+                bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=font)
+                if (bb[2] - bb[0]) >= target:
+                    break
+                fs += 6
+                font = ImageFont.truetype(fp, fs)
             break
         except Exception:
-            continue
-            
+            font = None
     if not font:
-        print("ADVERTENCIA: No se encontró ninguna fuente TTF instalada. El texto será pequeño.")
         font = ImageFont.load_default()
 
-    # 3. Crear una única estampa del texto gigante
-    txt_draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
-    bb = txt_draw.textbbox((0, 0), texto, font=font)
+    bb = draw.textbbox((0, 0), texto, font=font)
     tw, th = bb[2] - bb[0], bb[3] - bb[1]
-    
-    sw, sh = tw + 40, th + 40 
-    stamp = Image.new("RGBA", (sw, sh), (0, 0, 0, 0))
-    stamp_draw = ImageDraw.Draw(stamp)
-    stamp_draw.text((20, 20), texto, font=font, fill=(255, 255, 255, opacidad))
-    
-    # 4. Calcular pasos de mosaico
-    step_x = tw + int(tw * gap_x)
-    step_y = th + int(th * gap_y)
-    
-    # 5. Crear un bloque de patrón (3x3 es suficiente porque el texto es gigante)
-    pat_w, pat_h = 3 * step_x, 3 * step_y
-    pre_tiled_block = Image.new("RGBA", (pat_w, pat_h), (0, 0, 0, 0))
-    for i in range(3):
-        for j in range(3):
-            pre_tiled_block.alpha_composite(stamp, (i * step_x, j * step_y))
-    
-    # 6. Rellenar el lienzo diagonal necesario
-    diag = int((W * W + H * H) ** 0.5) + max(tw, th) * 2
-    tile_overlay = Image.new("RGBA", (diag, diag), (0, 0, 0, 0))
-    
-    num_blocks_x = (diag // pat_w) + 2
-    num_blocks_y = (diag // pat_h) + 2
-    
-    for i in range(num_blocks_x):
-        for j in range(num_blocks_y):
-            tile_overlay.paste(pre_tiled_block, (i * pat_w, j * pat_h))
-            
-    # 7. Rotar y recortar el lienzo
-    rot = tile_overlay.rotate(angulo, resample=Image.BICUBIC)
-    rx, ry = (diag - W) // 2, (diag - H) // 2
-    crop = rot.crop((rx, ry, rx + W, ry + H))
+    step_x = tw + int(tw * 0.25)
+    paso_y = H // filas
 
-    # 8. Composición final y guardado
-    resultado = Image.alpha_composite(image, crop).convert("RGB")
+    for r in range(filas):
+        y = r * paso_y + (paso_y - th) // 2 - bb[1]
+        offset = (step_x // 2) if (r % 2) else 0   # filas intercaladas
+        x = -offset
+        while x < W:
+            draw.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
+            x += step_x
+
+    resultado = Image.alpha_composite(image, layer).convert("RGB")
     buf = io.BytesIO()
-    resultado.save(buf, format='JPEG', quality=90)
+    resultado.save(buf, format='JPEG', quality=85)
     buf.seek(0)
     return buf
 
@@ -609,13 +589,14 @@ def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=140,
 def generar_token():
     return secrets.token_urlsafe(32)
 
-
 def url_galeria(token):
     base = os.environ.get('BASE_URL', '').rstrip('/')
     if not base:
+        # Fallback: usar variable RAILWAY_PUBLIC_DOMAIN si existe
         domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost:5000')
         base   = f"https://{domain}"
     return f"{base}/galeria/{token}"
+
 # ── ENVÍO POR WHATSAPP (Meta Cloud API) ───────────────────────────────────────
 def enviar_wa_cliente(compra):
     """Envía el link de galería al cliente por WhatsApp vía Meta Cloud API."""
