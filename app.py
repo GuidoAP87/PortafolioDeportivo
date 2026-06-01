@@ -521,23 +521,23 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
-# ── MARCA DE AGUA: mosaico recto en la foto (cobertura total) ─────
+# ── MARCA DE AGUA: mosaico recto gigante en la foto (cobertura total) ─────
 def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=160,
-                         escala=0.08, gap_x=0.15, gap_y=1.2):
+                         escala=0.35, gap_x=0.10, gap_y=0.8):
     """
     Estampa '@NACHO LINGUA' en mosaico recto sobre TODA la foto.
     Queda grabado en los píxeles (no se puede quitar bajando la URL).
     
     Perillas:
       opacidad : 0-255  (160 ≈ 62%; subí a 200 más fuerte, bajá a 90 sutil)
-      escala   : tamaño de letra (fracción del ancho). 0.08 medio; 0.11 grande
-      gap_x/gap_y : separación entre repeticiones (más bajo = más denso)
+      escala   : 0.35 (Texto gigante, más de 4x más grande que el anterior de 0.08)
+      gap_x/gap_y : separación entre repeticiones (ajustado para texto grande)
     """
     image = Image.open(img_bytes).convert("RGBA")
     W, H  = image.size
 
-    # Ajuste de fuente
-    font_size = max(28, int(W * escala))
+    # Ajuste de fuente (escala y mínimo multiplicados x4)
+    font_size = max(112, int(W * escala))
     font = None
     for fp in [
         '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
@@ -552,6 +552,7 @@ def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=160,
             continue
             
     if not font:
+        # Fallback si no encuentra las tipografías anteriores
         font = ImageFont.load_default()
 
     # Capa de texto del mismo tamaño que la imagen original
@@ -565,7 +566,7 @@ def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=160,
     step_x = tw + int(tw * gap_x)
     step_y = th + int(th * gap_y)
 
-    # Bucle para dibujar el texto en cuadrícula recta (sin offset ni rotación)
+    # Bucle para dibujar el texto en cuadrícula recta
     y = 0
     while y < H:
         x = 0
