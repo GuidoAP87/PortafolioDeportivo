@@ -427,82 +427,67 @@ def get_download_url(url_original):
     return url_original
 
 # ── MARCA DE AGUA ─────────────────────────────────────────────────────────────
-def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
+def agregar_watermark(ruta_entrada, ruta_salida, texto='@NACHO LINGUA'):
+    """Marca de agua: 5 filas GIGANTES de @NACHO LINGUA en diagonal, sin sombra,
+    sin rejilla. Misma interfaz que antes (archivos en disco, devuelve bool)."""
     try:
         base = Image.open(ruta_entrada).convert('RGBA')
 
-        # Limitar resolución para no explotar la RAM en Railway (~512MB)
-        # 4000px es suficiente para un preview con marca de agua
+        # Redimensionar preview (RAM de Railway + peso en Cloudinary)
         MAX_PX = 2000
         if max(base.size) > MAX_PX:
             ratio = MAX_PX / max(base.size)
-            nuevo_size = (int(base.size[0] * ratio), int(base.size[1] * ratio))
-            base = base.resize(nuevo_size, Image.LANCZOS)
-            print(f'✓ Imagen redimensionada a {nuevo_size[0]}x{nuevo_size[1]} para preview')
+            nuevo = (int(base.size[0] * ratio), int(base.size[1] * ratio))
+            base = base.resize(nuevo, Image.LANCZOS)
+            print(f'Imagen redimensionada a {nuevo[0]}x{nuevo[1]} para preview')
+
         overlay = Image.new('RGBA', base.size, (255, 255, 255, 0))
         W, H = base.size
-        
-        espaciado = int(min(W, H) / 25)
-        overlay_draw = ImageDraw.Draw(overlay)
-        for i in range(-max(W,H), max(W,H)*2, espaciado):
-            overlay_draw.line([(i, 0), (i + H, H)], fill=(255, 255, 255, 22), width=2)
-            overlay_draw.line([(i, H), (i + H, 0)], fill=(255, 255, 255, 22), width=2)
 
-        fontsize = int(min(W, H) / 10) 
-        
+        # Fuente GRANDE: una marca por fila ocupa ~92% del ancho
+        fontsize = 10
         font = None
-        rutas_fuentes = [
-            "arial.ttf",
+        for path in [
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
             "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
             "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
-        ]
-        for path in rutas_fuentes:
+        ]:
             try:
-                font = ImageFont.truetype(path, size=fontsize)
+                font = ImageFont.truetype(path, fontsize)
+                while True:
+                    bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=font)
+                    if (bb[2] - bb[0]) >= W * 0.92:
+                        break
+                    fontsize += 6
+                    font = ImageFont.truetype(path, fontsize)
                 break
             except IOError:
-                continue
+                font = None
         if not font:
             font = ImageFont.load_default()
 
-        dummy_draw = ImageDraw.Draw(Image.new('RGBA', (1,1)))
-        
-        texto_largo = f"{texto}        {texto}        {texto}        {texto}        {texto}"
-        try:
-            bl = dummy_draw.textbbox((0, 0), texto_largo, font=font)
-            tlw, tlh = bl[2] - bl[0], bl[3] - bl[1]
-        except AttributeError:
-            tlw, tlh = dummy_draw.textsize(texto_largo, font=font)
+        bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=font)
+        tw, th = bb[2] - bb[0], bb[3] - bb[1]
 
-        color_texto  = (255, 255, 255, 230)
-        color_sombra = (0, 0, 0, 160)
-
-        img = Image.new('RGBA', (tlw + 200, tlh + 200), (255, 255, 255, 0))
+        # Una marca grande, rotada, repetida en 5 filas
+        img = Image.new('RGBA', (tw + 120, th + 120), (255, 255, 255, 0))
         d = ImageDraw.Draw(img)
-        d.text((103, 103), texto_largo, font=font, fill=color_sombra) 
-        d.text((100, 100), texto_largo, font=font, fill=color_texto)  
-        
-        txt_rotated = img.rotate(35, expand=True, resample=Image.BICUBIC)
-        rc_w, rc_h = txt_rotated.size
+        d.text((60 - bb[0], 60 - bb[1]), texto, font=font, fill=(255, 255, 255, 150))
+        rot = img.rotate(28, expand=True, resample=Image.BICUBIC)
+        rc_w, rc_h = rot.size
 
-        px = int(W//2 - rc_w//2)
-        posiciones_y = [int(H * 0.10), int(H * 0.30), int(H * 0.50), int(H * 0.70), int(H * 0.90)]
-
-        for cy in posiciones_y:
-            py = int(cy - rc_h//2)
-            overlay.paste(txt_rotated, (px, py), txt_rotated)
+        px = int(W // 2 - rc_w // 2)
+        for frac in [0.12, 0.31, 0.50, 0.69, 0.88]:
+            py = int(H * frac - rc_h // 2)
+            overlay.paste(rot, (px, py), rot)
 
         imagen_final = Image.alpha_composite(base, overlay).convert('RGB')
 
-        # ── COMPRESIÓN ADAPTATIVA ────────────────────────────────────────────
-        # Cloudinary Free rechaza archivos > 10MB. Comprimimos el preview hasta
-        # quedar por debajo de 8MB (margen de seguridad).
-        LIMITE_BYTES = 8 * 1024 * 1024  # 8 MB
+        # Compresion adaptativa (Cloudinary Free rechaza > 10MB)
+        LIMITE_BYTES = 8 * 1024 * 1024
         quality = 82
         buf = io.BytesIO()
         imagen_final.save(buf, 'JPEG', quality=quality, optimize=True)
-
         while buf.tell() > LIMITE_BYTES and quality > 30:
             quality -= 8
             buf = io.BytesIO()
@@ -510,77 +495,55 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
         with open(ruta_salida, 'wb') as f:
             f.write(buf.getvalue())
-
-        size_mb = buf.tell() / 1024 / 1024
-        print(f'✓ Preview comprimido: {size_mb:.1f} MB (quality={quality})')
+        print(f'Preview: {buf.tell()/1024/1024:.1f} MB (quality={quality})')
         return True
     except Exception as e:
         print(f'Error watermark: {e}')
         return False
 
-# ── EMAIL ─────────────────────────────────────────────────────────────────────
-# ── HELPERS ───────────────────────────────────────────────────────────────────
-# ── MARCA DE AGUA: @NACHO LINGUA en filas rectas (tipo banco de fotos) ───────
-def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=130,
-                         filas=5, marcas_ancho=1.0, max_lado=2000):
-    """
-    Estampa '@NACHO LINGUA' en filas RECTAS horizontales, repetido a lo ancho,
-    parejo, con filas intercaladas. Tamaño fijado por cantidad de marcas
-    (no por píxeles) → sale igual de grande en fotos de cualquier resolución.
-    Perillas:
-      marcas_ancho : cuántas veces entra el texto a lo ancho (2.3 medio-grande;
-                     1.8 más grande; 3.0 más chico)
-      filas        : cantidad de filas (6)
-      opacidad     : 0-255 (130 ≈ 51%; subí a 170 más fuerte, bajá a 90 sutil)
-      max_lado     : redimensiona el preview a este lado máximo (2000px = liviano)
-    """
-    image = Image.open(img_bytes).convert("RGBA")
-    # Redimensionar el PREVIEW: lado más largo a max_lado (ahorra espacio en Cloudinary).
-    # El original full queda intacto (se guarda aparte como url_original).
-    if max(image.size) > max_lado:
-        image.thumbnail((max_lado, max_lado), Image.LANCZOS)
-    W, H  = image.size
-    layer = Image.new("RGBA", (W, H), (255, 255, 255, 0))
-    draw  = ImageDraw.Draw(layer)
-
-    # Tamaño de fuente para que el texto entre 'marcas_ancho' veces en el ancho
-    fs = 10
+def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=150, max_lado=2000):
+    """5 filas GIGANTES de @NACHO LINGUA (interfaz de bytes, para subida directa)."""
+    base = Image.open(img_bytes).convert('RGBA')
+    if max(base.size) > max_lado:
+        base.thumbnail((max_lado, max_lado), Image.LANCZOS)
+    overlay = Image.new('RGBA', base.size, (255, 255, 255, 0))
+    W, H = base.size
+    fontsize = 10
     font = None
-    target = W / marcas_ancho * 0.9
-    for fp in [
-        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
-        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-        '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
+    for path in [
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
     ]:
         try:
-            font = ImageFont.truetype(fp, fs)
+            font = ImageFont.truetype(path, fontsize)
             while True:
                 bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=font)
-                if (bb[2] - bb[0]) >= target:
+                if (bb[2] - bb[0]) >= W * 0.92:
                     break
-                fs += 6
-                font = ImageFont.truetype(fp, fs)
+                fontsize += 6
+                font = ImageFont.truetype(path, fontsize)
             break
-        except Exception:
+        except IOError:
             font = None
     if not font:
         font = ImageFont.load_default()
-
-    bb = draw.textbbox((0, 0), texto, font=font)
+    bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=font)
     tw, th = bb[2] - bb[0], bb[3] - bb[1]
-    paso_y = H // filas
-
-    for r in range(filas):
-        y = r * paso_y + (paso_y - th) // 2 - bb[1]
-        x = (W - tw) // 2 - bb[0]   # una marca gigante centrada por fila
-        draw.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
-
-    resultado = Image.alpha_composite(image, layer).convert("RGB")
+    img = Image.new('RGBA', (tw + 120, th + 120), (255, 255, 255, 0))
+    d = ImageDraw.Draw(img)
+    d.text((60 - bb[0], 60 - bb[1]), texto, font=font, fill=(255, 255, 255, opacidad))
+    rot = img.rotate(28, expand=True, resample=Image.BICUBIC)
+    rc_w, rc_h = rot.size
+    px = int(W // 2 - rc_w // 2)
+    for frac in [0.12, 0.31, 0.50, 0.69, 0.88]:
+        py = int(H * frac - rc_h // 2)
+        overlay.paste(rot, (px, py), rot)
+    final = Image.alpha_composite(base, overlay).convert('RGB')
     buf = io.BytesIO()
-    resultado.save(buf, format='JPEG', quality=85)
+    final.save(buf, 'JPEG', quality=85, optimize=True)
     buf.seek(0)
     return buf
-
 
 def generar_token():
     return secrets.token_urlsafe(32)
