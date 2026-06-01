@@ -520,22 +520,25 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
-# ── MARCA DE AGUA: mosaico diagonal, letra GIGANTE, sin sombra ───────────────
-def agregar_watermark_5x(img_bytes, texto='NACHO LINGUA', opacidad=175,
-                         angulo=30, escala=25, gap_x=0.5, gap_y=1.3):
+# ── MARCA DE AGUA: grilla pareja de NACHO LINGUA (tipo banco de fotos) ───────
+def agregar_watermark_5x(img_bytes, texto='NACHO LINGUA', opacidad=120,
+                         cols=4, rows=5, ancho_celda=0.82):
     """
-    Repite 'NACHO LINGUA' por toda la imagen en diagonal, letra GIGANTE, sin sombra.
+    Repite 'NACHO LINGUA' en una GRILLA pareja (cols x rows), recta, cubriendo
+    toda la foto — como el patrón del símbolo de copyright pero con el texto.
     Perillas:
-      opacidad : 0-255  (175 ≈ 69%; subí a 210 para casi opaco, bajá a 130 sutil)
-      escala   : tamaño de letra (fracción del ancho). 0.25 = gigante; 0.15 = grande; 0.11 = mediana
-      gap_x/gap_y : separación entre repeticiones
-      angulo   : inclinación de la diagonal (30 clásico)
+      opacidad    : 0-255  (120 ≈ 47%; subí a 160 más visible, bajá a 90 sutil)
+      cols / rows : cantidad de columnas y filas (4x5 = 20 repeticiones)
+      ancho_celda : qué porción del ancho de cada celda ocupa el texto (0.82)
     """
     image = Image.open(img_bytes).convert("RGBA")
     W, H  = image.size
-    diag  = int((W * W + H * H) ** 0.5) + 400
+    layer = Image.new("RGBA", (W, H), (255, 255, 255, 0))
+    draw  = ImageDraw.Draw(layer)
 
-    font_size = max(40, int(W * escala))
+    # Tamaño de letra para que 'NACHO LINGUA' ocupe ancho_celda del ancho de celda
+    cell_w = W / cols
+    fs = 10
     font = None
     for fp in [
         '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
@@ -543,33 +546,30 @@ def agregar_watermark_5x(img_bytes, texto='NACHO LINGUA', opacidad=175,
         '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
     ]:
         try:
-            font = ImageFont.truetype(fp, font_size); break
+            font = ImageFont.truetype(fp, fs)
+            while True:
+                bb = draw.textbbox((0, 0), texto, font=font)
+                if (bb[2] - bb[0]) >= cell_w * ancho_celda:
+                    break
+                fs += 2
+                font = ImageFont.truetype(fp, fs)
+            break
         except Exception:
-            continue
+            font = None
     if not font:
         font = ImageFont.load_default()
 
-    tile = Image.new("RGBA", (diag, diag), (255, 255, 255, 0))
-    draw = ImageDraw.Draw(tile)
     bb = draw.textbbox((0, 0), texto, font=font)
     tw, th = bb[2] - bb[0], bb[3] - bb[1]
-    step_x = tw + int(tw * gap_x)
-    step_y = th + int(th * gap_y)
 
-    row = 0; y = 0
-    while y < diag:
-        offset = (step_x // 2) if (row % 2) else 0
-        x = -offset
-        while x < diag:
-            draw.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
-            x += step_x
-        y += step_y; row += 1
+    for r in range(rows):
+        for c in range(cols):
+            cx = (c + 0.5) * W / cols
+            cy = (r + 0.5) * H / rows
+            draw.text((cx - tw / 2 - bb[0], cy - th / 2 - bb[1]),
+                      texto, font=font, fill=(255, 255, 255, opacidad))
 
-    rot  = tile.rotate(angulo, resample=Image.BICUBIC, expand=False)
-    rx, ry = (diag - W) // 2, (diag - H) // 2
-    crop = rot.crop((rx, ry, rx + W, ry + H))
-
-    resultado = Image.alpha_composite(image, crop).convert("RGB")
+    resultado = Image.alpha_composite(image, layer).convert("RGB")
     buf = io.BytesIO()
     resultado.save(buf, format='JPEG', quality=90)
     buf.seek(0)
@@ -1409,7 +1409,6 @@ def admin_re_watermark():
                 img_bytes = io.BytesIO(resp.read())
             img_marcada  = agregar_watermark_5x(img_bytes)
             import time as _t
-            # public_id ÚNICO cada vez (timestamp) → URL nueva → sin caché vieja
             wm_public_id = f'nacholingua/foto_{foto.id}_wm_{int(_t.time())}'
             r_wm = cloudinary.uploader.upload(
                 img_marcada,
