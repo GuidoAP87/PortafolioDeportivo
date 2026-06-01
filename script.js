@@ -877,9 +877,8 @@ function abrirLightbox(idx) {
     mostrarLbFoto();
 }
 
-// ── Overlay de marca de agua (5 filas grandes encima de cada foto) ───────────
+// ── Overlay de marca de agua (cubre toda la foto, repetido en diagonal) ──────
 function wmOverlay() {
-    // 5 filas de "NACHO LINGUA" repetido, en una capa absoluta sobre la foto
     const fila = '<span>NACHO&nbsp;LINGUA</span>'.repeat(4);
     let filas = '';
     for (let i = 0; i < 5; i++) filas += `<div class="wm-row">${fila}</div>`;
@@ -891,6 +890,12 @@ function mostrarLbFoto() {
     const foto = lbFotos[lbIdx];
     if (!foto) return;
     document.getElementById('lb-img').src = foto.url_preview;
+    // overlay de marca de agua en el lightbox
+    (function(){
+        const cont = document.getElementById('lb-img').parentElement;
+        let ov = cont.querySelector('.wm-overlay');
+        if (!ov) { cont.insertAdjacentHTML('beforeend', wmOverlay()); }
+    })();
     document.getElementById('lb-counter').textContent = lbFotos.length > 1 ? `${lbIdx+1} / ${lbFotos.length}` : '';
     actualizarLbBtn();
     const showNav = lbFotos.length > 1;
@@ -2233,27 +2238,22 @@ actualizarCarritoBar = function () {
     st.textContent = `
       .photo-item { position: relative; overflow: hidden; }
       .wm-overlay {
-        position: absolute; inset: 0; z-index: 5;
+        position: absolute; inset: -25%; z-index: 6;
         display: flex; flex-direction: column; justify-content: space-around;
         pointer-events: none; overflow: hidden;
-        transform: rotate(-18deg) scale(1.6);
+        transform: rotate(-22deg);
       }
       .wm-row {
         white-space: nowrap; text-align: center;
-        font-family: Arial, sans-serif; font-weight: 800;
-        font-size: clamp(14px, 5.5vw, 60px);
-        color: rgba(255,255,255,0.45);
-        letter-spacing: 1px; line-height: 1;
+        font-family: Arial, sans-serif; font-weight: 900;
+        font-size: clamp(18px, 6.5vw, 72px);
+        color: rgba(255,255,255,0.68);
+        letter-spacing: 1px; line-height: 1.15;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.35);
       }
-      .wm-row span { margin: 0 0.4em; }
-      /* lightbox */
-      .lb-wm-overlay {
-        position: absolute; inset: 0; z-index: 5;
-        display: flex; flex-direction: column; justify-content: space-around;
-        pointer-events: none; overflow: hidden;
-        transform: rotate(-18deg) scale(1.6);
-      }
-      .lb-wm-overlay .wm-row { font-size: clamp(20px, 6vw, 90px); color: rgba(255,255,255,0.4); }
+      .wm-row span { margin: 0 0.35em; }
+      /* lightbox: el contenedor de lb-img debe ser relative */
+      #lb-img { position: relative; }
     `;
     document.head.appendChild(st);
 })();
