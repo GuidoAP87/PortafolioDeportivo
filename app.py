@@ -521,86 +521,73 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
 
 # ── EMAIL ─────────────────────────────────────────────────────────────────────
 # ── HELPERS ───────────────────────────────────────────────────────────────────
-def pre_obtener_texto_de_imagen(image_base64_json):
+# ── MARCA DE AGUA: Mosaico diagonal GIGANTE (Anti-Glitch) ─────────────
+
+def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=140, 
+                         angulo=30, escala=0.8, gap_x=0.05, gap_y=0.2):
     """
-    Función helper ficticia para simular la extracción de texto.
-    En tu script real, esta función usaría OCR para extraer texto.
-    Aquí, para que el código funcione, devolvemos el texto que pides.
-    """
-    # En producción, usarías una librería de OCR sobre los bytes de la imagen:
-    # payload = image_base64_json.get('image', '')
-    # image_data = base64.b64decode(payload)
-    # image = Image.open(io.BytesIO(image_data))
-    # texto = tu_libreria_ocr(image)
-    return '@NACHO LINGUA'
-
-def generar_token():
-    return secrets.token_urlsafe(32)
-
-def url_galeria(token):
-    base = os.environ.get('BASE_URL', '').rstrip('/')
-    if not base:
-        domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost:5000')
-        base   = f"https://{domain}"
-    return f"{base}/galeria/{token}"
-
-
-# ── NUEVA FUNCIÓN DE MARCA DE AGUA: Ultra-eficiente para fotos grandes ─────
-
-def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=130, 
-                         angulo=30, escala=0.15, gap_x=0.2, gap_y=0.4,
-                         font_path='/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'):
-    """
-    Estampa texto en mosaico diagonal de forma eficiente, especialmente diseñado
-    para fotos de alta resolución. Evita bucles lentos y uso masivo de memoria.
+    Estampa texto gigante en mosaico diagonal.
     
-    Perillas:
-      opacidad : 0-255  (130 ≈ 51%; subí a 170 más fuerte, bajá a 90 sutil)
-      angulo   : inclinación de la diagonal (30 clásico)
-      escala   : tamaño de letra (fracción del ancho). 0.15 grande; 0.2 gigante
-      gap_x/y  : separación entre repeticiones (más bajo = más denso)
+    Perillas ajustadas para tamaño masivo:
+      escala  : 0.8 (Hace que la letra sea inmensa en relación a la foto)
+      gap_x/y : 0.05 y 0.2 (Mantiene el texto gigante muy pegado entre sí)
     """
-    # 1. Cargar la imagen y asegurar modo RGBA
+    # 1. Cargar la imagen
     image = Image.open(img_bytes).convert("RGBA")
     W, H  = image.size
 
-    # 2. Cargar fuente y calcular tamaño (escala * ancho)
-    font_size = max(40, int(W * escala))
-    try:
-        font = ImageFont.truetype(font_path, font_size)
-    except Exception:
-        print(f"Fuente no encontrada en {font_path}. Usando fuente por defecto.")
+    # 2. Forzar un tamaño de fuente colosal
+    font_size = max(150, int(W * escala))
+    font = None
+    
+    # Lista exhaustiva para forzar la carga de una fuente escalable (.ttf)
+    # Esto evita el error de la "fuente de hormiga" por defecto
+    fuentes_comunes = [
+        'arial.ttf', 'impact.ttf', 'tahoma.ttf', 'verdana.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+        '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
+        '/System/Library/Fonts/Supplemental/Arial Bold.ttf' # Para Mac
+    ]
+    
+    for fp in fuentes_comunes:
+        try:
+            font = ImageFont.truetype(fp, font_size)
+            break
+        except Exception:
+            continue
+            
+    if not font:
+        print("ADVERTENCIA: No se encontró ninguna fuente TTF instalada. El texto será pequeño.")
         font = ImageFont.load_default()
 
-    # 3. Crear una única estampa del texto con la opacidad deseada
+    # 3. Crear una única estampa del texto gigante
     txt_draw = ImageDraw.Draw(Image.new("RGBA", (1, 1)))
     bb = txt_draw.textbbox((0, 0), texto, font=font)
     tw, th = bb[2] - bb[0], bb[3] - bb[1]
-    # Pequeño padding para la estampa
-    sw, sh = tw + 20, th + 20 
     
+    sw, sh = tw + 40, th + 40 
     stamp = Image.new("RGBA", (sw, sh), (0, 0, 0, 0))
     stamp_draw = ImageDraw.Draw(stamp)
-    stamp_draw.text((10, 10), texto, font=font, fill=(255, 255, 255, opacidad))
+    stamp_draw.text((20, 20), texto, font=font, fill=(255, 255, 255, opacidad))
     
     # 4. Calcular pasos de mosaico
     step_x = tw + int(tw * gap_x)
     step_y = th + int(th * gap_y)
     
-    # 5. Crear un bloque de patrón pre-relicado (ej: 10x10) para un pegado rápido
-    pat_w, pat_h = 10 * step_x, 10 * step_y
+    # 5. Crear un bloque de patrón (3x3 es suficiente porque el texto es gigante)
+    pat_w, pat_h = 3 * step_x, 3 * step_y
     pre_tiled_block = Image.new("RGBA", (pat_w, pat_h), (0, 0, 0, 0))
-    for i in range(10):
-        for j in range(10):
+    for i in range(3):
+        for j in range(3):
             pre_tiled_block.alpha_composite(stamp, (i * step_x, j * step_y))
     
-    # 6. Calcular el lienzo diagonal necesario y rellenarlo rápidamente
-    # Es mucho más rápido pegar bloques grandes que miles de estampas individuales
-    diag = int((W * W + H * H) ** 0.5) + 400
+    # 6. Rellenar el lienzo diagonal necesario
+    diag = int((W * W + H * H) ** 0.5) + max(tw, th) * 2
     tile_overlay = Image.new("RGBA", (diag, diag), (0, 0, 0, 0))
     
-    num_blocks_x = (diag // pat_w) + 1
-    num_blocks_y = (diag // pat_h) + 1
+    num_blocks_x = (diag // pat_w) + 2
+    num_blocks_y = (diag // pat_h) + 2
     
     for i in range(num_blocks_x):
         for j in range(num_blocks_y):
@@ -617,6 +604,18 @@ def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=130,
     resultado.save(buf, format='JPEG', quality=90)
     buf.seek(0)
     return buf
+
+
+def generar_token():
+    return secrets.token_urlsafe(32)
+
+
+def url_galeria(token):
+    base = os.environ.get('BASE_URL', '').rstrip('/')
+    if not base:
+        domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost:5000')
+        base   = f"https://{domain}"
+    return f"{base}/galeria/{token}"
 # ── ENVÍO POR WHATSAPP (Meta Cloud API) ───────────────────────────────────────
 def enviar_wa_cliente(compra):
     """Envía el link de galería al cliente por WhatsApp vía Meta Cloud API."""
