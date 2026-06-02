@@ -314,69 +314,78 @@ def get_download_url(url_original):
     return url_original
 
 # ════════════════════════════════════════════════════════════════════════════
-# MARCA DE AGUA — versión wm-v9-mosaico-grande
+# MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
-# Para cambiar tamaño/opacidad, tocar SOLO _marca_core:
-#   escala (0.16 = grande)  ·  opacidad (150 de 255)  ·  angulo (30)
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v10-gigante'
+WATERMARK_VERSION = 'wm-v11-frontend-sync'
 
-def _marca_core(imagen, texto='@NACHO LINGUA', ancho_rel=0.98, filas=5, opacidad=120, angulo=20):
-    """Marca GIGANTE: cada '@NACHO LINGUA' ocupa ~98% del ancho de la foto.
-    Pocas repeticiones (filas) = letra enorme. Se adapta a cualquier resolución.
-    Perillas:
-      ancho_rel : qué fracción del ancho ocupa cada marca (0.98 = gigante; 0.7 = más chica)
-      filas     : cantidad de filas (5). Más filas = más juntas verticalmente
-      opacidad  : 0-255 (120; subí a 160 para más fuerte)
-      angulo    : inclinación de la diagonal (20)
+def _marca_core(imagen, texto='@Nacho Lingua'):
+    """
+    Marca de agua equivalente a la generada en frontend (Canvas):
+    - 5 filas horizontales.
+    - Ocupa el 95% del ancho de la foto.
+    - Centrada perfectamente.
+    - Conserva resolución original (no la achica a 2000px).
+    - 30% de opacidad (blanco).
     """
     base = imagen.convert('RGBA')
-    if max(base.size) > 2000:
-        base.thumbnail((2000, 2000), Image.LANCZOS)
     W, H = base.size
 
-    # Buscar el tamaño de letra para que UNA marca ocupe ancho_rel del ancho
+    # Buscar el tamaño de letra para que la marca ocupe el 95% del ancho
     fs = 10
     font = None
+    fuente_path = None
     for fp in [
         '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
         '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
+        'arial.ttf',
+        'C:\\Windows\\Fonts\\arialbd.ttf'
     ]:
         try:
             font = ImageFont.truetype(fp, fs)
-            while True:
-                bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=font)
-                if (bb[2] - bb[0]) >= W * ancho_rel:
-                    break
-                fs += 8
-                font = ImageFont.truetype(fp, fs)
+            fuente_path = fp
             break
         except Exception:
-            font = None
-    if not font:
+            pass
+
+    if fuente_path:
+        # Primero escalamos para abarcar el 95% del ancho
+        while True:
+            bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=font, anchor="mm")
+            ancho_texto = bb[2] - bb[0]
+            if ancho_texto >= W * 0.95:
+                break
+            fs += 4
+            font = ImageFont.truetype(fuente_path, fs)
+
+        altura_fila = H / 5
+
+        # Luego achicamos por si en fotos muy verticales superaría la altura de la propia fila (85% máx)
+        while True:
+            bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=font, anchor="mm")
+            alto_texto = bb[3] - bb[1]
+            if alto_texto <= altura_fila * 0.85 or fs <= 10:
+                break
+            fs -= 2
+            font = ImageFont.truetype(fuente_path, fs)
+    else:
         font = ImageFont.load_default()
+        altura_fila = H / 5
 
-    diag = int((W ** 2 + H ** 2) ** 0.5) + 200
-    capa = Image.new('RGBA', (diag, diag), (0, 0, 0, 0))
+    capa = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(capa)
-    bb = d.textbbox((0, 0), texto, font=font)
-    tw, th = bb[2] - bb[0], bb[3] - bb[1]
-    paso_y = diag // filas
 
-    for i in range(filas + 1):
-        y = i * paso_y - th // 2
-        x = (diag - tw) // 2 - bb[0]
-        d.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
+    # Imprimir en 5 filas perfectamente centradas
+    for i in range(5):
+        x = W / 2
+        y = (i * altura_fila) + (altura_fila / 2)
+        d.text((x, y), texto, font=font, fill=(255, 255, 255, 76), anchor="mm") # 76 de 255 = 30% opacidad
 
-    capa = capa.rotate(angulo, resample=Image.BICUBIC, expand=False)
-    cx, cy = (diag - W) // 2, (diag - H) // 2
-    capa = capa.crop((cx, cy, cx + W, cy + H))
     return Image.alpha_composite(base, capa).convert('RGB')
 
 
-
-def agregar_watermark(ruta_entrada, ruta_salida, texto='@NACHO LINGUA'):
+def agregar_watermark(ruta_entrada, ruta_salida, texto='@Nacho Lingua'):
     """Marca de agua (interfaz disco). Usa el núcleo único _marca_core."""
     try:
         final = _marca_core(Image.open(ruta_entrada), texto)
@@ -397,15 +406,13 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='@NACHO LINGUA'):
         return False
 
 
-def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', **kwargs):
+def agregar_watermark_5x(img_bytes, texto='@Nacho Lingua', **kwargs):
     """Marca de agua (interfaz bytes). Usa el núcleo único _marca_core."""
     final = _marca_core(Image.open(img_bytes), texto)
     out = io.BytesIO()
     final.save(out, 'JPEG', quality=85, optimize=True)
     out.seek(0)
     return out
-
-
 
 
 def generar_token():
