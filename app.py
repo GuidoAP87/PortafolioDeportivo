@@ -321,17 +321,17 @@ WATERMARK_VERSION = 'wm-v11-frontend-sync'
 
 def _marca_core(imagen, texto='@Nacho Lingua'):
     """
-    Marca de agua equivalente a la generada en frontend (Canvas):
+    Núcleo de la marca de agua:
     - 5 filas horizontales.
     - Ocupa el 95% del ancho de la foto.
     - Centrada perfectamente.
-    - Conserva resolución original (no la achica a 2000px).
+    - Conserva resolución original intacta.
     - 30% de opacidad (blanco).
     """
     base = imagen.convert('RGBA')
     W, H = base.size
 
-    # Buscar el tamaño de letra para que la marca ocupe el 95% del ancho
+    # 1. Buscar la fuente en el sistema
     fs = 10
     font = None
     fuente_path = None
@@ -349,8 +349,8 @@ def _marca_core(imagen, texto='@Nacho Lingua'):
         except Exception:
             pass
 
+    # 2. Calcular dinámicamente el tamaño para ocupar el 95% del ancho
     if fuente_path:
-        # Primero escalamos para abarcar el 95% del ancho
         while True:
             bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=font, anchor="mm")
             ancho_texto = bb[2] - bb[0]
@@ -361,7 +361,7 @@ def _marca_core(imagen, texto='@Nacho Lingua'):
 
         altura_fila = H / 5
 
-        # Luego achicamos por si en fotos muy verticales superaría la altura de la propia fila (85% máx)
+        # Achicar la fuente si es más alta que el 85% de su propia fila (para fotos verticales)
         while True:
             bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=font, anchor="mm")
             alto_texto = bb[3] - bb[1]
@@ -370,33 +370,39 @@ def _marca_core(imagen, texto='@Nacho Lingua'):
             fs -= 2
             font = ImageFont.truetype(fuente_path, fs)
     else:
+        # Fallback si el servidor no tiene fuentes TTF instaladas
         font = ImageFont.load_default()
         altura_fila = H / 5
 
+    # 3. Crear capa transparente y dibujar el texto
     capa = Image.new('RGBA', (W, H), (0, 0, 0, 0))
     d = ImageDraw.Draw(capa)
 
-    # Imprimir en 5 filas perfectamente centradas
     for i in range(5):
         x = W / 2
         y = (i * altura_fila) + (altura_fila / 2)
-        d.text((x, y), texto, font=font, fill=(255, 255, 255, 76), anchor="mm") # 76 de 255 = 30% opacidad
+        # fill=(255,255,255, 76) -> Blanco con 30% de opacidad
+        d.text((x, y), texto, font=font, fill=(255, 255, 255, 76), anchor="mm") 
 
+    # 4. Fusionar con la foto original
     return Image.alpha_composite(base, capa).convert('RGB')
 
 
 def agregar_watermark(ruta_entrada, ruta_salida, texto='@Nacho Lingua'):
-    """Marca de agua (interfaz disco). Usa el núcleo único _marca_core."""
+    """Uso en la ruta A (/subir-foto): lee de disco y guarda en disco."""
     try:
         final = _marca_core(Image.open(ruta_entrada), texto)
         LIMITE = 8 * 1024 * 1024
         q = 85
         buf = io.BytesIO()
         final.save(buf, 'JPEG', quality=q, optimize=True)
+        
+        # Comprimir si excede los 8MB para que Cloudinary no lo rechace
         while buf.tell() > LIMITE and q > 30:
             q -= 8
             buf = io.BytesIO()
             final.save(buf, 'JPEG', quality=q, optimize=True)
+            
         with open(ruta_salida, 'wb') as f:
             f.write(buf.getvalue())
         print(f'[watermark] OK preview {buf.tell()//1024} KB')
@@ -407,24 +413,12 @@ def agregar_watermark(ruta_entrada, ruta_salida, texto='@Nacho Lingua'):
 
 
 def agregar_watermark_5x(img_bytes, texto='@Nacho Lingua', **kwargs):
-    """Marca de agua (interfaz bytes). Usa el núcleo único _marca_core."""
+    """Uso en la ruta B (/registrar-foto) y /re-watermark: procesa directamente en RAM."""
     final = _marca_core(Image.open(img_bytes), texto)
     out = io.BytesIO()
     final.save(out, 'JPEG', quality=85, optimize=True)
     out.seek(0)
     return out
-
-
-def generar_token():
-    return secrets.token_urlsafe(32)
-
-def url_galeria(token):
-    base = os.environ.get('BASE_URL', '').rstrip('/')
-    if not base:
-        # Fallback: usar variable RAILWAY_PUBLIC_DOMAIN si existe
-        domain = os.environ.get('RAILWAY_PUBLIC_DOMAIN', 'localhost:5000')
-        base   = f"https://{domain}"
-    return f"{base}/galeria/{token}"
 
 # ── ENVÍO POR WHATSAPP (Meta Cloud API) ───────────────────────────────────────
 def enviar_wa_cliente(compra):
