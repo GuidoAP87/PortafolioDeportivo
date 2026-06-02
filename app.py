@@ -317,74 +317,102 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v11-frontend-sync'
+WATERMARK_VERSION = 'wm-v14-juntas'
 
-def _marca_core(imagen, texto='@Nacho Lingua'):
+def _marca_core(imagen, texto='@Nacho Lingua',
+                filas=5, escala_alto=0.7, sep_rel=0.3,
+                min_reps=1.4, opacidad=110, angulo=0):
     """
-    Núcleo de la marca de agua:
-    - 5 filas horizontales.
-    - Ocupa el 95% del ancho de la foto.
-    - Centrada perfectamente.
-    - Conserva resolución original intacta.
-    - 30% de opacidad (blanco).
+    Marca de agua estilo fotografo profesional.
+
+    - `filas` bandas horizontales que cubren TODO el alto de la foto.
+    - En cada banda el texto se repite de forma CONTINUA hasta cubrir
+      todo el ancho (se desborda por los bordes para que no queden huecos).
+    - Las filas se alternan medio paso (patron "ladrillo"), look mas prolijo.
+    - El tamano del texto sale del alto de cada fila, asi que se adapta solo
+      a fotos verticales y horizontales. `min_reps` evita que en fotos
+      angostas el texto quede tan grande que no llegue a repetirse.
+    - Lleva un contorno oscuro sutil para que se lea sobre fondos claros
+      y oscuros por igual.
+    - `angulo=0` deja las filas horizontales; un valor (ej. 25) inclina todo
+      el patron al estilo banco de imagenes.
+    - Conserva la resolucion original de la foto intacta.
     """
     base = imagen.convert('RGBA')
     W, H = base.size
+    altura_fila = H / filas
 
-    # 1. Buscar la fuente en el sistema
-    fs = 10
-    font = None
+    # 1) Fuente bold del sistema (con fallbacks)
     fuente_path = None
     for fp in [
         '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
         '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
         '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
-        'arial.ttf',
-        'C:\\Windows\\Fonts\\arialbd.ttf'
+        'arialbd.ttf', 'arial.ttf', 'C:\\Windows\\Fonts\\arialbd.ttf',
     ]:
         try:
-            font = ImageFont.truetype(fp, fs)
+            ImageFont.truetype(fp, 10)
             fuente_path = fp
             break
         except Exception:
             pass
 
-    # 2. Calcular dinámicamente el tamaño para ocupar el 95% del ancho
-    if fuente_path:
-        while True:
-            bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=font, anchor="mm")
-            ancho_texto = bb[2] - bb[0]
-            if ancho_texto >= W * 0.95:
-                break
-            fs += 4
-            font = ImageFont.truetype(fuente_path, fs)
+    medidor = ImageDraw.Draw(Image.new('RGBA', (1, 1)))
 
-        altura_fila = H / 5
+    def _cargar(size):
+        if fuente_path:
+            return ImageFont.truetype(fuente_path, size)
+        return ImageFont.load_default()
 
-        # Achicar la fuente si es más alta que el 85% de su propia fila (para fotos verticales)
-        while True:
-            bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=font, anchor="mm")
-            alto_texto = bb[3] - bb[1]
-            if alto_texto <= altura_fila * 0.85 or fs <= 10:
-                break
-            fs -= 2
-            font = ImageFont.truetype(fuente_path, fs)
+    def _medir(f):
+        bb = medidor.textbbox((0, 0), texto, font=f)
+        return bb[2] - bb[0], bb[3] - bb[1]
+
+    # 2) Tamano base segun el alto de cada fila (adapta a la orientacion)
+    fs = max(14, int(altura_fila * escala_alto))
+    font = _cargar(fs)
+    tw, th = _medir(font)
+
+    # 3) Si el texto no entra al menos `min_reps` veces de ancho, achicarlo
+    if fuente_path and tw > 0:
+        paso = tw * (1 + sep_rel)
+        if paso > W / min_reps:
+            fs = max(14, int(fs * (W / min_reps) / paso))
+            font = _cargar(fs)
+            tw, th = _medir(font)
+
+    paso_x = max(1, int(tw * (1 + sep_rel)))
+    grosor = max(1, fs // 45)
+
+    # 4) Capa transparente (mas grande si hay angulo, para cubrir tras rotar)
+    if angulo:
+        diag = int((W ** 2 + H ** 2) ** 0.5) + int(altura_fila) * 2
+        CW, CH = diag, diag
     else:
-        # Fallback si el servidor no tiene fuentes TTF instaladas
-        font = ImageFont.load_default()
-        altura_fila = H / 5
+        CW, CH = W, H
 
-    # 3. Crear capa transparente y dibujar el texto
-    capa = Image.new('RGBA', (W, H), (0, 0, 0, 0))
+    capa = Image.new('RGBA', (CW, CH), (0, 0, 0, 0))
     d = ImageDraw.Draw(capa)
+    blanco = (255, 255, 255, opacidad)
+    sombra = (0, 0, 0, int(opacidad * 0.55))
 
-    for i in range(5):
-        x = W / 2
-        y = (i * altura_fila) + (altura_fila / 2)
-        # fill=(255,255,255, 76) -> Blanco con 30% de opacidad
-        d.text((x, y), texto, font=font, fill=(255, 255, 255, 76), anchor="mm") 
+    n_filas = filas if not angulo else int(CH / altura_fila) + 2
+    limite = (CW if angulo else W) + paso_x
+    for i in range(n_filas + 1):
+        cy = i * altura_fila + altura_fila / 2
+        offset = (paso_x // 2) if (i % 2) else 0
+        x = -paso_x + offset
+        while x < limite:
+            d.text((x, cy), texto, font=font, anchor="lm",
+                   fill=blanco, stroke_width=grosor, stroke_fill=sombra)
+            x += paso_x
 
-    # 4. Fusionar con la foto original
+    # 5) Rotar (si corresponde) y recortar al centro al tamano de la foto
+    if angulo:
+        capa = capa.rotate(angulo, resample=Image.BICUBIC, expand=False)
+        left, top = (CW - W) // 2, (CH - H) // 2
+        capa = capa.crop((left, top, left + W, top + H))
+
     return Image.alpha_composite(base, capa).convert('RGB')
 
 
