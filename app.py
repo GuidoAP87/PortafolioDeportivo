@@ -319,16 +319,24 @@ def get_download_url(url_original):
 # Para cambiar tamaño/opacidad, tocar SOLO _marca_core:
 #   escala (0.16 = grande)  ·  opacidad (150 de 255)  ·  angulo (30)
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v9-mosaico-grande'
+WATERMARK_VERSION = 'wm-v10-gigante'
 
-def _marca_core(imagen, texto='@NACHO LINGUA', escala=0.16, opacidad=150, angulo=30):
-    """Mosaico diagonal de @NACHO LINGUA que cubre toda la foto, letra grande."""
+def _marca_core(imagen, texto='@NACHO LINGUA', ancho_rel=0.98, filas=5, opacidad=120, angulo=20):
+    """Marca GIGANTE: cada '@NACHO LINGUA' ocupa ~98% del ancho de la foto.
+    Pocas repeticiones (filas) = letra enorme. Se adapta a cualquier resolución.
+    Perillas:
+      ancho_rel : qué fracción del ancho ocupa cada marca (0.98 = gigante; 0.7 = más chica)
+      filas     : cantidad de filas (5). Más filas = más juntas verticalmente
+      opacidad  : 0-255 (120; subí a 160 para más fuerte)
+      angulo    : inclinación de la diagonal (20)
+    """
     base = imagen.convert('RGBA')
     if max(base.size) > 2000:
         base.thumbnail((2000, 2000), Image.LANCZOS)
     W, H = base.size
 
-    fs = max(30, int(W * escala))
+    # Buscar el tamaño de letra para que UNA marca ocupe ancho_rel del ancho
+    fs = 10
     font = None
     for fp in [
         '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
@@ -336,9 +344,16 @@ def _marca_core(imagen, texto='@NACHO LINGUA', escala=0.16, opacidad=150, angulo
         '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
     ]:
         try:
-            font = ImageFont.truetype(fp, fs); break
+            font = ImageFont.truetype(fp, fs)
+            while True:
+                bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=font)
+                if (bb[2] - bb[0]) >= W * ancho_rel:
+                    break
+                fs += 8
+                font = ImageFont.truetype(fp, fs)
+            break
         except Exception:
-            continue
+            font = None
     if not font:
         font = ImageFont.load_default()
 
@@ -347,22 +362,18 @@ def _marca_core(imagen, texto='@NACHO LINGUA', escala=0.16, opacidad=150, angulo
     d = ImageDraw.Draw(capa)
     bb = d.textbbox((0, 0), texto, font=font)
     tw, th = bb[2] - bb[0], bb[3] - bb[1]
-    paso_x = tw + int(tw * 0.4)
-    paso_y = th * 3
+    paso_y = diag // filas
 
-    fila = 0; y = 0
-    while y < diag:
-        off = (paso_x // 2) if (fila % 2) else 0
-        x = -off
-        while x < diag:
-            d.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
-            x += paso_x
-        y += paso_y; fila += 1
+    for i in range(filas + 1):
+        y = i * paso_y - th // 2
+        x = (diag - tw) // 2 - bb[0]
+        d.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
 
     capa = capa.rotate(angulo, resample=Image.BICUBIC, expand=False)
     cx, cy = (diag - W) // 2, (diag - H) // 2
     capa = capa.crop((cx, cy, cx + W, cy + H))
     return Image.alpha_composite(base, capa).convert('RGB')
+
 
 
 def agregar_watermark(ruta_entrada, ruta_salida, texto='@NACHO LINGUA'):
