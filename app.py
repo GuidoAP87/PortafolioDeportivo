@@ -144,19 +144,8 @@ SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
 SMTP_USER = os.environ.get('SMTP_USER', '')
 SMTP_PASS = os.environ.get('SMTP_PASS', '')
 
-# ── DEEPFACE IA ───────────────────────────────────────────────────────────────
-try:
-    from deepface import DeepFace
-    import numpy as np
-    FACES_ENABLED = True
-    print('✓ DeepFace activo — detección de rostros habilitada')
-except ImportError:
-    FACES_ENABLED = False
-    print('⚠ DeepFace no disponible')
-
-FACE_MODEL    = 'Facenet'
-FACE_DETECTOR = 'opencv'
-FACE_UMBRAL   = 0.62
+# (Reconocimiento facial eliminado)
+FACES_ENABLED = False
 
 # ── MODELOS ───────────────────────────────────────────────────────────────────
 class Evento(db.Model):
@@ -170,7 +159,6 @@ class Evento(db.Model):
     parent_id     = db.Column(db.Integer, db.ForeignKey('evento.id'), nullable=True)
     creado_en     = db.Column(db.DateTime, server_default=db.func.now())
     fotos         = db.relationship('Foto', backref='evento', lazy=True, cascade='all, delete-orphan')
-    personas      = db.relationship('PersonaCluster', backref='evento', lazy=True, cascade='all, delete-orphan')
     subcarpetas   = db.relationship('Evento',
                                     backref=db.backref('padre', remote_side='Evento.id'),
                                     lazy=True, cascade='all, delete-orphan')
@@ -183,26 +171,6 @@ class Foto(db.Model):
     precio       = db.Column(db.Float, default=3000.0)
     evento_id    = db.Column(db.Integer, db.ForeignKey('evento.id'), nullable=False)
     subida_en    = db.Column(db.DateTime, server_default=db.func.now())
-    rostros      = db.relationship('RostroDetectado', backref='foto', lazy=True, cascade='all, delete-orphan')
-
-class PersonaCluster(db.Model):
-    __tablename__ = 'persona_cluster'
-    id            = db.Column(db.Integer, primary_key=True)
-    evento_id     = db.Column(db.Integer, db.ForeignKey('evento.id'), nullable=False)
-    nombre        = db.Column(db.String(100))
-    embedding_ref = db.Column(db.Text)
-    cara_url      = db.Column(db.String(500))
-    total_fotos   = db.Column(db.Integer, default=0)
-    rostros       = db.relationship('RostroDetectado', backref='persona', lazy=True)
-
-class RostroDetectado(db.Model):
-    __tablename__ = 'rostro_detectado'
-    id         = db.Column(db.Integer, primary_key=True)
-    foto_id    = db.Column(db.Integer, db.ForeignKey('foto.id'), nullable=False)
-    persona_id = db.Column(db.Integer, db.ForeignKey('persona_cluster.id'), nullable=False)
-    embedding  = db.Column(db.Text)
-    cara_url   = db.Column(db.String(500))
-    confianza  = db.Column(db.Float, default=1.0)
 
 class Categoria(db.Model):
     __tablename__ = 'categoria'
@@ -325,87 +293,6 @@ def calcular_total(foto_ids, tipo='individual', cfg=None):
                     'unit_price': float(pu), 'currency_id': 'ARS'}]
 
 
-# ── IA: COSINE SIMILARITY ─────────────────────────────────────────────────────
-def cosine_sim(a, b):
-    if not FACES_ENABLED: return 0.0
-    a, b = np.array(a), np.array(b)
-    na, nb = np.linalg.norm(a), np.linalg.norm(b)
-    if na == 0 or nb == 0: return 0.0
-    return float(np.dot(a, b) / (na * nb))
-
-# ── IA: DETECCIÓN DE ROSTROS ──────────────────────────────────────────────────
-def detectar_rostros(ruta_imagen, foto_id, evento_id):
-    if not FACES_ENABLED: return
-    try:
-        resultados = DeepFace.represent(
-            img_path=ruta_imagen, model_name=FACE_MODEL,
-            detector_backend=FACE_DETECTOR, enforce_detection=False
-        )
-        if not resultados: return
-
-        img_pil = Image.open(ruta_imagen).convert('RGB')
-        iw, ih  = img_pil.size
-
-        with app.app_context():
-            for res in resultados:
-                emb    = res.get('embedding', [])
-                region = res.get('facial_area', {})
-                if not emb or not region: continue
-                x = int(region.get('x', 0)); y = int(region.get('y', 0))
-                w = int(region.get('w', 0)); h = int(region.get('h', 0))
-                if w < 30 or h < 30: continue
-
-                m  = int(max(w, h) * 0.25)
-                x1 = max(0,  x - m);  y1 = max(0,  y - m)
-                x2 = min(iw, x+w+m);  y2 = min(ih, y+h+m)
-                cara = img_pil.crop((x1, y1, x2, y2)).resize((200, 200), Image.LANCZOS)
-
-                buf = io.BytesIO()
-                cara.save(buf, format='JPEG', quality=85)
-                buf.seek(0)
-                cara_url = None
-                try:
-                    r = cloudinary.uploader.upload(
-                        buf, folder=f'nacho_lingua/caras/evento_{evento_id}',
-                        public_id=f'cara_{foto_id}_{x}_{y}'
-                    )
-                    cara_url = r['secure_url']
-                except: pass
-
-                clusters  = PersonaCluster.query.filter_by(evento_id=evento_id).all()
-                asignada  = None
-                mejor_sim = 0.0
-                for c in clusters:
-                    try:
-                        sim = cosine_sim(emb, json.loads(c.embedding_ref))
-                        if sim > mejor_sim:
-                            mejor_sim = sim; asignada = c
-                    except: continue
-
-                if asignada and mejor_sim >= FACE_UMBRAL:
-                    try:
-                        emb_ref = np.array(json.loads(asignada.embedding_ref))
-                        n = asignada.total_fotos
-                        asignada.embedding_ref = json.dumps(((emb_ref * n + np.array(emb)) / (n + 1)).tolist())
-                    except: pass
-                    asignada.total_fotos += 1
-                else:
-                    asignada = PersonaCluster(
-                        evento_id=evento_id, embedding_ref=json.dumps(emb),
-                        cara_url=cara_url, total_fotos=1
-                    )
-                    db.session.add(asignada)
-                    db.session.flush()
-
-                db.session.add(RostroDetectado(
-                    foto_id=foto_id, persona_id=asignada.id,
-                    embedding=json.dumps(emb), cara_url=cara_url, confianza=float(mejor_sim)
-                ))
-            db.session.commit()
-            print(f'✓ Rostros procesados: foto #{foto_id}')
-    except Exception as e:
-        print(f'⚠ Error IA foto #{foto_id}: {e}')
-
 def get_download_url(url_original):
     """
     Devuelve URL de descarga:
@@ -427,72 +314,160 @@ def get_download_url(url_original):
     return url_original
 
 # ── MARCA DE AGUA ─────────────────────────────────────────────────────────────
-# ════════════════════════════════════════════════════════════════════════════
-# MARCA DE AGUA — versión wm-v9-mosaico-grande
-# Núcleo único usado por TODOS los flujos. Para cambiar tamaño/opacidad,
-# tocar SOLO acá: escala (0.075), opacidad (145), angulo (30).
-# ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v9-mosaico-grande'
-
-def _marca_core(imagen, texto='@NACHO LINGUA', escala=0.075, opacidad=145, angulo=30):
-    base = imagen.convert('RGBA')
-    if max(base.size) > 2000:
-        base.thumbnail((2000, 2000), Image.LANCZOS)
-    W, H = base.size
-    fs = max(30, int(W * escala))
-    font = None
-    for fp in ['/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
-               '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-               '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf']:
-        try:
-            font = ImageFont.truetype(fp, fs); break
-        except Exception:
-            continue
-    if not font:
-        font = ImageFont.load_default()
-    diag = int((W**2 + H**2) ** 0.5) + 200
-    capa = Image.new('RGBA', (diag, diag), (0, 0, 0, 0))
-    d = ImageDraw.Draw(capa)
-    bb = d.textbbox((0, 0), texto, font=font)
-    tw, th = bb[2]-bb[0], bb[3]-bb[1]
-    paso_x = tw + int(tw * 0.5)
-    paso_y = th * 3
-    fila = 0; y = 0
-    while y < diag:
-        off = (paso_x // 2) if fila % 2 else 0
-        x = -off
-        while x < diag:
-            d.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
-            x += paso_x
-        y += paso_y; fila += 1
-    capa = capa.rotate(angulo, resample=Image.BICUBIC, expand=False)
-    cx, cy = (diag - W)//2, (diag - H)//2
-    capa = capa.crop((cx, cy, cx + W, cy + H))
-    return Image.alpha_composite(base, capa).convert('RGB')
-
-
-def agregar_watermark(ruta_entrada, ruta_salida, texto='@NACHO LINGUA'):
-    """Marca de agua ÚNICA (interfaz disco). Mosaico diagonal, letra grande."""
+def agregar_watermark(ruta_entrada, ruta_salida, texto='© NACHO LINGUA'):
     try:
-        base = _marca_core(Image.open(ruta_entrada), texto)
-        LIMITE = 8 * 1024 * 1024
-        q = 85; buf = io.BytesIO()
-        base.save(buf, 'JPEG', quality=q, optimize=True)
-        while buf.tell() > LIMITE and q > 30:
-            q -= 8; buf = io.BytesIO(); base.save(buf, 'JPEG', quality=q, optimize=True)
+        base = Image.open(ruta_entrada).convert('RGBA')
+
+        # Limitar resolución para no explotar la RAM en Railway (~512MB)
+        # 4000px es suficiente para un preview con marca de agua
+        MAX_PX = 2000
+        if max(base.size) > MAX_PX:
+            ratio = MAX_PX / max(base.size)
+            nuevo_size = (int(base.size[0] * ratio), int(base.size[1] * ratio))
+            base = base.resize(nuevo_size, Image.LANCZOS)
+            print(f'✓ Imagen redimensionada a {nuevo_size[0]}x{nuevo_size[1]} para preview')
+        overlay = Image.new('RGBA', base.size, (255, 255, 255, 0))
+        W, H = base.size
+        
+        espaciado = int(min(W, H) / 25)
+        overlay_draw = ImageDraw.Draw(overlay)
+        for i in range(-max(W,H), max(W,H)*2, espaciado):
+            overlay_draw.line([(i, 0), (i + H, H)], fill=(255, 255, 255, 22), width=2)
+            overlay_draw.line([(i, H), (i + H, 0)], fill=(255, 255, 255, 22), width=2)
+
+        fontsize = int(min(W, H) / 10) 
+        
+        font = None
+        rutas_fuentes = [
+            "arial.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf"
+        ]
+        for path in rutas_fuentes:
+            try:
+                font = ImageFont.truetype(path, size=fontsize)
+                break
+            except IOError:
+                continue
+        if not font:
+            font = ImageFont.load_default()
+
+        dummy_draw = ImageDraw.Draw(Image.new('RGBA', (1,1)))
+        
+        texto_largo = f"{texto}        {texto}        {texto}        {texto}        {texto}"
+        try:
+            bl = dummy_draw.textbbox((0, 0), texto_largo, font=font)
+            tlw, tlh = bl[2] - bl[0], bl[3] - bl[1]
+        except AttributeError:
+            tlw, tlh = dummy_draw.textsize(texto_largo, font=font)
+
+        color_texto  = (255, 255, 255, 230)
+        color_sombra = (0, 0, 0, 160)
+
+        img = Image.new('RGBA', (tlw + 200, tlh + 200), (255, 255, 255, 0))
+        d = ImageDraw.Draw(img)
+        d.text((103, 103), texto_largo, font=font, fill=color_sombra) 
+        d.text((100, 100), texto_largo, font=font, fill=color_texto)  
+        
+        txt_rotated = img.rotate(35, expand=True, resample=Image.BICUBIC)
+        rc_w, rc_h = txt_rotated.size
+
+        px = int(W//2 - rc_w//2)
+        posiciones_y = [int(H * 0.10), int(H * 0.30), int(H * 0.50), int(H * 0.70), int(H * 0.90)]
+
+        for cy in posiciones_y:
+            py = int(cy - rc_h//2)
+            overlay.paste(txt_rotated, (px, py), txt_rotated)
+
+        imagen_final = Image.alpha_composite(base, overlay).convert('RGB')
+
+        # ── COMPRESIÓN ADAPTATIVA ────────────────────────────────────────────
+        # Cloudinary Free rechaza archivos > 10MB. Comprimimos el preview hasta
+        # quedar por debajo de 8MB (margen de seguridad).
+        LIMITE_BYTES = 8 * 1024 * 1024  # 8 MB
+        quality = 82
+        buf = io.BytesIO()
+        imagen_final.save(buf, 'JPEG', quality=quality, optimize=True)
+
+        while buf.tell() > LIMITE_BYTES and quality > 30:
+            quality -= 8
+            buf = io.BytesIO()
+            imagen_final.save(buf, 'JPEG', quality=quality, optimize=True)
+
         with open(ruta_salida, 'wb') as f:
             f.write(buf.getvalue())
-        print(f'[watermark] OK preview {buf.tell()//1024} KB')
+
+        size_mb = buf.tell() / 1024 / 1024
+        print(f'✓ Preview comprimido: {size_mb:.1f} MB (quality={quality})')
         return True
     except Exception as e:
-        print(f'[watermark] ERROR: {e}')
+        print(f'Error watermark: {e}')
         return False
 
-def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', **kwargs):
-    """Marca de agua ÚNICA (interfaz bytes). Mosaico diagonal, letra grande."""
-    final = _marca_core(Image.open(img_bytes), texto)
-    out = io.BytesIO(); final.save(out, 'JPEG', quality=85, optimize=True); out.seek(0)
-    return out
+# ── EMAIL ─────────────────────────────────────────────────────────────────────
+# ── HELPERS ───────────────────────────────────────────────────────────────────
+# ── MARCA DE AGUA: @NACHO LINGUA en filas rectas (tipo banco de fotos) ───────
+def agregar_watermark_5x(img_bytes, texto='@NACHO LINGUA', opacidad=130,
+                         filas=5, marcas_ancho=1.0, max_lado=2000):
+    """
+    Estampa '@NACHO LINGUA' en filas RECTAS horizontales, repetido a lo ancho,
+    parejo, con filas intercaladas. Tamaño fijado por cantidad de marcas
+    (no por píxeles) → sale igual de grande en fotos de cualquier resolución.
+    Perillas:
+      marcas_ancho : cuántas veces entra el texto a lo ancho (2.3 medio-grande;
+                     1.8 más grande; 3.0 más chico)
+      filas        : cantidad de filas (6)
+      opacidad     : 0-255 (130 ≈ 51%; subí a 170 más fuerte, bajá a 90 sutil)
+      max_lado     : redimensiona el preview a este lado máximo (2000px = liviano)
+    """
+    image = Image.open(img_bytes).convert("RGBA")
+    # Redimensionar el PREVIEW: lado más largo a max_lado (ahorra espacio en Cloudinary).
+    # El original full queda intacto (se guarda aparte como url_original).
+    if max(image.size) > max_lado:
+        image.thumbnail((max_lado, max_lado), Image.LANCZOS)
+    W, H  = image.size
+    layer = Image.new("RGBA", (W, H), (255, 255, 255, 0))
+    draw  = ImageDraw.Draw(layer)
+
+    # Tamaño de fuente para que el texto entre 'marcas_ancho' veces en el ancho
+    fs = 10
+    font = None
+    target = W / marcas_ancho * 0.9
+    for fp in [
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+        '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
+    ]:
+        try:
+            font = ImageFont.truetype(fp, fs)
+            while True:
+                bb = ImageDraw.Draw(Image.new('RGBA', (1, 1))).textbbox((0, 0), texto, font=font)
+                if (bb[2] - bb[0]) >= target:
+                    break
+                fs += 6
+                font = ImageFont.truetype(fp, fs)
+            break
+        except Exception:
+            font = None
+    if not font:
+        font = ImageFont.load_default()
+
+    bb = draw.textbbox((0, 0), texto, font=font)
+    tw, th = bb[2] - bb[0], bb[3] - bb[1]
+    paso_y = H // filas
+
+    for r in range(filas):
+        y = r * paso_y + (paso_y - th) // 2 - bb[1]
+        x = (W - tw) // 2 - bb[0]   # una marca gigante centrada por fila
+        draw.text((x, y), texto, font=font, fill=(255, 255, 255, opacidad))
+
+    resultado = Image.alpha_composite(image, layer).convert("RGB")
+    buf = io.BytesIO()
+    resultado.save(buf, format='JPEG', quality=85)
+    buf.seek(0)
+    return buf
+
 
 def generar_token():
     return secrets.token_urlsafe(32)
@@ -1101,11 +1076,7 @@ def subir_foto():
     )
     t_wasabi.start()
 
-    if FACES_ENABLED:
-        t_faces = threading.Thread(target=detectar_rostros, args=(ruta_orig, foto_id_guardado, int(evento_id)), daemon=True)
-        t_faces.start()
-
-    return jsonify({'ok': True, 'id': foto_id_guardado, 'url_preview': url_preview, 'ia_procesando': FACES_ENABLED})
+    return jsonify({'ok': True, 'id': foto_id_guardado, 'url_preview': url_preview})
 
 @app.route('/editar-precio/<int:foto_id>', methods=['PATCH'])
 def editar_precio(foto_id):
@@ -1122,58 +1093,6 @@ def borrar_foto(foto_id):
     if not foto: return jsonify({'error': 'No encontrada'}), 404
     db.session.delete(foto); db.session.commit()
     return jsonify({'ok': True})
-
-# ── PERSONAS / CLUSTERS ────────────────────────────────────────────────────────
-@app.route('/evento/<int:evento_id>/personas', methods=['GET'])
-def obtener_personas(evento_id):
-    personas = PersonaCluster.query.filter_by(evento_id=evento_id).order_by(PersonaCluster.total_fotos.desc()).all()
-    resultado = []
-    for p in personas:
-        fids = list({r.foto_id for r in p.rostros})
-        if not fids: continue
-        resultado.append({
-            'id': p.id, 'nombre': p.nombre or f'Persona #{p.id}',
-            'cara_url': p.cara_url, 'total_fotos': p.total_fotos, 'foto_ids': fids
-        })
-    return jsonify({'personas': resultado, 'ia_habilitada': FACES_ENABLED, 'total_personas': len(resultado)})
-
-@app.route('/persona/<int:pid>/nombre', methods=['PATCH'])
-def etiquetar_persona(pid):
-    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
-    p = PersonaCluster.query.get_or_404(pid)
-    p.nombre = request.json.get('nombre', '').strip()
-    db.session.commit()
-    return jsonify({'ok': True})
-
-@app.route('/persona/<int:pid>', methods=['DELETE'])
-def borrar_persona(pid):
-    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
-    p = PersonaCluster.query.get_or_404(pid)
-    db.session.delete(p); db.session.commit()
-    return jsonify({'ok': True})
-
-@app.route('/evento/<int:evento_id>/reprocesar-rostros', methods=['POST'])
-def reprocesar_rostros(evento_id):
-    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
-    if not FACES_ENABLED:        return jsonify({'error': 'IA no disponible'}), 503
-    ev = Evento.query.get_or_404(evento_id)
-    PersonaCluster.query.filter_by(evento_id=evento_id).delete()
-    db.session.commit()
-    fotos = Foto.query.filter_by(evento_id=evento_id).all()
-
-    def procesar_batch():
-        import urllib.request, tempfile
-        for f in fotos:
-            try:
-                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
-                    urllib.request.urlretrieve(f.url_original, tmp.name)
-                    detectar_rostros(tmp.name, f.id, evento_id)
-                os.remove(tmp.name)
-            except Exception as e:
-                print(f'Error reprocesando foto #{f.id}: {e}')
-
-    threading.Thread(target=procesar_batch, daemon=True).start()
-    return jsonify({'ok': True, 'mensaje': f'Reprocesando {len(fotos)} fotos en background'})
 
 # ── COMPRAS Y LÓGICA DE PRECIOS POR VOLUMEN ───────────────────────────────────
 @app.route('/crear-orden', methods=['POST'])
@@ -1294,11 +1213,6 @@ def actualizar_config_precios():
     return jsonify({'ok': True})
 
 # ── RE-WATERMARK BATCH (actualizar marca en fotos existentes) ────────────────
-@app.route('/version')
-def version_check():
-    return jsonify({'watermark': WATERMARK_VERSION})
-
-
 @app.route('/admin/re-watermark', methods=['POST'])
 def admin_re_watermark():
     """

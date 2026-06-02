@@ -93,8 +93,6 @@ let carrito         = new Map();
 let isAdmin         = false;
 let lbFotos         = [];
 let lbIdx           = 0;
-let personasData    = [];
-let personaFiltrada = null;
 let adminClicks     = 0;
 let adminClickTimer = null;
 let nlTipoCompra     = 'individual';  // individual | pack_digital | pack_impresion
@@ -510,8 +508,6 @@ function abrirEvento(eventoId) {
 
     eventoActual    = ev;
     lbFotos         = ev.fotos || [];
-    personaFiltrada = null;
-    personasData    = [];
 
     document.getElementById('portfolio').style.display = 'none';
     document.getElementById('about').style.display     = 'none';
@@ -521,7 +517,6 @@ function abrirEvento(eventoId) {
     view.innerHTML     = renderVistaEvento(ev);
 
     initDragDrop(ev.id);
-    if (ev.fotos?.length > 0) cargarPersonas(ev.id);
 
     const offset = document.getElementById('event-view').offsetTop - 68;
     window.scrollTo({ top: offset, behavior: 'smooth' });
@@ -658,7 +653,6 @@ function renderVistaEvento(ev) {
         </div>
         ${adminBar}
         ${renderPackCTA(ev)}
-        <div id="faces-panel-wrap"></div>
         <div class="photos-grid">${fotosHTML}</div>`;
 }
 
@@ -760,7 +754,7 @@ async function crearSubcarpeta(parentId) {
 }
 
 function cerrarEvento() {
-    eventoActual = null; personaFiltrada = null; personasData = [];
+    eventoActual = null;
     document.getElementById('event-view').style.display = 'none';
     document.getElementById('portfolio').style.removeProperty('display');
     document.getElementById('about').style.removeProperty('display');
@@ -920,181 +914,6 @@ function initLightboxKB() {
         if (e.key === 'ArrowLeft')  lbPrev();
         if (e.key === 'ArrowRight') lbNext();
     });
-}
-
-async function cargarPersonas(eventoId) {
-    const wrap = document.getElementById('faces-panel-wrap');
-    if (!wrap) return;
-    try {
-        const d = await (await fetch(`/evento/${eventoId}/personas`)).json();
-        personasData = d.personas || [];
-        renderPersonasPanel(d, wrap);
-    } catch { wrap.innerHTML = ''; }
-}
-
-function renderPersonasPanel(data, wrap) {
-    const { personas, ia_habilitada, total_personas } = data;
-
-    if (!ia_habilitada) { wrap.innerHTML = ''; return; }
-
-    if (!personas?.length) {
-        wrap.innerHTML = `
-            <div class="faces-panel">
-                <div class="faces-panel-header">
-                    <span class="faces-panel-title"><i class="fa-solid fa-face-smile"></i> Filtrar por persona</span>
-                    <span class="faces-ia-badge processing">
-                        <i class="fa-solid fa-spinner fa-spin"></i> IA procesando...
-                    </span>
-                    ${isAdmin ? `<button class="reprocess-btn" onclick="reprocesarIA()">
-                        <i class="fa-solid fa-rotate"></i> Reprocesar
-                    </button>` : ''}
-                </div>
-                <div class="faces-empty"><i class="fa-solid fa-circle-info"></i> Las fotos se están analizando. Recargá en unos segundos.</div>
-            </div>`;
-        return;
-    }
-
-    const chips = personas.map(p => {
-        const imgHTML = p.cara_url
-            ? `<img src="${p.cara_url}" alt="${p.nombre}" loading="lazy">`
-            : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:22px;color:var(--text-dim)"><i class="fa-solid fa-user"></i></div>`;
-        const adminBtns = isAdmin ? `
-            <div class="face-chip-admin-btns">
-                <button class="face-chip-admin-btn"
-                    onclick="event.stopPropagation();etiquetarPersona(${p.id},'${p.nombre}')"
-                    title="Poner nombre"><i class="fa-solid fa-tag"></i></button>
-                <button class="face-chip-admin-btn del"
-                    onclick="event.stopPropagation();borrarPersonaCluster(${p.id})"
-                    title="Eliminar"><i class="fa-solid fa-xmark"></i></button>
-            </div>` : '';
-        return `
-        <div class="face-chip" id="face-chip-${p.id}"
-             onclick="filtrarPorPersona(${p.id})"
-             title="${p.nombre} · ${p.total_fotos} foto${p.total_fotos!==1?'s':''}">
-            <div class="face-chip-avatar">
-                ${imgHTML}
-                <div class="face-chip-check"><i class="fa-solid fa-check"></i></div>
-            </div>
-            <span class="face-chip-count">${p.total_fotos}</span>
-            ${adminBtns}
-            <span class="face-chip-label">${p.nombre}</span>
-        </div>`;
-    }).join('');
-
-    wrap.innerHTML = `
-        <div class="faces-panel">
-            <div class="faces-panel-header">
-                <span class="faces-panel-title">
-                    <i class="fa-solid fa-face-viewfinder"></i> Filtrar por persona
-                </span>
-                <span class="faces-ia-badge">
-                    <i class="fa-solid fa-brain"></i> IA activa · ${total_personas} persona${total_personas!==1?'s':''} detectada${total_personas!==1?'s':''}
-                </span>
-                ${isAdmin ? `<button class="reprocess-btn" onclick="reprocesarIA()">
-                    <i class="fa-solid fa-rotate"></i> Reprocesar IA
-                </button>` : ''}
-            </div>
-            <div class="faces-scroll">
-                <div class="face-chip-all active" id="face-chip-all" onclick="limpiarFiltroPersona()">
-                    <div class="face-chip-all-circle"><i class="fa-solid fa-users"></i></div>
-                    <span class="face-chip-all-label">Todos</span>
-                </div>
-                ${chips}
-            </div>
-        </div>
-        <div class="face-filter-results" id="face-filter-results" style="display:none">
-            Mostrando <span id="face-filter-count">0</span> fotos de esta persona
-        </div>`;
-}
-
-function filtrarPorPersona(personaId) {
-    if (personaFiltrada === personaId) { limpiarFiltroPersona(); return; }
-    personaFiltrada = personaId;
-    const persona   = personasData.find(p => p.id === personaId);
-    if (!persona) return;
-    const fotoIds   = new Set(persona.foto_ids);
-    let coinciden   = 0;
-    document.querySelectorAll('.photo-item').forEach(el => {
-        const id = parseInt(el.id?.replace('photo-',''));
-        if (fotoIds.has(id)) { el.classList.add('face-match'); el.classList.remove('face-dimmed'); coinciden++; }
-        else                 { el.classList.add('face-dimmed'); el.classList.remove('face-match'); }
-    });
-    document.querySelectorAll('.face-chip').forEach(c => c.classList.remove('active'));
-    document.getElementById('face-chip-all')?.classList.remove('active');
-    document.getElementById(`face-chip-${personaId}`)?.classList.add('active');
-    const res = document.getElementById('face-filter-results');
-    if (res) { res.style.display = 'block'; res.querySelector('#face-filter-count').textContent = coinciden; }
-    document.querySelector('.photos-grid')?.scrollIntoView({ behavior:'smooth', block:'start' });
-}
-
-function limpiarFiltroPersona() {
-    personaFiltrada = null;
-    document.querySelectorAll('.photo-item').forEach(el => el.classList.remove('face-match','face-dimmed'));
-    document.querySelectorAll('.face-chip').forEach(c => c.classList.remove('active'));
-    document.getElementById('face-chip-all')?.classList.add('active');
-    const res = document.getElementById('face-filter-results');
-    if (res) res.style.display = 'none';
-}
-
-async function etiquetarPersona(personaId, nombreActual) {
-    const { value: nombre } = await Swal.fire({
-        title: 'Nombre de la persona',
-        input: 'text', inputValue: nombreActual.startsWith('Persona #') ? '' : nombreActual,
-        inputPlaceholder: 'Ej: Juan García / N° 10',
-        background: 'var(--ink-2)', color: 'var(--text)',
-        confirmButtonText: 'Guardar', cancelButtonText: 'Cancelar',
-        showCancelButton: true, confirmButtonColor: '#D4A843', cancelButtonColor: '#555',
-    });
-    if (nombre === undefined) return;
-    const res = await fetch(`/persona/${personaId}/nombre`, {
-        method: 'PATCH', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ nombre: nombre || `Persona #${personaId}` })
-    });
-    if (res.ok) {
-        const chip = document.getElementById(`face-chip-${personaId}`);
-        if (chip) chip.querySelector('.face-chip-label').textContent = nombre || `Persona #${personaId}`;
-        const p = personasData.find(p => p.id === personaId);
-        if (p) p.nombre = nombre || `Persona #${personaId}`;
-        toast('Nombre guardado', 'success');
-    }
-}
-
-async function borrarPersonaCluster(personaId) {
-    const { isConfirmed } = await Swal.fire({
-        title: '¿Eliminar este perfil?',
-        html: '<p style="color:#999;font-size:14px">Se elimina el agrupamiento. Las fotos no se borran.</p>',
-        icon: 'warning', showCancelButton: true,
-        confirmButtonText: 'Eliminar', cancelButtonText: 'Cancelar',
-        confirmButtonColor: '#e84040', cancelButtonColor: '#555',
-        background: 'var(--ink-2)', color: 'var(--text)'
-    });
-    if (!isConfirmed) return;
-    await fetch(`/persona/${personaId}`, { method: 'DELETE', credentials: 'include' });
-    limpiarFiltroPersona();
-    if (eventoActual) cargarPersonas(eventoActual.id);
-    toast('Perfil eliminado', 'info');
-}
-
-async function reprocesarIA() {
-    if (!eventoActual) return;
-    const { isConfirmed } = await Swal.fire({
-        title: 'Reprocesar con IA',
-        html: `<p style="color:#999;font-size:14px;line-height:1.7">Se analizarán <strong>${eventoActual.fotos.length} fotos</strong> y se resetearán los perfiles actuales.</p>`,
-        icon: 'info', showCancelButton: true,
-        confirmButtonText: 'Sí, reprocesar', cancelButtonText: 'Cancelar',
-        confirmButtonColor: '#D4A843', cancelButtonColor: '#555',
-        background: 'var(--ink-2)', color: 'var(--text)'
-    });
-    if (!isConfirmed) return;
-    const res = await fetch(`/evento/${eventoActual.id}/reprocesar-rostros`, { method:'POST', credentials:'include' });
-    const d   = await res.json();
-    if (res.ok) {
-        toast(d.mensaje, 'success', 3000);
-        setTimeout(() => cargarPersonas(eventoActual.id), 5000);
-    } else {
-        toast(d.error || 'Error al reprocesar', 'error');
-    }
 }
 
 async function crearEvento() {
@@ -2213,37 +2032,3 @@ actualizarCarritoBar = function () {
     _nl_actualizarCarritoBar();
     chequearUpsell();
 };
-
-// ── Re-aplicar marca de agua a todas las fotos existentes (panel admin) ──────
-async function reAplicarWatermark() {
-    const btn = document.getElementById('btn-rewatermark');
-    const c = await Swal.fire({
-        icon: 'warning', title: '¿Re-aplicar marca de agua?',
-        html: '<p style="color:#999;font-size:14px;line-height:1.6;">Se re-procesan <b>TODAS</b> las fotos con la marca actual. Puede tardar varios segundos.</p>',
-        background: 'var(--ink-2)', color: 'var(--text)', showCancelButton: true,
-        confirmButtonText: 'Sí, aplicar', cancelButtonText: 'Cancelar',
-        confirmButtonColor: '#D4A843', cancelButtonColor: '#555'
-    });
-    if (!c.isConfirmed) return;
-    const orig = btn ? btn.innerHTML : '';
-    if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Procesando...'; }
-    try {
-        const res = await fetch('/admin/re-watermark', { method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || 'Error del servidor');
-        await Swal.fire({
-            icon: data.fallidas > 0 ? 'info' : 'success', title: 'Marca de agua aplicada',
-            html: `<div style="color:#999;font-size:14px;line-height:1.8;">
-                     <b style="color:var(--gold)">${data.ok}</b> fotos re-procesadas<br>
-                     ${data.fallidas ? `<b style="color:#e57">${data.fallidas}</b> fallaron<br>` : ''}
-                     <span style="color:#666">Total: ${data.total}</span></div>`,
-            background: 'var(--ink-2)', color: 'var(--text)',
-            confirmButtonText: 'Recargar', confirmButtonColor: '#D4A843'
-        });
-        location.reload();
-    } catch (e) {
-        await Swal.fire({ icon: 'error', title: 'Error', text: e.message, background: 'var(--ink-2)', color: 'var(--text)', confirmButtonColor: '#D4A843' });
-    } finally {
-        if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = orig; }
-    }
-}
