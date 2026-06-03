@@ -317,7 +317,7 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v15-fallback'
+WATERMARK_VERSION = 'wm-v16-fuente'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
                 filas=5, escala_alto=0.7, sep_rel=0.3,
@@ -342,11 +342,17 @@ def _marca_core(imagen, texto='@Nacho Lingua',
     W, H = base.size
     altura_fila = H / filas
 
-    # 1) Fuente bold del sistema (con fallbacks)
+    # 1) Fuente. IMPORTANTE: priorizamos una fuente TTF incluida en el repo,
+    #    porque el servidor (Railway) NO trae fuentes instaladas. Si no la
+    #    encontrara, Pillow caería a una fuente bitmap diminuta de tamaño fijo
+    #    y la marca saldría como rayitas chiquititas.
+    _aqui = os.path.dirname(os.path.abspath(__file__))
     fuente_path = None
     for fp in [
-        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
+        os.path.join(_aqui, 'DejaVuSans-Bold.ttf'),          # <- incluida en el repo
+        os.path.join(_aqui, 'fonts', 'DejaVuSans-Bold.ttf'),
         '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
+        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
         '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
         'arialbd.ttf', 'arial.ttf', 'C:\\Windows\\Fonts\\arialbd.ttf',
     ]:
@@ -362,7 +368,10 @@ def _marca_core(imagen, texto='@Nacho Lingua',
     def _cargar(size):
         if fuente_path:
             return ImageFont.truetype(fuente_path, size)
-        return ImageFont.load_default()
+        try:
+            return ImageFont.load_default(size)   # Pillow >= 10.1 sí escala
+        except TypeError:
+            return ImageFont.load_default()
 
     def _medir(f):
         bb = medidor.textbbox((0, 0), texto, font=f)
