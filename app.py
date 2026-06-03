@@ -320,8 +320,8 @@ def get_download_url(url_original):
 WATERMARK_VERSION = 'wm-v17-opaca'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
-                filas=5, escala_alto=0.7, sep_rel=0.15,
-                min_reps=1.4, opacidad=190, angulo=0):
+                filas=7, escala_alto=0.7, sep_rel=0.15,
+                min_reps=1.4, opacidad=230, angulo=0):
     """
     Marca de agua estilo fotografo profesional.
 
