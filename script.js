@@ -299,33 +299,46 @@ function breadcrumbEvento(id, lista, ruta = []) {
 }
 
 function renderEventoCard(ev, i) {
-    const cover  = ev.cover_url || ev.fotos?.[0]?.url_preview || 'https://placehold.co/800x600/0c0c12/1c1c24?text=Sin+fotos';
-    const count  = ev.total_fotos ?? ev.fotos?.length ?? 0;
-    const delay  = Math.min(i * 0.07, 0.5);
-    const hasSub = (ev.total_subcarpetas ?? ev.subcarpetas?.length ?? 0) > 0;
+    const cover    = ev.cover_url || ev.fotos?.[0]?.url_preview || '';
+    const count    = ev.total_fotos ?? ev.fotos?.length ?? 0;
+    const delay    = Math.min(i * 0.06, 0.45);
     const subCount = ev.total_subcarpetas ?? ev.subcarpetas?.length ?? 0;
+    const hasSub   = subCount > 0;
+    const feat     = i === 0 ? ' feature' : '';
+    const fold     = hasSub ? ' folder' : '';
+
+    const coverHtml = cover
+        ? `<img class="ec-img" src="${cover}" alt="${ev.titulo}" loading="lazy">`
+        : `<div class="ec-img ec-img-empty"><i class="fa-solid fa-camera"></i></div>`;
+
+    const badge = hasSub
+        ? `<span class="ec-count"><i class="fa-solid fa-folder"></i>${subCount}</span>`
+        : `<span class="ec-count"><i class="fa-solid fa-camera"></i>${count}</span>`;
+
+    const meta = hasSub
+        ? `<span><i class="fa-solid fa-folder"></i>${subCount} subcarpeta${subCount!==1?'s':''}</span>`
+        : (ev.fecha
+            ? `<span><i class="fa-regular fa-calendar"></i>${ev.fecha}</span>`
+            : `<span><i class="fa-solid fa-camera"></i>${count} foto${count!==1?'s':''}</span>`);
 
     return `
-    <div class="event-card${hasSub ? ' event-card-folder' : ''} reveal"
+    <article class="event-card${feat}${fold} reveal"
          style="transition-delay:${delay}s"
          onclick="abrirEvento(${ev.id})" role="button" tabindex="0"
          onkeydown="if(event.key==='Enter')abrirEvento(${ev.id})">
-        <img class="event-card-img" src="${cover}" alt="${ev.titulo}" loading="lazy">
-        <div class="event-card-overlay">
-            <div class="event-card-sport">${ev.deporte}</div>
-            <div class="event-card-title">${ev.titulo}</div>
-            <div class="event-card-meta">
-                ${ev.fecha ? `<span><i class="fa-regular fa-calendar" style="margin-right:5px"></i>${ev.fecha}</span>` : ''}
-                ${hasSub
-                    ? `<span><i class="fa-solid fa-folder" style="margin-right:5px;color:var(--gold)"></i>${subCount} subcarpeta${subCount!==1?'s':''}</span>`
-                    : `<span class="event-card-count">${count} foto${count!==1?'s':''}</span>`}
-            </div>
+        <span class="ec-line"></span>
+        ${coverHtml}
+        <div class="ec-top">
+            <span class="ec-sport"><i class="fa-solid fa-circle" style="font-size:5px"></i>${ev.deporte}</span>
+            ${badge}
         </div>
-        ${hasSub ? '<div class="event-card-folder-badge"><i class="fa-solid fa-folder-open"></i></div>' : ''}
-        <div class="event-card-enter">
-            <div class="event-card-enter-btn">${hasSub ? 'Abrir carpeta →' : 'Explorar galería →'}</div>
+        ${hasSub ? '<div class="ec-folder-badge"><i class="fa-solid fa-folder-open"></i></div>' : ''}
+        <div class="ec-overlay">
+            <h3 class="ec-title">${ev.titulo}</h3>
+            <div class="ec-meta">${meta}</div>
+            <span class="ec-enter">${hasSub ? 'Abrir carpeta' : 'Explorar galería'} <span class="arw">→</span></span>
         </div>
-    </div>`;
+    </article>`;
 }
 
 function renderEventos(filtro = 'all') {
@@ -2038,7 +2051,7 @@ async function reAplicarWatermark() {
     const btn = document.getElementById('btn-rewatermark');
     const { isConfirmed } = await Swal.fire({
         title: '¿Re-aplicar marca de agua?', icon: 'warning',
-        html: '<p style="color:#999;font-size:14px;line-height:1.6;">Se re-procesan <b>TODAS</b> las fotos con la marca actual. Puede tardar varios segundos.<br><br><b style=\'color:#D4A843\'>Ojo:</b> las fotos sin original limpio se re-marcan sobre la marca actual, así que <b>no repitas</b> el proceso varias veces seguidas.</p>',
+        html: '<p style="color:#999;font-size:14px;line-height:1.6;">Se re-procesan <b>TODAS</b> las fotos con la marca actual. Puede tardar varios segundos.</p>',
         showCancelButton: true,
         confirmButtonText: 'Sí, aplicar', cancelButtonText: 'Cancelar',
         confirmButtonColor: '#D4A843', cancelButtonColor: '#555',
@@ -2062,7 +2075,6 @@ async function reAplicarWatermark() {
             html: `<div style="color:#999;font-size:14px;line-height:1.8;">
                      <b style="color:#D4A843">${data.ok}</b> fotos re-procesadas<br>
                      ${data.fallidas ? `<b style="color:#e57">${data.fallidas}</b> fallaron<br>` : ''}
-                     ${data.desde_preview ? `<b style="color:#bbb">${data.desde_preview}</b> re-marcadas desde el preview<br>` : ''}
                      ${data.saltadas ? `<b>${data.saltadas}</b> saltadas<br>` : ''}
                      <span style="color:#666">Total: ${data.total}</span></div>`,
             background: 'var(--ink-2)', color: 'var(--text)',
@@ -2078,3 +2090,24 @@ async function reAplicarWatermark() {
         if (btn) { btn.disabled = false; btn.style.opacity = '1'; btn.innerHTML = orig; }
     }
 }
+
+/* ─── REDISEÑO: barra de progreso de scroll + menú mobile ────────────────────── */
+(function () {
+    const prog = document.getElementById('scroll-progress');
+    if (prog) {
+        const upd = () => {
+            const h = document.documentElement.scrollHeight - window.innerHeight;
+            prog.style.width = (h > 0 ? (window.scrollY / h * 100) : 0) + '%';
+        };
+        window.addEventListener('scroll', upd, { passive: true });
+        window.addEventListener('resize', upd);
+        upd();
+    }
+    const burger = document.getElementById('nav-burger');
+    const ov     = document.getElementById('mobile-overlay');
+    const cerrar = () => document.body.classList.remove('menu-open');
+    if (burger) burger.addEventListener('click', () => document.body.classList.toggle('menu-open'));
+    if (ov)     ov.addEventListener('click', cerrar);
+    document.querySelectorAll('#mobile-menu a').forEach(a => a.addEventListener('click', cerrar));
+    window.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar(); });
+})();
