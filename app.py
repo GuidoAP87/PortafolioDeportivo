@@ -317,7 +317,7 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v14-juntas'
+WATERMARK_VERSION = 'wm-v15-fallback'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
                 filas=5, escala_alto=0.7, sep_rel=0.3,
