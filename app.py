@@ -317,11 +317,11 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v16-fuente'
+WATERMARK_VERSION = 'wm-v17-opaca'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
-                filas=5, escala_alto=0.7, sep_rel=0.3,
-                min_reps=1.4, opacidad=110, angulo=0):
+                filas=5, escala_alto=0.7, sep_rel=0.15,
+                min_reps=1.4, opacidad=190, angulo=0):
     """
     Marca de agua estilo fotografo profesional.
 
