@@ -2038,7 +2038,7 @@ async function reAplicarWatermark() {
     const btn = document.getElementById('btn-rewatermark');
     const { isConfirmed } = await Swal.fire({
         title: '¿Re-aplicar marca de agua?', icon: 'warning',
-        html: '<p style="color:#999;font-size:14px;line-height:1.6;">Se re-procesan <b>TODAS</b> las fotos con la marca actual. Puede tardar varios segundos.</p>',
+        html: '<p style="color:#999;font-size:14px;line-height:1.6;">Se re-procesan <b>TODAS</b> las fotos con la marca actual. Puede tardar varios segundos.<br><br><b style=\'color:#D4A843\'>Ojo:</b> las fotos sin original limpio se re-marcan sobre la marca actual, así que <b>no repitas</b> el proceso varias veces seguidas.</p>',
         showCancelButton: true,
         confirmButtonText: 'Sí, aplicar', cancelButtonText: 'Cancelar',
         confirmButtonColor: '#D4A843', cancelButtonColor: '#555',
@@ -2062,6 +2062,7 @@ async function reAplicarWatermark() {
             html: `<div style="color:#999;font-size:14px;line-height:1.8;">
                      <b style="color:#D4A843">${data.ok}</b> fotos re-procesadas<br>
                      ${data.fallidas ? `<b style="color:#e57">${data.fallidas}</b> fallaron<br>` : ''}
+                     ${data.desde_preview ? `<b style="color:#bbb">${data.desde_preview}</b> re-marcadas desde el preview<br>` : ''}
                      ${data.saltadas ? `<b>${data.saltadas}</b> saltadas<br>` : ''}
                      <span style="color:#666">Total: ${data.total}</span></div>`,
             background: 'var(--ink-2)', color: 'var(--text)',

@@ -1193,6 +1193,9 @@ def admin_re_watermark():
     Body JSON opcional: {"evento_id": 5}  → solo ese evento
                         {}                → TODAS las fotos
     Devuelve resumen de cuántas se procesaron y cuántas fallaron.
+    Si el original está pendiente en Wasabi o no se puede bajar, usa el
+    preview actual como fuente (re-marca sobre la marca existente) para
+    no saltear ninguna foto.
     """
     if not session.get('admin'):
         return jsonify({'error': 'No autorizado'}), 403
@@ -1206,38 +1209,59 @@ def admin_re_watermark():
         query = query.filter_by(evento_id=int(evento_id))
     fotos = query.all()
 
-    ok_count = 0; fail_count = 0; skipped = 0; errores = []
+    ok_count = 0; fail_count = 0; skipped = 0; fallback_count = 0; errores = []
 
     for foto in fotos:
-        url_source = foto.url_original or foto.url_preview
-        if not url_source or 'wasabi_pending' in url_source:
+        orig = foto.url_original or ''
+        prev = foto.url_preview or ''
+        original_ok = bool(orig) and 'wasabi_pending' not in orig
+
+        # Fuentes en orden: primero el original limpio (si está disponible);
+        # si está pendiente en Wasabi o no se puede bajar, caemos al preview
+        # actual para NO saltear la foto (re-marca sobre la marca existente).
+        candidatos = []
+        if original_ok:
+            candidatos.append(orig)
+        if prev:
+            candidatos.append(prev)
+
+        if not candidatos:
             skipped += 1
             continue
-        try:
-            dl_url = get_download_url(url_source)
-            with urllib.request.urlopen(dl_url, timeout=30) as resp:
-                img_bytes = io.BytesIO(resp.read())
-            img_marcada  = agregar_watermark_5x(img_bytes)
-            import time as _t
-            wm_public_id = f'nacholingua/foto_{foto.id}_wm_{int(_t.time())}'
-            r_wm = cloudinary.uploader.upload(
-                img_marcada, public_id=wm_public_id, resource_type='image',
-                overwrite=True, invalidate=True,
-            )
-            foto.url_preview = r_wm['secure_url']
-            db.session.commit()
-            ok_count += 1
-            print(f'[re-watermark] OK foto {foto.id}')
-        except Exception as e:
-            db.session.rollback()
+
+        ultimo_error = None
+        for src in candidatos:
+            try:
+                dl_url = get_download_url(src)
+                with urllib.request.urlopen(dl_url, timeout=30) as resp:
+                    img_bytes = io.BytesIO(resp.read())
+                img_marcada = agregar_watermark_5x(img_bytes)
+                import time as _t
+                wm_public_id = f'nacholingua/foto_{foto.id}_wm_{int(_t.time())}'
+                r_wm = cloudinary.uploader.upload(
+                    img_marcada, public_id=wm_public_id, resource_type='image',
+                    overwrite=True, invalidate=True,
+                )
+                foto.url_preview = r_wm['secure_url']
+                db.session.commit()
+                ok_count += 1
+                if src == prev:
+                    fallback_count += 1
+                print(f'[re-watermark] OK foto {foto.id} (fuente: {"preview" if src == prev else "original"})')
+                break
+            except Exception as e:
+                db.session.rollback()
+                ultimo_error = e
+                print(f'[re-watermark] intento fallo foto {foto.id}: {e}')
+        else:
             fail_count += 1
-            errores.append({'foto_id': foto.id, 'error': str(e)[:120]})
-            print(f'[re-watermark] FAIL foto {foto.id}: {e}')
+            errores.append({'foto_id': foto.id, 'error': str(ultimo_error)[:120]})
+            print(f'[re-watermark] FAIL foto {foto.id}: {ultimo_error}')
 
     return jsonify({
         'ok': ok_count, 'fallidas': fail_count,
-        'saltadas': skipped, 'total': len(fotos),
-        'errores': errores[:10],
+        'saltadas': skipped, 'desde_preview': fallback_count,
+        'total': len(fotos), 'errores': errores[:10],
     })
 
 
