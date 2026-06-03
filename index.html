@@ -1,366 +1,426 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Nacho Lingua Fotografía — Comprá fotos deportivas en alta resolución. Fútbol y básquet en Córdoba, Argentina.">
-    <meta property="og:title" content="Nacho Lingua Fotografía">
-    <meta property="og:description" content="Fotografía deportiva premium. Elegí tus fotos y recibilas en alta resolución por email.">
-    <meta property="og:image" content="nacho_lingua.jpg">
-    <title>Nacho Lingua | Fotografía Deportiva · Córdoba</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Nacho Lingua · Preview menú + galerías</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+<style>
+:root{
+  --ink:#06060A; --ink-2:#0c0c12; --ink-3:#121218; --ink-4:#1c1c24; --ink-5:#28282f;
+  --text:#f2f2f2; --text-sub:#9090a0; --text-dim:#52525c;
+  --gold:#D4A843; --gold-light:#e8bf6a; --gold-dim:#6e5520;
+  --red:#e84040; --green:#3dba6b;
+  --t:0.3s cubic-bezier(.4,0,.2,1);
+}
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;font-size:16px;}
+body{background:var(--ink);color:var(--text);font-family:'Inter',sans-serif;line-height:1.6;overflow-x:hidden;}
+img{display:block;max-width:100%;}
+a{text-decoration:none;color:inherit;}
+button{cursor:pointer;border:none;background:none;font-family:inherit;color:inherit;}
+::selection{background:var(--gold);color:#000;}
 
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="stylesheet" href="styles.css">
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11" defer></script>
+/* grano */
+body::after{content:'';position:fixed;inset:0;z-index:9998;pointer-events:none;opacity:.022;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.75' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");}
+
+/* ════════ BARRA DE PROGRESO DE SCROLL ════════ */
+#scroll-progress{position:fixed;top:0;left:0;height:2px;width:0;z-index:1100;
+  background:linear-gradient(90deg,var(--gold-dim),var(--gold),var(--gold-light));
+  box-shadow:0 0 12px rgba(212,168,67,.5);transition:width .1s linear;}
+
+/* ════════ NAVBAR ════════ */
+#navbar{position:fixed;top:0;width:100%;height:72px;z-index:1000;
+  display:flex;align-items:center;justify-content:space-between;padding:0 clamp(20px,5vw,48px);
+  background:linear-gradient(to bottom,rgba(6,6,10,.96),transparent);
+  transition:background var(--t),box-shadow var(--t),height var(--t);}
+#navbar.scrolled{height:62px;background:rgba(8,8,13,.85);backdrop-filter:blur(18px) saturate(1.2);
+  box-shadow:0 1px 0 rgba(255,255,255,.05),0 10px 40px rgba(0,0,0,.5);}
+
+.nav-brand{display:flex;align-items:center;gap:11px;font-family:'Bebas Neue',sans-serif;
+  font-size:22px;letter-spacing:6px;color:var(--gold);transition:opacity var(--t);}
+.nav-brand:hover{opacity:.82;}
+.nav-brand-mark{position:relative;display:inline-flex;align-items:center;justify-content:center;
+  width:34px;height:34px;border:1px solid var(--gold-dim);}
+.nav-brand-mark span{font-size:15px;letter-spacing:1px;padding-left:1px;}
+.nav-brand-mark::after{content:'';position:absolute;bottom:-1px;right:-1px;width:6px;height:6px;background:var(--gold);}
+.nav-brand-word{display:flex;flex-direction:column;line-height:.78;}
+.nav-brand-word small{font-family:'Inter',sans-serif;font-size:7.5px;letter-spacing:3px;
+  color:var(--text-dim);text-transform:uppercase;margin-top:4px;}
+
+.nav-center{display:flex;align-items:center;gap:38px;}
+.nav-link{position:relative;font-size:11px;letter-spacing:2.5px;text-transform:uppercase;
+  color:var(--text-sub);transition:color var(--t);padding:6px 0;}
+.nav-link::after{content:'';position:absolute;left:0;bottom:0;width:0;height:1.5px;
+  background:linear-gradient(90deg,var(--gold),var(--gold-light));transition:width var(--t);}
+.nav-link:hover,.nav-link.active{color:var(--gold);}
+.nav-link:hover::after,.nav-link.active::after{width:100%;}
+
+.nav-right{display:flex;align-items:center;gap:8px;}
+.nav-btn{height:36px;padding:0 15px;display:flex;align-items:center;gap:7px;
+  font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text-sub);
+  border:1px solid var(--ink-5);transition:all var(--t);}
+.nav-btn:hover{color:var(--text);border-color:var(--text-dim);background:var(--ink-3);}
+.nav-btn.gold{color:var(--gold);border-color:var(--gold-dim);}
+.nav-btn.gold:hover{background:var(--gold);color:#000;border-color:var(--gold);}
+.nav-btn.danger{color:var(--red);border-color:rgba(232,64,64,.3);}
+.nav-btn.danger:hover{background:rgba(232,64,64,.1);color:var(--red);}
+
+/* hamburguesa (mobile) */
+.nav-burger{display:none;width:42px;height:42px;border:1px solid var(--ink-5);
+  align-items:center;justify-content:center;flex-direction:column;gap:5px;transition:all var(--t);}
+.nav-burger:hover{border-color:var(--gold-dim);}
+.nav-burger span{display:block;width:18px;height:1.5px;background:var(--gold);transition:transform var(--t),opacity var(--t);}
+body.menu-open .nav-burger span:nth-child(1){transform:translateY(6.5px) rotate(45deg);}
+body.menu-open .nav-burger span:nth-child(2){opacity:0;}
+body.menu-open .nav-burger span:nth-child(3){transform:translateY(-6.5px) rotate(-45deg);}
+
+/* panel mobile */
+#mobile-menu{position:fixed;inset:0 0 0 auto;width:min(86vw,360px);z-index:1050;
+  background:linear-gradient(160deg,var(--ink-2),var(--ink));border-left:1px solid var(--ink-4);
+  transform:translateX(105%);transition:transform .45s cubic-bezier(.6,.05,.2,1);
+  display:flex;flex-direction:column;padding:96px 36px 40px;box-shadow:-30px 0 80px rgba(0,0,0,.6);}
+body.menu-open #mobile-menu{transform:translateX(0);}
+#mobile-overlay{position:fixed;inset:0;z-index:1040;background:rgba(4,4,8,.6);backdrop-filter:blur(4px);
+  opacity:0;visibility:hidden;transition:opacity .4s ease,visibility .4s ease;}
+body.menu-open #mobile-overlay{opacity:1;visibility:visible;}
+.mm-eyebrow{font-size:9px;letter-spacing:4px;text-transform:uppercase;color:var(--text-dim);margin-bottom:26px;
+  display:flex;align-items:center;gap:10px;}
+.mm-eyebrow::before{content:'';width:22px;height:1px;background:var(--gold);}
+.mm-link{font-family:'Bebas Neue',sans-serif;font-size:34px;letter-spacing:2px;color:var(--text);
+  padding:14px 0;border-bottom:1px solid var(--ink-4);display:flex;align-items:center;justify-content:space-between;
+  transition:color var(--t),padding-left var(--t);opacity:0;transform:translateX(20px);}
+.mm-link i{font-size:14px;color:var(--gold);opacity:0;transform:translateX(-8px);transition:all var(--t);}
+.mm-link:hover{color:var(--gold);padding-left:8px;}
+.mm-link:hover i{opacity:1;transform:translateX(0);}
+body.menu-open .mm-link{animation:mmIn .5s cubic-bezier(.2,.7,.3,1) forwards;}
+body.menu-open .mm-link:nth-child(2){animation-delay:.08s;}
+body.menu-open .mm-link:nth-child(3){animation-delay:.15s;}
+body.menu-open .mm-link:nth-child(4){animation-delay:.22s;}
+@keyframes mmIn{to{opacity:1;transform:translateX(0);}}
+.mm-foot{margin-top:auto;display:flex;flex-direction:column;gap:18px;}
+.mm-cta{background:var(--gold);color:#000;text-align:center;padding:15px;font-size:11px;font-weight:700;
+  letter-spacing:2px;text-transform:uppercase;transition:background var(--t);}
+.mm-cta:hover{background:var(--gold-light);}
+.mm-social{display:flex;gap:14px;justify-content:center;}
+.mm-social a{width:40px;height:40px;border:1px solid var(--ink-5);display:flex;align-items:center;
+  justify-content:center;color:var(--text-sub);font-size:15px;transition:all var(--t);}
+.mm-social a:hover{color:var(--gold);border-color:var(--gold-dim);}
+
+/* ════════ MINI HERO (solo para dar contexto al scroll) ════════ */
+#hero{position:relative;height:88vh;min-height:560px;display:flex;align-items:flex-end;overflow:hidden;background:#000;}
+#hero .bg{position:absolute;inset:0;background:
+  radial-gradient(120% 90% at 75% 15%,rgba(212,168,67,.10),transparent 55%),
+  radial-gradient(90% 80% at 10% 90%,rgba(60,80,140,.22),transparent 60%),
+  linear-gradient(135deg,#0a0a12,#141420 60%,#0a0a12);transform:scale(1.04);}
+#hero .bg::after{content:'';position:absolute;inset:0;opacity:.5;
+  background:repeating-linear-gradient(115deg,transparent,transparent 38px,rgba(255,255,255,.012) 38px,rgba(255,255,255,.012) 39px);}
+.hero-grad{position:absolute;inset:0;background:linear-gradient(to top,var(--ink) 4%,rgba(6,6,10,.2) 50%,rgba(6,6,10,.5));}
+.hero-in{position:relative;z-index:2;padding:0 clamp(20px,8%,120px) clamp(48px,9vh,96px);max-width:1000px;}
+.hero-eyebrow{display:flex;align-items:center;gap:14px;font-size:11px;letter-spacing:4px;text-transform:uppercase;color:var(--gold);margin-bottom:22px;}
+.hero-eyebrow::before{content:'';width:34px;height:1px;background:var(--gold);}
+.hero-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(62px,11vw,150px);line-height:.86;letter-spacing:3px;color:#fff;margin-bottom:22px;}
+.hero-title em{display:block;font-style:normal;color:var(--gold);
+  background:linear-gradient(90deg,var(--gold),var(--gold-light) 60%,#fff);-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;}
+.hero-desc{font-size:15px;color:var(--text-sub);max-width:520px;line-height:1.85;margin-bottom:30px;}
+.hero-cta{display:inline-flex;align-items:center;gap:12px;background:var(--gold);color:#000;
+  padding:16px 34px;font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;transition:all var(--t);}
+.hero-cta:hover{background:var(--gold-light);transform:translateY(-2px);box-shadow:0 14px 36px rgba(212,168,67,.25);}
+.scroll-hint{position:absolute;right:clamp(20px,8%,120px);bottom:40px;z-index:2;writing-mode:vertical-rl;
+  font-size:9px;letter-spacing:4px;text-transform:uppercase;color:var(--text-dim);display:flex;align-items:center;gap:12px;}
+.scroll-hint::after{content:'';width:1px;height:40px;background:linear-gradient(var(--gold),transparent);animation:scrl 1.8s ease-in-out infinite;}
+@keyframes scrl{0%,100%{opacity:.3;transform:scaleY(.6)}50%{opacity:1;transform:scaleY(1)}}
+
+/* ════════ SECCIÓN GALERÍAS ════════ */
+.section{padding:clamp(64px,9vw,110px) clamp(20px,8%,120px);}
+.section-head{margin-bottom:46px;max-width:760px;}
+.section-eyebrow{display:flex;align-items:center;gap:12px;font-size:10px;letter-spacing:4px;
+  text-transform:uppercase;color:var(--gold);margin-bottom:14px;}
+.section-eyebrow::before{content:'';width:24px;height:1px;background:var(--gold);}
+.section-title{font-family:'Bebas Neue',sans-serif;font-size:clamp(34px,5.5vw,64px);letter-spacing:3px;color:#fff;line-height:1;margin-bottom:16px;}
+.section-sub{font-size:14px;color:var(--text-sub);max-width:560px;line-height:1.85;}
+
+/* filtros */
+.filters-row{display:flex;align-items:center;justify-content:space-between;gap:18px;
+  margin-bottom:34px;flex-wrap:wrap;}
+.sport-filters{display:flex;gap:7px;flex-wrap:wrap;}
+.sport-btn{position:relative;display:flex;align-items:center;gap:8px;padding:10px 18px;
+  font-size:10.5px;letter-spacing:2px;text-transform:uppercase;color:var(--text-sub);
+  border:1px solid var(--ink-4);background:var(--ink-2);transition:all var(--t);overflow:hidden;}
+.sport-btn .ic{font-size:13px;line-height:1;}
+.sport-btn::before{content:'';position:absolute;inset:0;background:rgba(212,168,67,.07);opacity:0;transition:opacity var(--t);}
+.sport-btn:hover{color:var(--text);border-color:var(--text-dim);}
+.sport-btn:hover::before{opacity:1;}
+.sport-btn.active{color:#000;background:var(--gold);border-color:var(--gold);font-weight:600;}
+.sport-btn.active::before{opacity:0;}
+.filters-count{font-size:11px;letter-spacing:1px;color:var(--text-dim);white-space:nowrap;}
+.filters-count b{color:var(--gold);font-weight:600;}
+
+/* grilla */
+#gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
+  grid-auto-rows:240px;gap:14px;grid-auto-flow:dense;}
+.event-card{position:relative;overflow:hidden;cursor:pointer;border:1px solid var(--ink-4);
+  background:var(--ink-2);transition:border-color var(--t),transform var(--t),box-shadow var(--t);
+  opacity:0;transform:translateY(26px);}
+.event-card.in{opacity:1;transform:translateY(0);transition:opacity .7s ease,transform .7s ease,border-color var(--t),box-shadow var(--t);}
+.event-card:hover{border-color:var(--gold-dim);transform:translateY(-4px);box-shadow:0 22px 50px rgba(0,0,0,.55);}
+/* tarjeta destacada (primera) */
+.event-card.feature{grid-column:span 2;grid-row:span 2;}
+@media(max-width:760px){.event-card.feature{grid-column:span 1;grid-row:span 1;}}
+
+.ec-cover{position:absolute;inset:0;background-size:cover;background-position:center;
+  transition:transform .7s cubic-bezier(.2,.7,.2,1),filter .5s ease;filter:brightness(.72) saturate(.92);}
+.event-card:hover .ec-cover{transform:scale(1.06);filter:brightness(.5) saturate(.8);}
+.ec-cover::after{content:'';position:absolute;inset:0;opacity:.5;
+  background:repeating-linear-gradient(125deg,transparent,transparent 30px,rgba(255,255,255,.015) 30px,rgba(255,255,255,.015) 31px);}
+.ec-glyph{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:84px;color:rgba(255,255,255,.05);transition:all var(--t);}
+.event-card:hover .ec-glyph{color:rgba(212,168,67,.10);transform:translate(-50%,-58%);}
+.ec-overlay{position:absolute;inset:0;z-index:2;display:flex;flex-direction:column;justify-content:flex-end;
+  padding:24px;background:linear-gradient(to top,rgba(6,6,10,.96) 0%,rgba(6,6,10,.4) 48%,transparent 100%);}
+.event-card.feature .ec-overlay{padding:34px;}
+.ec-top{position:absolute;top:18px;left:18px;right:18px;z-index:3;display:flex;align-items:flex-start;justify-content:space-between;}
+.ec-sport{display:inline-flex;align-items:center;gap:6px;font-size:9px;letter-spacing:2.5px;text-transform:uppercase;
+  color:var(--gold);background:rgba(6,6,10,.55);border:1px solid rgba(212,168,67,.25);padding:5px 10px;backdrop-filter:blur(4px);}
+.ec-count{font-size:10px;letter-spacing:1px;color:var(--gold);background:rgba(212,168,67,.12);
+  border:1px solid rgba(212,168,67,.28);padding:5px 11px;white-space:nowrap;backdrop-filter:blur(4px);}
+.ec-count i{margin-right:5px;}
+.ec-title{font-family:'Bebas Neue',sans-serif;letter-spacing:2px;color:#fff;line-height:1.04;
+  font-size:24px;margin-bottom:8px;}
+.event-card.feature .ec-title{font-size:clamp(34px,4vw,52px);}
+.ec-meta{display:flex;align-items:center;gap:16px;font-size:11px;color:var(--text-sub);}
+.ec-meta i{margin-right:6px;color:var(--gold-dim);}
+.ec-enter{display:inline-flex;align-items:center;gap:9px;margin-top:16px;font-size:10.5px;font-weight:700;
+  letter-spacing:2px;text-transform:uppercase;color:var(--gold);opacity:0;transform:translateY(8px);
+  transition:opacity var(--t),transform var(--t);}
+.event-card:hover .ec-enter{opacity:1;transform:translateY(0);}
+.ec-enter .arw{transition:transform var(--t);}
+.event-card:hover .ec-enter .arw{transform:translateX(5px);}
+/* línea dorada superior on hover */
+.ec-line{position:absolute;top:0;left:0;height:2px;width:0;z-index:4;background:linear-gradient(90deg,var(--gold),var(--gold-light));transition:width .45s ease;}
+.event-card:hover .ec-line{width:100%;}
+/* carpeta (subcarpetas) */
+.ec-folder-badge{position:absolute;top:16px;left:50%;transform:translateX(-50%);z-index:3;}
+.event-card.folder::before,.event-card.folder::after{content:'';position:absolute;left:6px;right:6px;z-index:0;
+  border:1px solid var(--ink-4);background:var(--ink-3);}
+.event-card.folder::before{top:-6px;height:8px;opacity:.6;}
+.event-card.folder::after{top:-11px;left:14px;right:14px;height:7px;opacity:.3;}
+
+/* skeleton de carga */
+.skeleton{position:relative;overflow:hidden;background:var(--ink-2);border:1px solid var(--ink-4);}
+.skeleton::after{content:'';position:absolute;inset:0;transform:translateX(-100%);
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.05),transparent);animation:shimmer 1.4s infinite;}
+@keyframes shimmer{100%{transform:translateX(100%);}}
+
+/* footer mini */
+footer{padding:40px clamp(20px,8%,120px);border-top:1px solid var(--ink-4);display:flex;
+  align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;color:var(--text-dim);font-size:12px;}
+.foot-brand{font-family:'Bebas Neue',sans-serif;letter-spacing:4px;color:var(--gold);font-size:18px;}
+
+/* note flotante de preview */
+.preview-tag{position:fixed;left:14px;bottom:14px;z-index:1200;font-size:10px;letter-spacing:2px;
+  text-transform:uppercase;color:var(--text-dim);background:rgba(8,8,13,.85);border:1px solid var(--ink-4);
+  padding:8px 12px;backdrop-filter:blur(8px);}
+.preview-tag b{color:var(--gold);}
+
+/* ════════ RESPONSIVE ════════ */
+@media(max-width:860px){
+  .nav-center,.nav-right .nav-btn{display:none;}
+  .nav-burger{display:flex;}
+}
+@media(max-width:760px){
+  #gallery-grid{grid-template-columns:1fr;grid-auto-rows:200px;}
+}
+</style>
 </head>
 <body>
 
-<!-- ═══ LOADING ══════════════════════════════════════════════════════════════ -->
-<div id="loading-screen">
-    <div class="ls-brand">NL</div>
-    <div class="ls-sub">Nacho Lingua Fotografía</div>
-    <div class="ls-bar"></div>
-</div>
+<div id="scroll-progress"></div>
 
-<!-- ═══ TOAST CONTAINER ══════════════════════════════════════════════════════ -->
-<div id="toast-container"></div>
-
-<!-- ═══ NAVBAR ═══════════════════════════════════════════════════════════════ -->
+<!-- NAVBAR -->
 <nav id="navbar">
-    <a href="#hero" class="nav-brand">
-        <span>NL</span>
-        <div class="nav-brand-dot"></div>
-    </a>
-
-    <div class="nav-center">
-        <a href="#hero"      class="nav-link active">Inicio</a>
-        <a href="#portfolio" class="nav-link">Galerías</a>
-        <a href="#about"     class="nav-link">Contacto</a>
-    </div>
-
-    <div class="nav-right">
-        <!-- Admin buttons -->
-        <button id="btn-admin-panel" class="nav-btn" style="display:none" title="Panel de administración">
-            <i class="fa-solid fa-gauge-simple-high"></i>
-            <span class="nav-btn-label">Panel</span>
-        </button>
-        <button id="btn-add-evento" class="nav-btn gold" style="display:none" title="Crear nuevo evento">
-            <i class="fa-solid fa-plus"></i>
-            <span class="nav-btn-label">Evento</span>
-        </button>
-        <button id="btn-logout" class="nav-btn danger" style="display:none" title="Cerrar sesión">
-            <i class="fa-solid fa-right-from-bracket"></i>
-        </button>
-    </div>
+  <a href="#hero" class="nav-brand">
+    <span class="nav-brand-mark"><span>NL</span></span>
+    <span class="nav-brand-word">NACHO LINGUA<small>Fotografía deportiva</small></span>
+  </a>
+  <div class="nav-center">
+    <a href="#hero" class="nav-link active">Inicio</a>
+    <a href="#portfolio" class="nav-link">Galerías</a>
+    <a href="#about" class="nav-link">Contacto</a>
+  </div>
+  <div class="nav-right">
+    <button class="nav-btn"><i class="fa-solid fa-gauge-simple-high"></i><span>Panel</span></button>
+    <button class="nav-btn gold"><i class="fa-solid fa-plus"></i><span>Evento</span></button>
+    <button class="nav-burger" id="burger" aria-label="Menú"><span></span><span></span><span></span></button>
+  </div>
 </nav>
 
-<!-- ═══ HERO ══════════════════════════════════════════════════════════════════ -->
-<header id="hero">
-    <div id="hero-bg"></div>
-    <div class="hero-gradient"></div>
-    <div class="hero-content">
-        <p class="hero-eyebrow">Fotografía Deportiva · Córdoba, Argentina</p>
-        <h1 class="hero-title">NACHO<br><em>LINGUA</em></h1>
-        <p class="hero-description">
-            Momentos irrepetibles del fútbol y básquet capturados en alta resolución.
-            Elegí tus fotos favoritas y recibilas sin marca de agua en tu email al instante.
-        </p>
-        <a href="#portfolio" class="hero-cta">
-            <i class="fa-solid fa-images"></i>
-            Explorar galerías
-        </a>
+<!-- MENU MOBILE -->
+<div id="mobile-overlay"></div>
+<aside id="mobile-menu">
+  <div class="mm-eyebrow">Navegación</div>
+  <a href="#hero" class="mm-link">Inicio <i class="fa-solid fa-arrow-right"></i></a>
+  <a href="#portfolio" class="mm-link">Galerías <i class="fa-solid fa-arrow-right"></i></a>
+  <a href="#about" class="mm-link">Contacto <i class="fa-solid fa-arrow-right"></i></a>
+  <div class="mm-foot">
+    <a href="#portfolio" class="mm-cta">Explorar galerías</a>
+    <div class="mm-social">
+      <a href="#" title="Instagram"><i class="fa-brands fa-instagram"></i></a>
+      <a href="#" title="WhatsApp"><i class="fa-brands fa-whatsapp"></i></a>
+      <a href="#" title="X"><i class="fa-brands fa-x-twitter"></i></a>
     </div>
-    <div class="hero-scroll-hint">Scroll</div>
+  </div>
+</aside>
+
+<!-- HERO (contexto) -->
+<header id="hero">
+  <div class="bg"></div>
+  <div class="hero-grad"></div>
+  <div class="hero-in">
+    <p class="hero-eyebrow">Fotografía Deportiva · Córdoba, Argentina</p>
+    <h1 class="hero-title">NACHO<em>LINGUA</em></h1>
+    <p class="hero-desc">Momentos irrepetibles del fútbol y el básquet en alta resolución. Elegí tus fotos y recibilas sin marca de agua al instante.</p>
+    <a href="#portfolio" class="hero-cta"><i class="fa-solid fa-images"></i> Explorar galerías</a>
+  </div>
+  <div class="scroll-hint">Scroll</div>
 </header>
 
-<!-- ═══ STATS ═════════════════════════════════════════════════════════════════ -->
-<section id="stats">
-    <div class="stat-item reveal">
-        <span class="stat-number" data-target="200" data-suffix="+">0</span>
-        <span class="stat-label">Eventos cubiertos</span>
-    </div>
-    <div class="stat-item reveal reveal-delay-1">
-        <span class="stat-number" data-target="8000" data-suffix="+">0</span>
-        <span class="stat-label">Fotos disponibles</span>
-    </div>
-    <div class="stat-item reveal reveal-delay-2">
-        <span class="stat-number" data-target="3" data-suffix=" años">0</span>
-        <span class="stat-label">De experiencia</span>
-    </div>
-    <div class="stat-item reveal reveal-delay-3">
-        <span class="stat-number" data-target="500" data-suffix="+">0</span>
-        <span class="stat-label">Fotos vendidas</span>
-    </div>
-</section>
-
-<!-- ═══ PORTFOLIO ══════════════════════════════════════════════════════════════ -->
+<!-- GALERÍAS -->
 <section id="portfolio" class="section">
-    <div class="section-header reveal">
-        <div class="section-eyebrow">Galerías</div>
-        <h2 class="section-title">ELEGÍ TU EVENTO</h2>
-        <p class="section-sub">
-            Seleccioná el evento, elegí las fotos que querés y comprá solo las que te gustan.
-            Las recibís en alta resolución sin marca de agua directamente en tu email.
-        </p>
-    </div>
+  <div class="section-head">
+    <div class="section-eyebrow">Galerías</div>
+    <h2 class="section-title">Elegí tu evento</h2>
+    <p class="section-sub">Seleccioná el evento, elegí las fotos que querés y comprá solo las que te gustan. Las recibís en alta resolución, sin marca de agua, directo en tu email.</p>
+  </div>
 
-    <div class="sport-filters reveal">
-        <button class="sport-btn active" data-filter="all">Todos</button>
-        <button class="sport-btn" data-filter="futbol">⚽ Fútbol</button>
-        <button class="sport-btn" data-filter="basquet">🏀 Básquet</button>
-        <button class="sport-btn" data-filter="otro">📷 Otro</button>
-    </div>
+  <div class="filters-row">
+    <div class="sport-filters" id="filters"></div>
+    <div class="filters-count" id="fcount"></div>
+  </div>
 
-    <div id="gallery-grid">
-        <div class="empty-state">
-            <i class="fa-solid fa-spinner fa-spin" style="font-size:24px;color:var(--gold);margin-bottom:12px"></i>
-            <p>Cargando galerías...</p>
-        </div>
-    </div>
+  <div id="gallery-grid"></div>
 </section>
 
-<!-- ═══ VISTA DE EVENTO (se llena desde JS) ════════════════════════════════════ -->
-<div id="event-view" style="display:none"></div>
-
-<!-- ═══ ABOUT ══════════════════════════════════════════════════════════════════ -->
-<section id="about" class="section">
-    <div class="about-grid">
-        <div class="about-photo reveal">
-            <img src="nacho_lingua.jpg" alt="Nacho Lingua fotógrafo deportivo">
-        </div>
-        <div class="about-info reveal reveal-delay-1">
-            <div class="section-eyebrow">El fotógrafo</div>
-            <h2 class="section-title" style="font-size:clamp(28px,4vw,44px)">NACHO<br>LINGUA</h2>
-            <p>Fotógrafo deportivo especializado en fútbol y básquet en Córdoba, Argentina. Con más de 3 años cubriendo eventos de primer nivel, cada imagen captura la emoción del deporte en su estado más puro.</p>
-            <p>Las fotos se entregan en alta resolución sin marca de agua, directamente en tu email minutos después de la compra.</p>
-
-            <!-- ⚠ Reemplazá con tus datos reales -->
-            <div class="contact-link-row">
-                <div class="contact-link-icon"><i class="fa-brands fa-whatsapp"></i></div>
-                <a href="https://wa.me/5493510000000" target="_blank" rel="noopener">+54 9 351 000-0000</a>
-            </div>
-            <div class="contact-link-row">
-                <div class="contact-link-icon"><i class="fa-solid fa-envelope"></i></div>
-                <a href="mailto:nacho@nachofotografia.com">nacho@nachofotografia.com</a>
-            </div>
-            <div class="contact-link-row">
-                <div class="contact-link-icon"><i class="fa-solid fa-location-dot"></i></div>
-                <span>Córdoba, Argentina</span>
-            </div>
-            <div class="social-row">
-                <!-- ⚠ Reemplazá con tus redes reales -->
-                <a href="https://instagram.com/nacholingua" target="_blank" rel="noopener" class="social-icon" title="Instagram"><i class="fa-brands fa-instagram"></i></a>
-                <a href="https://twitter.com/nacholingua"   target="_blank" rel="noopener" class="social-icon" title="Twitter/X"><i class="fa-brands fa-x-twitter"></i></a>
-                <a href="https://wa.me/5493510000000"       target="_blank" rel="noopener" class="social-icon" title="WhatsApp"><i class="fa-brands fa-whatsapp"></i></a>
-            </div>
-        </div>
-    </div>
+<section id="about" class="section" style="padding-top:0;">
+  <div class="section-head">
+    <div class="section-eyebrow">El fotógrafo</div>
+    <h2 class="section-title">Nacho Lingua</h2>
+    <p class="section-sub">Sección de contacto (sin cambios) — el preview se enfoca en el menú y la muestra de álbumes.</p>
+  </div>
 </section>
 
-<!-- ═══ FOOTER ══════════════════════════════════════════════════════════════════ -->
 <footer>
-    <div class="footer-inner">
-        <div>
-            <div class="footer-brand">NACHO LINGUA</div>
-            <div class="footer-tagline">Fotografía Deportiva · Córdoba, Argentina</div>
-        </div>
-        <div class="footer-links">
-            <a href="#hero"      class="footer-link">Inicio</a>
-            <a href="#portfolio" class="footer-link">Galerías</a>
-            <a href="#about"     class="footer-link">Contacto</a>
-        </div>
-    </div>
-    <div class="footer-bottom">
-        <p class="footer-copy">&copy; 2026 Nacho Lingua Fotografía · Todos los derechos reservados</p>
-        <!--
-            ACCESO ADMIN:
-            • Clic 3 veces en el punto "·" de abajo
-            • O presioná Ctrl + Shift + A
-        -->
-        <span id="admin-trigger">·</span>
-    </div>
+  <span class="foot-brand">NACHO LINGUA</span>
+  <span>© 2026 Nacho Lingua Fotografía · Todos los derechos reservados</span>
 </footer>
 
-<!-- ═══ LIGHTBOX ═══════════════════════════════════════════════════════════════ -->
-<div id="lightbox">
-    <button class="lb-close" onclick="cerrarLightbox()" title="Cerrar (Esc)">&times;</button>
-    <button class="lb-nav" id="lb-prev" onclick="lbPrev()" title="Anterior (←)">
-        <i class="fa-solid fa-chevron-left"></i>
-    </button>
-    <img class="lb-img" id="lb-img" alt="Foto deportiva">
-    <button class="lb-nav" id="lb-next" onclick="lbNext()" title="Siguiente (→)">
-        <i class="fa-solid fa-chevron-right"></i>
-    </button>
-    <span class="lb-counter" id="lb-counter"></span>
-    <button class="lb-cart-btn" id="lb-cart-btn" onclick="lbToggleCart()">
-        <i class="fa-solid fa-cart-shopping"></i> Agregar al carrito
-    </button>
-</div>
+<div class="preview-tag"><b>PREVIEW</b> · menú + galerías</div>
 
-<!-- ═══ CARRITO FLOTANTE ════════════════════════════════════════════════════════ -->
-<div id="cart-bar">
-    <div class="cart-bar-info">
-        <span class="cart-bar-count" id="cart-count">0</span>
-        <span class="cart-bar-label">fotos seleccionadas</span>
+<script>
+/* ── datos de ejemplo (en tu sitio salen de /obtener-eventos) ── */
+const COVERS = [
+  'linear-gradient(135deg,#1a2440,#3a4f7a 55%,#10172e)',
+  'linear-gradient(135deg,#3a1f3d,#7a3a5e 55%,#1e1020)',
+  'linear-gradient(135deg,#143028,#2f7a52 55%,#0a201a)',
+  'linear-gradient(135deg,#2b2b33,#5a5a66 55%,#15151a)',
+  'linear-gradient(135deg,#402a16,#a06a2a 55%,#1e1408)',
+  'linear-gradient(135deg,#1d2b40,#3f6a8a 55%,#0e1822)',
+  'linear-gradient(135deg,#33162a,#7a3a52 55%,#180c14)'
+];
+const EVENTOS = [
+  {titulo:'Clásico Cordobés', deporte:'futbol', deporteLabel:'Fútbol', fecha:'24 May 2026', fotos:248, glyph:'fa-futbol'},
+  {titulo:'Liga Femenina · Fecha 7', deporte:'basquet', deporteLabel:'Básquet', fecha:'18 May 2026', fotos:132, glyph:'fa-basketball'},
+  {titulo:'Belgrano vs Talleres', deporte:'futbol', deporteLabel:'Fútbol', fecha:'11 May 2026', fotos:301, glyph:'fa-futbol'},
+  {titulo:'Final Provincial', deporte:'basquet', deporteLabel:'Básquet', fecha:'04 May 2026', fotos:97, glyph:'fa-basketball'},
+  {titulo:'Torneo Apertura', deporte:'futbol', deporteLabel:'Fútbol', fecha:'Abr 2026', folder:true, subs:6, glyph:'fa-folder-open'},
+  {titulo:'Maratón Córdoba 21K', deporte:'otro', deporteLabel:'Running', fecha:'27 Abr 2026', fotos:540, glyph:'fa-person-running'},
+  {titulo:'Inferiores · Jornada 3', deporte:'futbol', deporteLabel:'Fútbol', fecha:'20 Abr 2026', fotos:176, glyph:'fa-futbol'}
+];
+const CATS = [
+  {slug:'all', icon:'🏆', label:'Todos'},
+  {slug:'futbol', icon:'⚽', label:'Fútbol'},
+  {slug:'basquet', icon:'🏀', label:'Básquet'},
+  {slug:'otro', icon:'📷', label:'Otro'}
+];
+
+/* ── filtros ── */
+const filtersEl = document.getElementById('filters');
+filtersEl.innerHTML = CATS.map((c,i)=>`
+  <button class="sport-btn${i===0?' active':''}" data-filter="${c.slug}">
+    <span class="ic">${c.icon}</span><span>${c.label}</span>
+  </button>`).join('');
+
+function card(ev,i){
+  const feat = i===0 ? ' feature' : '';
+  const fold = ev.folder ? ' folder' : '';
+  const cover = COVERS[i % COVERS.length];
+  const meta = ev.folder
+    ? `<span><i class="fa-solid fa-folder"></i>${ev.subs} subcarpetas</span>`
+    : `<span><i class="fa-regular fa-calendar"></i>${ev.fecha}</span>`;
+  const count = ev.folder
+    ? `<span class="ec-count"><i class="fa-solid fa-folder"></i>${ev.subs}</span>`
+    : `<span class="ec-count"><i class="fa-solid fa-camera"></i>${ev.fotos}</span>`;
+  return `
+  <article class="event-card${feat}${fold}" data-sport="${ev.deporte}" style="transition-delay:${Math.min(i*0.06,0.4)}s">
+    <div class="ec-line"></div>
+    <div class="ec-cover" style="background-image:${cover}"><i class="ec-glyph fa-solid ${ev.glyph}"></i></div>
+    <div class="ec-top">
+      <span class="ec-sport"><i class="fa-solid fa-circle" style="font-size:5px"></i>${ev.deporteLabel}</span>
+      ${count}
     </div>
-    <span class="cart-bar-total" id="cart-total">$0 ARS</span>
-    <button class="cart-bar-btn" onclick="abrirCheckout()" id="cart-checkout-btn">
-        <i class="fa-solid fa-bolt"></i> Comprar ahora
-    </button>
-    <button class="cart-clear-btn" onclick="limpiarCarrito()" title="Vaciar selección">
-        <i class="fa-solid fa-xmark"></i>
-    </button>
-</div>
-
-<!-- ═══ CHECKOUT MODAL ══════════════════════════════════════════════════════════ -->
-<div id="checkout-modal">
-    <div class="checkout-box">
-        <div class="checkout-header">
-            <div>
-                <h2>Tu pedido</h2>
-                <p>Completá tus datos y recibís las fotos por email</p>
-            </div>
-            <button class="checkout-close" onclick="cerrarCheckout()" title="Cerrar">&times;</button>
-        </div>
-        <div class="checkout-body">
-            <div class="checkout-summary">
-                <div id="checkout-resumen"></div>
-                <div class="checkout-summary-total">
-                    <span>Total</span>
-                    <span class="checkout-total-amount" id="checkout-total-amount">$0</span>
-                </div>
-            </div>
-
-            <div class="form-row">
-                <div class="co-group">
-                    <label for="co-nombre">Nombre</label>
-                    <input id="co-nombre" type="text" placeholder="Tu nombre" autocomplete="name"
-                           onkeydown="if(event.key==='Enter')document.getElementById('co-email').focus()">
-                </div>
-                <div class="co-group">
-                    <label for="co-email">Email para recibir las fotos *</label>
-                    <input id="co-email" type="email" placeholder="tu@email.com" autocomplete="email"
-                           onkeydown="if(event.key==='Enter')document.getElementById('co-whatsapp').focus()">
-                </div>
-            </div>
-
-            <div class="co-group">
-                <label for="co-whatsapp">
-                    WhatsApp
-                    <span style="font-weight:400;color:var(--text-dim);text-transform:none;letter-spacing:0;font-size:10px;margin-left:6px">— Opcional, para recibir el link también por mensaje</span>
-                </label>
-                <div style="position:relative">
-                    <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#25D366;font-size:15px;pointer-events:none">
-                        <i class="fa-brands fa-whatsapp"></i>
-                    </span>
-                    <input id="co-whatsapp" type="tel"
-                           placeholder="5493511234567  (con código de país, sin +)"
-                           autocomplete="tel"
-                           style="padding-left:42px"
-                           onkeydown="if(event.key==='Enter')procesarPago()">
-                </div>
-                <small style="display:block;margin-top:5px;font-size:10px;color:var(--text-dim)">
-                    Ejemplo: 5493511234567 → Argentina + 54, Córdoba 9351, número 1234567
-                </small>
-            </div>
-
-            <button class="checkout-pay-btn" id="checkout-pay-btn" onclick="procesarPago()">
-                <i class="fa-solid fa-credit-card"></i> Pagar con MercadoPago
-            </button>
-
-            <div class="checkout-divider">o</div>
-
-            <button class="checkout-wa-btn" onclick="coordinarWA()">
-                <i class="fa-brands fa-whatsapp"></i> Coordinar pago por WhatsApp
-            </button>
-
-            <p class="checkout-note">
-                <i class="fa-solid fa-shield-halved" style="color:var(--gold)"></i>
-                Pago seguro · Recibís el link a tus fotos por <strong>email</strong> y <strong>WhatsApp</strong> automáticamente
-            </p>
-        </div>
+    <div class="ec-overlay">
+      <h3 class="ec-title">${ev.titulo}</h3>
+      <div class="ec-meta">${meta}</div>
+      <span class="ec-enter">${ev.folder?'Abrir carpeta':'Explorar galería'} <span class="arw">→</span></span>
     </div>
-</div>
+  </article>`;
+}
 
-<!-- ═══ LOGIN MODAL ══════════════════════════════════════════════════════════════ -->
-<div id="login-modal">
-    <div class="login-box">
-        <div class="login-logo">NL</div>
-        <div class="login-subtitle">Acceso Administrador</div>
-        <div class="login-input-wrap">
-            <i class="fa-solid fa-lock login-icon"></i>
-            <input type="password" id="admin-password" class="login-input"
-                   placeholder="Contraseña" autocomplete="current-password"
-                   onkeydown="if(event.key==='Enter')ejecutarLogin()">
-            <button class="login-eye" onclick="togglePasswordVis()" type="button" title="Mostrar contraseña">
-                <i class="fa-solid fa-eye" id="toggle-icon"></i>
-            </button>
-        </div>
-        <div id="login-error" class="login-error">
-            <i class="fa-solid fa-circle-exclamation"></i>
-            <span>Contraseña incorrecta</span>
-        </div>
-        <button id="login-submit-btn" class="login-submit" onclick="ejecutarLogin()">Ingresar</button>
-        <button class="login-cancel" onclick="cerrarLoginModal()">Cancelar</button>
-    </div>
-</div>
+const grid = document.getElementById('gallery-grid');
+const fcount = document.getElementById('fcount');
 
-<!-- ═══ ADMIN PANEL ══════════════════════════════════════════════════════════════ -->
-<div id="admin-modal">
-    <div class="admin-panel">
-        <div class="admin-panel-hdr">
-            <div>
-                <h3>Panel de Administración</h3>
-                <p class="admin-panel-sub">Nacho Lingua Fotografía</p>
-            </div>
-            <div style="display:flex;align-items:center;gap:10px;">
-                <button id="btn-rewatermark" onclick="reAplicarWatermark()" title="Re-aplicar marca de agua a todas las fotos"
-                        style="background:var(--gold);color:#000;border:none;border-radius:6px;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:6px;">
-                    <i class="fa-solid fa-shield-halved"></i> Re-aplicar marca de agua
-                </button>
-                <button class="admin-close" onclick="cerrarAdminPanel()" title="Cerrar">&times;</button>
-            </div>
-        </div>
+function render(filter='all'){
+  const data = filter==='all' ? EVENTOS : EVENTOS.filter(e=>e.deporte===filter);
+  grid.innerHTML = data.map(card).join('');
+  fcount.innerHTML = `<b>${data.length}</b> galería${data.length!==1?'s':''}`;
+  requestAnimationFrame(()=>{
+    const io = new IntersectionObserver((es)=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('in');io.unobserve(e.target);}}),{threshold:.12});
+    grid.querySelectorAll('.event-card').forEach(c=>io.observe(c));
+  });
+}
+filtersEl.querySelectorAll('.sport-btn').forEach(b=>b.onclick=()=>{
+  filtersEl.querySelectorAll('.sport-btn').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); render(b.dataset.filter);
+});
+render();
 
-        <!-- Stats rápidas -->
-        <div class="admin-stats-strip" id="admin-stats-strip">
-            <div class="admin-stat"><span id="as-eventos">—</span><small>Eventos</small></div>
-            <div class="admin-stat"><span id="as-fotos">—</span><small>Fotos</small></div>
-            <div class="admin-stat gold"><span id="as-ingresos">—</span><small>Ingresos ARS</small></div>
-            <div class="admin-stat"><span id="as-compras">—</span><small>Ventas</small></div>
-        </div>
+/* ── navbar scroll + progreso + scrollspy ── */
+const nav=document.getElementById('navbar');
+const prog=document.getElementById('scroll-progress');
+const links=[...document.querySelectorAll('.nav-link')];
+const secs=['hero','portfolio','about'].map(id=>document.getElementById(id));
+function onScroll(){
+  const y=window.scrollY;
+  nav.classList.toggle('scrolled',y>30);
+  const h=document.documentElement.scrollHeight-innerHeight;
+  prog.style.width=(h>0?(y/h*100):0)+'%';
+  let cur='hero';
+  secs.forEach(s=>{if(s&&s.getBoundingClientRect().top<=140)cur=s.id;});
+  links.forEach(l=>l.classList.toggle('active',l.getAttribute('href')==='#'+cur));
+}
+addEventListener('scroll',onScroll,{passive:true}); onScroll();
 
-        <div class="admin-tabs">
-            <button class="admin-tab active" data-tab="compras" onclick="switchAdminTab('compras')">
-                <i class="fa-solid fa-bag-shopping"></i> Compras
-                <span id="badge-compras" class="admin-badge" style="display:none">!</span>
-            </button>
-            <button class="admin-tab" data-tab="consultas" onclick="switchAdminTab('consultas')">
-                <i class="fa-solid fa-envelope"></i> Consultas
-                <span id="badge-consultas" class="admin-badge" style="display:none">!</span>
-            </button>
-        </div>
-        <div id="tab-compras"   class="admin-tab-content active">
-            <p class="admin-loading">Cargando...</p>
-        </div>
-        <div id="tab-consultas" class="admin-tab-content">
-            <p class="admin-loading">Cargando...</p>
-        </div>
-    </div>
-</div>
-
-<!-- ═══ FLOATING ═══════════════════════════════════════════════════════════════ -->
-<!-- ⚠ Cambiá el número -->
-<a id="whatsapp-btn" href="https://wa.me/5493510000000" target="_blank" rel="noopener" title="Escribinos por WhatsApp">
-    <i class="fa-brands fa-whatsapp"></i>
-</a>
-<button id="back-to-top" title="Volver arriba">
-    <i class="fa-solid fa-chevron-up"></i>
-</button>
-
-<script src="script.js"></script>
+/* ── menú mobile ── */
+const burger=document.getElementById('burger');
+const ov=document.getElementById('mobile-overlay');
+const closeMenu=()=>document.body.classList.remove('menu-open');
+burger.onclick=()=>document.body.classList.toggle('menu-open');
+ov.onclick=closeMenu;
+document.querySelectorAll('#mobile-menu a').forEach(a=>a.onclick=closeMenu);
+addEventListener('keydown',e=>{if(e.key==='Escape')closeMenu();});
+</script>
 </body>
 </html>
