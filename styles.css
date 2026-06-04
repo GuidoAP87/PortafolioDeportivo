@@ -360,15 +360,7 @@ body::after {
 }
 
 .sport-btn-icon {
-    font-size: 16px;
-    line-height: 1;
-    filter: grayscale(100%) opacity(0.6);
-    transition: all 0.3s ease;
-}
-
-.sport-btn:hover .sport-btn-icon,
-.sport-btn.active .sport-btn-icon {
-    filter: grayscale(0%) opacity(1);
+    display: none;
 }
 
 .sport-btn-label {
