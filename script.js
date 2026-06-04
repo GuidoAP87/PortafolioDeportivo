@@ -105,6 +105,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await Promise.all([verificarSesion(), cargarEventos(), cargarConfigPrecios()]);
 
     initNavScroll();
+    initHeroParallax();
     initReveal();
     initNavLinks();
     initStatsCounter();
@@ -270,7 +271,7 @@ async function cargarEventos() {
         renderEventos();
         configurarFiltros();
     } catch {
-        grid.innerHTML = '<div class="empty-state"><p>No se pudo cargar la galería. Recargá la página.</p></div>';
+        grid.innerHTML = '<div class="empty-state"><i class="fa-solid fa-triangle-exclamation" style="font-size:28px;color:var(--text-dim);margin-bottom:12px"></i><p>No se pudieron cargar las galerías.</p></div>';
     }
 }
 
@@ -2112,3 +2113,15 @@ async function reAplicarWatermark() {
     document.querySelectorAll('#mobile-menu a').forEach(a => a.addEventListener('click', cerrar));
     window.addEventListener('keydown', e => { if (e.key === 'Escape') cerrar(); });
 })();
+
+function initHeroParallax() {
+    const heroBg = document.getElementById('hero-bg');
+    if (!heroBg) return;
+    window.addEventListener('scroll', () => {
+        const scrolled = window.scrollY;
+        // Solo calcular el parallax si el hero está visible (mejora rendimiento)
+        if (scrolled <= window.innerHeight) {
+            heroBg.style.transform = `translateY(${scrolled * 0.4}px)`;
+        }
+    }, { passive: true });
+}

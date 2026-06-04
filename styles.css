@@ -201,12 +201,13 @@ body::after {
 }
 
 #hero-bg {
-    position: absolute; inset: 0;
+    position: absolute; inset: -50px 0 -50px 0; /* Extra height to allow parallax movement */
     background: url('nacho_lingua.jpg') center / cover no-repeat;
-    transform: scale(1.06); transition: transform 10s ease; will-change: transform;
+    transform: translateY(0); 
+    will-change: transform;
 }
 
-#hero:hover #hero-bg { transform: scale(1); }
+
 
 .hero-gradient {
     position: absolute; inset: 0;
@@ -1313,4 +1314,38 @@ body.menu-open .mm-link:nth-of-type(3){animation-delay:.2s;}
 @media(max-width:760px){
   #gallery-grid{grid-template-columns:1fr;grid-auto-rows:210px;}
   .event-card.feature{grid-column:auto;grid-row:auto;}
+}
+
+/* ─── SKELETON LOADERS ─── */
+.skeleton-card {
+    background: var(--ink-2);
+    border: 1px solid var(--ink-4);
+    position: relative;
+    overflow: hidden;
+    aspect-ratio: auto;
+}
+.skeleton-card.feature {
+    grid-column: span 2;
+    grid-row: span 2;
+}
+.skeleton-card::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent 0%, rgba(212, 168, 67, 0.05) 50%, transparent 100%);
+    background-size: 200% 100%;
+    animation: skeletonShimmer 2s infinite linear;
+    z-index: 2;
+}
+.skeleton-card::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: var(--ink-3);
+    z-index: 1;
+}
+
+@keyframes skeletonShimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
 }
