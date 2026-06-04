@@ -67,6 +67,38 @@ def subir_a_wasabi(ruta_local, key):
         print(f"✗ Error Wasabi: {e}")
         return None
 
+def subir_bytes_a_wasabi(data_bytes, key):
+    """Sube bytes en memoria a Wasabi y devuelve la URL publica."""
+    try:
+        client = get_wasabi_client()
+        client.put_object(Bucket=WASABI_BUCKET, Key=key, Body=data_bytes, ContentType='image/jpeg')
+        url = f"https://s3.wasabisys.com/{WASABI_BUCKET}/{key}"
+        print(f"✓ Wasabi (bytes): subido {key}")
+        return url
+    except Exception as e:
+        print(f"✗ Error Wasabi (bytes): {e}")
+        return None
+
+def _cloudinary_public_id_de_url(url):
+    """Extrae el public_id de una URL de Cloudinary (para poder borrar el original)."""
+    try:
+        if '/upload/' not in url:
+            return None
+        resto = url.split('/upload/', 1)[1]
+        segs, out = resto.split('/'), []
+        for i, s in enumerate(segs):
+            if i == 0 and (',' in s or '_' in s) and not s.startswith('nacho'):
+                continue                      # segmento de transformacion (q_100, w_500, ...)
+            if s.startswith('v') and s[1:].isdigit():
+                continue                      # version vNNN
+            out.append(s)
+        public = '/'.join(out)
+        if '.' in public.rsplit('/', 1)[-1]:
+            public = public.rsplit('.', 1)[0]
+        return public or None
+    except Exception:
+        return None
+
 def get_wasabi_presigned_url(key, expiry=3600*24*30):
     """Genera URL firmada para acceso privado (30 días por defecto)."""
     try:
@@ -317,7 +349,7 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v18-liviana'
+WATERMARK_VERSION = 'wm-v19-wasabi'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
                 filas=5, escala_alto=0.7, sep_rel=0.15,
@@ -1725,25 +1757,49 @@ def registrar_foto():
     if not url_clean or not evento_id:
         return jsonify({'error': 'Faltan datos'}), 400
 
-    # ── APLICAR MARCA DE AGUA ────────────────────────────────────────────────
-    url_preview = url_clean
+    # ── 1) Bajar el original limpio UNA sola vez (sirve para marca y Wasabi) ─
+    import urllib.request, time as _t2
+    raw = None
     try:
-        import urllib.request
         with urllib.request.urlopen(url_clean) as resp:
-            img_bytes = io.BytesIO(resp.read())
-        img_marcada  = agregar_watermark_5x(img_bytes)
-        import time as _t2
-        wm_public_id = (public_id + f'_wm_{int(_t2.time())}') if public_id else None
-        r_wm = cloudinary.uploader.upload(
-            img_marcada, folder='nacholingua', public_id=wm_public_id,
-            resource_type='image', invalidate=True,
-        )
-        url_preview = r_wm['secure_url']
-        print(f'[registrar-foto] watermark OK → {url_preview[:70]}...')
+            raw = resp.read()
     except Exception as e:
-        print(f'[registrar-foto] watermark falló, guardando sin marca: {e}')
+        print(f'[registrar-foto] no pude bajar el original: {e}')
 
+    # ── 2) Marca de agua -> preview LIVIANA en Cloudinary ─────────────────
+    url_preview = url_clean
+    if raw is not None:
+        try:
+            img_marcada  = agregar_watermark_5x(io.BytesIO(raw))
+            wm_public_id = (public_id + f'_wm_{int(_t2.time())}') if public_id else None
+            r_wm = cloudinary.uploader.upload(
+                img_marcada, folder='nacholingua', public_id=wm_public_id,
+                resource_type='image', invalidate=True,
+            )
+            url_preview = r_wm['secure_url']
+            print(f'[registrar-foto] watermark OK -> {url_preview[:70]}...')
+        except Exception as e:
+            print(f'[registrar-foto] watermark fallo, guardando sin marca: {e}')
+
+    # ── 3) Original -> WASABI y se BORRA de Cloudinary (libera los 25 GB) ─────
+    #     Si Wasabi falla o no esta configurado, el original queda en Cloudinary
+    #     (igual que antes) para no perder la foto ni romper la compra.
     url_original = url_clean.replace('/upload/', '/upload/q_100/')
+    if raw is not None and WASABI_ENABLED:
+        try:
+            base_id  = (public_id.split('/')[-1] if public_id else 'foto')
+            key_orig = f"nacho_lingua/originales/evento_{evento_id}/{base_id}_{int(_t2.time())}.jpg"
+            wasabi_url = subir_bytes_a_wasabi(raw, key_orig)
+            if wasabi_url:
+                url_original = wasabi_url
+                if public_id:
+                    try:
+                        cloudinary.uploader.destroy(public_id, invalidate=True)
+                        print(f'[registrar-foto] original borrado de Cloudinary: {public_id}')
+                    except Exception as e:
+                        print(f'[registrar-foto] no pude borrar de Cloudinary: {e}')
+        except Exception as e:
+            print(f'[registrar-foto] Wasabi fallo, dejo original en Cloudinary: {e}')
 
     foto = Foto(
         url_preview  = url_preview,
@@ -1755,6 +1811,50 @@ def registrar_foto():
     db.session.commit()
 
     return jsonify({'ok': True, 'id': foto.id, 'url_preview': url_preview})
+
+@app.route('/admin/migrar-wasabi', methods=['POST'])
+def migrar_wasabi():
+    """Mueve a Wasabi los originales que hoy estan en Cloudinary y los borra de
+    Cloudinary (uso unico, para las fotos viejas). Solo admin."""
+    if not session.get('admin'):
+        return jsonify({'error': 'No autorizado'}), 403
+    if not WASABI_ENABLED:
+        return jsonify({'error': 'Wasabi no esta configurado (faltan WASABI_ACCESS_KEY / WASABI_SECRET_KEY)'}), 400
+
+    import urllib.request, time as _t3
+    movidas = fallidas = ya_wasabi = sin_original = 0
+
+    for f in Foto.query.all():
+        orig = f.url_original or ''
+        if not orig or 'wasabi_pending' in orig:
+            sin_original += 1; continue
+        if 'wasabisys.com' in orig or (WASABI_BUCKET and WASABI_BUCKET in orig):
+            ya_wasabi += 1; continue
+        if 'res.cloudinary.com' not in orig and '/upload/' not in orig:
+            continue
+        try:
+            with urllib.request.urlopen(orig) as resp:
+                raw = resp.read()
+            key  = f"nacho_lingua/originales/evento_{f.evento_id}/migrada_{f.id}_{int(_t3.time())}.jpg"
+            wurl = subir_bytes_a_wasabi(raw, key)
+            if not wurl:
+                fallidas += 1; continue
+            pid = _cloudinary_public_id_de_url(orig)
+            if pid:
+                try:
+                    cloudinary.uploader.destroy(pid, invalidate=True)
+                except Exception as e:
+                    print(f'[migrar-wasabi] no pude borrar {pid}: {e}')
+            f.url_original = wurl
+            db.session.commit()
+            movidas += 1
+        except Exception as e:
+            print(f'[migrar-wasabi] foto {f.id} fallo: {e}')
+            fallidas += 1
+
+    return jsonify({'ok': True, 'movidas': movidas, 'ya_en_wasabi': ya_wasabi,
+                    'fallidas': fallidas, 'sin_original': sin_original})
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
