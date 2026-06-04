@@ -1888,38 +1888,27 @@ function renderPackCTA(ev) {
     const impActivo = !NL_CONFIG || NL_CONFIG.pack_impresion_activo;
 
     const btnDig = digActivo ? `
-        <button onclick="comprarConPack('pack_digital')" class="pack-cta-btn pack-cta-primary">
-            <i class="fa-solid fa-layer-group"></i>
-            <span>Llevá TODAS las fotos seleccionadas · Pack Jugador</span>
-            <strong>$${pDig.toLocaleString('es-AR')}</strong>
+        <button onclick="comprarConPack('pack_digital')" style="flex:1; display:flex; align-items:center; justify-content:space-between; padding:12px 20px; background:rgba(212,168,67,0.1); border:1px solid var(--gold-dim); border-radius:6px; color:var(--text); cursor:pointer; transition:all 0.3s;" onmouseover="this.style.background='rgba(212,168,67,0.2)'" onmouseout="this.style.background='rgba(212,168,67,0.1)'">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <i class="fa-solid fa-layer-group" style="color:var(--gold); font-size:16px;"></i>
+                <span style="font-size:13px; font-weight:600; letter-spacing:0.5px;">Pack Jugador</span>
+            </div>
+            <strong style="color:var(--gold); font-size:16px;">$${pDig.toLocaleString('es-AR')}</strong>
         </button>` : '';
 
     const btnImp = impActivo ? `
-        <button onclick="comprarConPack('pack_impresion')" class="pack-cta-btn pack-cta-secondary">
-            <i class="fa-solid fa-print"></i>
-            <span>Pack Jugador + 2 impresiones 13x18</span>
-            <strong>$${pImp.toLocaleString('es-AR')}</strong>
+        <button onclick="comprarConPack('pack_impresion')" style="flex:1; display:flex; align-items:center; justify-content:space-between; padding:12px 20px; background:rgba(212,168,67,0.1); border:1px solid var(--gold-dim); border-radius:6px; color:var(--text); cursor:pointer; transition:all 0.3s;" onmouseover="this.style.background='rgba(212,168,67,0.2)'" onmouseout="this.style.background='rgba(212,168,67,0.1)'">
+            <div style="display:flex; align-items:center; gap:10px;">
+                <i class="fa-solid fa-print" style="color:var(--gold); font-size:16px;"></i>
+                <span style="font-size:13px; font-weight:600; letter-spacing:0.5px;">Pack Jugador + 2 impres. 13x18</span>
+            </div>
+            <strong style="color:var(--gold); font-size:16px;">$${pImp.toLocaleString('es-AR')}</strong>
         </button>` : '';
 
     return `
-    <div class="pack-cta-wrap" style="
-        margin:0 8% 18px; padding:18px 22px; border:1px solid var(--gold-dim);
-        border-radius:10px; background:linear-gradient(135deg, rgba(212,168,67,0.10), rgba(212,168,67,0.02));">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-            <span style="background:var(--gold);color:#000;font-size:10px;font-weight:700;
-                         letter-spacing:1px;text-transform:uppercase;padding:3px 8px;border-radius:4px;">
-                Opción recomendada
-            </span>
-            <span style="color:var(--gold);font-weight:600;font-size:15px;">La historia completa del partido</span>
-        </div>
-        <p style="color:var(--text-dim);font-size:13px;line-height:1.6;margin:4px 0 14px;">
-            Seleccioná las fotos de tu hijo/a con el <i class="fa-solid fa-cart-shopping"></i> y llevátelas
-            <strong style="color:var(--text)">todas juntas</strong> a un precio fijo. Mucho más conveniente que comprar de a una.
-        </p>
-        <div class="pack-cta-buttons" style="display:flex;gap:10px;flex-wrap:wrap;">
-            ${btnDig}
-            ${btnImp}
-        </div>
+    <div class="pack-cta-wrap" style="margin:0 8% 18px; display:flex; gap:14px; flex-wrap:wrap;">
+        ${btnDig}
+        ${btnImp}
     </div>`;
 }
 
