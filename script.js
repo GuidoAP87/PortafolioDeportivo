@@ -930,19 +930,31 @@ function initLightboxKB() {
 }
 
 async function crearEvento() {
+    // 1. Obtener las categorías dinámicamente de la base de datos
+    let optionsHtml = '<option value="" disabled selected>Categoría...</option>';
+    try {
+        const res = await fetch('/categorias');
+        if (res.ok) {
+            const cats = await res.json();
+            cats.forEach(c => {
+                optionsHtml += `<option value="${c.nombre}">${c.nombre}</option>`;
+            });
+        }
+    } catch (e) {
+        console.error('Error al cargar categorías para el select', e);
+    }
+
+    // 2. Mostrar el modal con las opciones actualizadas
     const { value: vals } = await Swal.fire({
         title: 'Nuevo Evento',
         background: 'var(--ink-2)', color: 'var(--text)',
         html: `
-            <input id="ev-titulo" class="swal2-input" placeholder="Título (ej: Talleres vs Belgrano — Fecha 15)"
+            <input id="ev-titulo" class="swal2-input" placeholder="Título (ej: Cosquín Rock 2026)"
                 style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);width:88%;margin-bottom:10px;font-family:Inter,sans-serif;">
             <select id="ev-deporte"
                 style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);
                        width:88%;padding:13px;margin:0 auto 10px;display:block;font-size:14px;font-family:Inter,sans-serif;">
-                <option value="" disabled selected>Deporte...</option>
-                <option value="Fútbol">⚽ Fútbol</option>
-                <option value="Básquet">🏀 Básquet</option>
-                <option value="Otro">📷 Otro</option>
+                ${optionsHtml}
             </select>
             <input id="ev-fecha" type="date" class="swal2-input"
                 style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);width:88%;margin-bottom:10px;font-family:Inter,sans-serif;">
@@ -954,7 +966,7 @@ async function crearEvento() {
         preConfirm: () => {
             const titulo  = document.getElementById('ev-titulo').value.trim();
             const deporte = document.getElementById('ev-deporte').value;
-            if (!titulo || !deporte) { Swal.showValidationMessage('Título y deporte son requeridos'); return false; }
+            if (!titulo || !deporte) { Swal.showValidationMessage('Título y categoría son requeridos'); return false; }
             return { titulo, deporte,
                      fecha: document.getElementById('ev-fecha').value,
                      descripcion: document.getElementById('ev-desc').value.trim() };
