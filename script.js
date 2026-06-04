@@ -32,7 +32,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ⚠ CONFIGURACIÓN
-const WA_NUMBER   = '5493510000000';   
+const WA_NUMBER   = '5493512345830';   
 const PRECIO_BASE = 3000;
 
 // ─── LÓGICA DE PRECIOS POR VOLUMEN ───────────────────────────────────────────
