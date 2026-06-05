@@ -102,8 +102,8 @@ def _cloudinary_public_id_de_url(url):
     except Exception:
         return None
 
-def get_wasabi_presigned_url(key, expiry=3600*24*30):
-    """Genera URL firmada para acceso privado (30 días por defecto)."""
+def get_wasabi_presigned_url(key, expiry=3600*24*6):
+    """Genera URL firmada para acceso privado (6 días; Wasabi no permite mas de 7)."""
     try:
         client = get_wasabi_client()
         url = client.generate_presigned_url(
@@ -372,7 +372,7 @@ def get_download_url(url_original):
                 key = ruta[len(WASABI_BUCKET) + 1:]
             else:
                 key = ruta.split('/', 1)[1] if '/' in ruta else ruta
-            presigned = get_wasabi_presigned_url(key, expiry=3600*24*30)
+            presigned = get_wasabi_presigned_url(key, expiry=3600*24*6)
             if presigned:
                 return presigned
         except Exception as e:
@@ -383,7 +383,7 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v26-error-body'
+WATERMARK_VERSION = 'wm-v27-link-ok'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
                 filas=5, escala_alto=0.7, sep_rel=0.15,
