@@ -6,6 +6,7 @@ Persistencia: PostgreSQL (Render) + Cloudinary (imágenes)
 import os, json, smtplib, io, threading, math
 import time as _time
 import hashlib
+import urllib.request, urllib.parse
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import timedelta
@@ -175,6 +176,25 @@ SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
 SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
 SMTP_USER = os.environ.get('SMTP_USER', '')
 SMTP_PASS = os.environ.get('SMTP_PASS', '')
+
+# ── WhatsApp (Meta Cloud API) + aviso de venta al admin (CallMeBot) ───────────
+META_WA_TOKEN    = os.environ.get('META_WA_TOKEN', '')
+META_WA_PHONE_ID = os.environ.get('META_WA_PHONE_ID', '')
+META_WA_TEMPLATE = os.environ.get('META_WA_TEMPLATE', 'entrega_fotos')
+META_WA_ENABLED  = bool(META_WA_TOKEN and META_WA_PHONE_ID)
+CMB_PHONE        = os.environ.get('CMB_PHONE', '')   # tu numero (CallMeBot) para el aviso de venta
+CMB_APIKEY       = os.environ.get('CMB_APIKEY', '')
+PUBLIC_BASE_URL  = os.environ.get('PUBLIC_BASE_URL', 'https://nacholingua.com').rstrip('/')
+
+# ── Helpers de la galeria privada del cliente ─────────────────────────────────
+import secrets as _secrets
+def generar_token():
+    """Token unico para el link privado de la galeria del cliente."""
+    return _secrets.token_urlsafe(24)
+
+def url_galeria(token):
+    """URL publica de la galeria privada (sirve tambien fuera de un request)."""
+    return f"{PUBLIC_BASE_URL}/galeria/{token}"
 
 # (Reconocimiento facial eliminado)
 FACES_ENABLED = False
@@ -349,7 +369,7 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v19-wasabi'
+WATERMARK_VERSION = 'wm-v21-portada'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
                 filas=5, escala_alto=0.7, sep_rel=0.15,
@@ -919,14 +939,14 @@ def serializar_evento(e):
     cover_url = None
     if e.cover_foto_id:
         cf = Foto.query.get(e.cover_foto_id)
-        if cf: cover_url = cf.url_original
+        if cf: cover_url = cf.url_preview
     if not cover_url and e.fotos:
-        cover_url = e.fotos[0].url_original
+        cover_url = e.fotos[0].url_preview
     if not cover_url and e.subcarpetas:
         # Buscar portada en subcarpetas recursivamente
         for sub in e.subcarpetas:
             if sub.fotos:
-                cover_url = sub.fotos[0].url_original
+                cover_url = sub.fotos[0].url_preview
                 break
     return {
         'id':               e.id,
