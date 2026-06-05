@@ -363,12 +363,17 @@ def get_download_url(url_original):
         return url_original
     if 'wasabisys.com' in url_original or (WASABI_BUCKET and WASABI_BUCKET in url_original):
         try:
-            parts = url_original.split(f'{WASABI_BUCKET}/')
-            if len(parts) > 1:
-                key      = parts[1]
-                presigned = get_wasabi_presigned_url(key, expiry=3600*24*30)
-                if presigned:
-                    return presigned
+            # Sacar la KEY de forma robusta: el path es "/{bucket}/{key}".
+            # (Antes se hacia split sin limite y si el bucket coincidia con el
+            #  prefijo de la key, la key quedaba vacia -> link firmado 404.)
+            ruta = urllib.parse.urlparse(url_original).path.lstrip('/')   # "{bucket}/{key}"
+            if WASABI_BUCKET and ruta.startswith(WASABI_BUCKET + '/'):
+                key = ruta[len(WASABI_BUCKET) + 1:]
+            else:
+                key = ruta.split('/', 1)[1] if '/' in ruta else ruta
+            presigned = get_wasabi_presigned_url(key, expiry=3600*24*30)
+            if presigned:
+                return presigned
         except Exception as e:
             print(f'Error presigned URL: {e}')
     return url_original
@@ -377,7 +382,7 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v22-portada-limpia'
+WATERMARK_VERSION = 'wm-v23-descarga'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
                 filas=5, escala_alto=0.7, sep_rel=0.15,
