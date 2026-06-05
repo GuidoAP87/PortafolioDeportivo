@@ -6,7 +6,7 @@ Persistencia: PostgreSQL (Render) + Cloudinary (imágenes)
 import os, json, smtplib, io, threading, math
 import time as _time
 import hashlib
-import urllib.request, urllib.parse
+import urllib.request, urllib.parse, urllib.error
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import timedelta
@@ -383,7 +383,7 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v25-wasabi-path'
+WATERMARK_VERSION = 'wm-v26-error-body'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
                 filas=5, escala_alto=0.7, sep_rel=0.15,
@@ -1940,9 +1940,16 @@ def generar_covers():
             else:
                 fallidas += 1
                 if len(errores) < 5: errores.append(f'foto {f.id}: la generacion devolvio None')
+        except urllib.error.HTTPError as e:
+            db.session.rollback(); fallidas += 1
+            cuerpo = ''
+            try: cuerpo = e.read().decode('utf-8', 'ignore')[:350]
+            except Exception: pass
+            if len(errores) < 3:
+                errores.append(f'foto {f.id}: HTTP {e.code} -> {cuerpo}')
         except Exception as e:
             db.session.rollback(); fallidas += 1
-            if len(errores) < 5:
+            if len(errores) < 3:
                 errores.append(f'foto {f.id}: {type(e).__name__}: {str(e)[:200]}')
     return jsonify({'ok': True, 'generadas': generadas, 'ya_tenian': ya,
                     'fallidas': fallidas, 'sin_original': sin_original, 'errores': errores})
@@ -1975,6 +1982,12 @@ def diag_wasabi():
                 data = resp.read()
                 info['download_status'] = resp.status
                 info['download_bytes']  = len(data)
+        except urllib.error.HTTPError as e:
+            cuerpo = ''
+            try: cuerpo = e.read().decode('utf-8', 'ignore')[:450]
+            except Exception: pass
+            info['download_error'] = f'HTTP {e.code}'
+            info['wasabi_dice']    = cuerpo
         except Exception as e:
             info['download_error'] = f'{type(e).__name__}: {str(e)[:250]}'
     except Exception as e:
