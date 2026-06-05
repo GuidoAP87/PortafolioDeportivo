@@ -46,6 +46,7 @@ def get_wasabi_client():
         region_name           = WASABI_REGION,
         config                = Config(
             signature_version   = 's3v4',
+            s3                  = {'addressing_style': 'path'},   # Wasabi + bucket con guion bajo -> path style
             connect_timeout     = 10,
             read_timeout        = 60,
             retries             = {'max_attempts': 2, 'mode': 'standard'}
@@ -382,7 +383,7 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v24-diag'
+WATERMARK_VERSION = 'wm-v25-wasabi-path'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
                 filas=5, escala_alto=0.7, sep_rel=0.15,
