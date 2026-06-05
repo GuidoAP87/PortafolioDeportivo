@@ -16,6 +16,7 @@ from flask_cors import CORS
 from PIL import Image, ImageDraw, ImageFont
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import text as _sqltext
 import cloudinary, cloudinary.uploader
 import boto3
 from botocore.client import Config
@@ -220,6 +221,7 @@ class Foto(db.Model):
     id           = db.Column(db.Integer, primary_key=True)
     url_preview  = db.Column(db.String(500), nullable=False)
     url_original = db.Column(db.String(500), nullable=False)
+    url_cover    = db.Column(db.String(500), nullable=True)   # portada limpia (sin marca, baja res)
     precio       = db.Column(db.Float, default=3000.0)
     evento_id    = db.Column(db.Integer, db.ForeignKey('evento.id'), nullable=False)
     subida_en    = db.Column(db.DateTime, server_default=db.func.now())
@@ -306,6 +308,12 @@ class ConfigPrecios(db.Model):
 
 with app.app_context():
     db.create_all()
+    # migracion idempotente: agregar columna url_cover si falta
+    try:
+        db.session.execute(_sqltext('ALTER TABLE foto ADD COLUMN url_cover VARCHAR(500)'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 # ── PRICING CENTRALIZADO (única fuente de verdad) ─────────────────────────────
 def get_config():
@@ -369,7 +377,7 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v21-portada'
+WATERMARK_VERSION = 'wm-v22-portada-limpia'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
                 filas=5, escala_alto=0.7, sep_rel=0.15,
@@ -483,6 +491,7 @@ def _marca_core(imagen, texto='@Nacho Lingua',
 # 20.000 previews × ~450KB ≈ 9 GB  -> entran sobradas en 25 GB.
 MAX_PREVIEW_PX    = 1600   # lado largo máximo de la preview (se ve nítida igual)
 TARGET_PREVIEW_KB = 450    # peso objetivo por preview
+CLEAN_COVER_PX    = 800    # lado largo de la portada limpia (chica, no robable)
 
 def _reducir_para_preview(imagen):
     """Baja la resolución SOLO de la preview si supera MAX_PREVIEW_PX (nunca agranda)."""
@@ -506,6 +515,27 @@ def _guardar_jpeg_liviano(img_final, target_kb=TARGET_PREVIEW_KB):
     kb = buf.tell() // 1024
     buf.seek(0)
     return buf, q, kb
+
+
+def _generar_cover_limpia(raw_bytes):
+    """Portada SIN marca, en baja resolucion, subida a Cloudinary. Devuelve URL o None."""
+    try:
+        img = Image.open(io.BytesIO(raw_bytes))
+        if img.mode != 'RGB':
+            img = img.convert('RGB')
+        w, h = img.size
+        lado = max(w, h)
+        if lado > CLEAN_COVER_PX:
+            esc = CLEAN_COVER_PX / float(lado)
+            img = img.resize((max(1, int(w * esc)), max(1, int(h * esc))), Image.LANCZOS)
+        buf = io.BytesIO()
+        img.save(buf, 'JPEG', quality=72, optimize=True)
+        buf.seek(0)
+        r = cloudinary.uploader.upload(buf, folder='nacholingua_cover', resource_type='image', invalidate=True)
+        return r['secure_url']
+    except Exception as e:
+        print(f'[cover] no pude generar portada limpia: {e}')
+        return None
 
 
 def agregar_watermark(ruta_entrada, ruta_salida, texto='@Nacho Lingua'):
@@ -939,14 +969,14 @@ def serializar_evento(e):
     cover_url = None
     if e.cover_foto_id:
         cf = Foto.query.get(e.cover_foto_id)
-        if cf: cover_url = cf.url_preview
+        if cf: cover_url = cf.url_cover or cf.url_preview
     if not cover_url and e.fotos:
-        cover_url = e.fotos[0].url_preview
+        cover_url = e.fotos[0].url_cover or e.fotos[0].url_preview
     if not cover_url and e.subcarpetas:
         # Buscar portada en subcarpetas recursivamente
         for sub in e.subcarpetas:
             if sub.fotos:
-                cover_url = sub.fotos[0].url_preview
+                cover_url = sub.fotos[0].url_cover or sub.fotos[0].url_preview
                 break
     return {
         'id':               e.id,
@@ -1821,9 +1851,13 @@ def registrar_foto():
         except Exception as e:
             print(f'[registrar-foto] Wasabi fallo, dejo original en Cloudinary: {e}')
 
+    # ── 4) Portada LIMPIA (sin marca, baja resolucion) para el showcase ──────
+    url_cover = _generar_cover_limpia(raw) if raw is not None else None
+
     foto = Foto(
         url_preview  = url_preview,
         url_original = url_original,
+        url_cover    = url_cover,
         precio       = precio,
         evento_id    = evento_id,
     )
@@ -1873,6 +1907,35 @@ def migrar_wasabi():
             fallidas += 1
 
     return jsonify({'ok': True, 'movidas': movidas, 'ya_en_wasabi': ya_wasabi,
+                    'fallidas': fallidas, 'sin_original': sin_original})
+
+
+@app.route('/admin/generar-covers', methods=['POST'])
+def generar_covers():
+    """Genera la portada limpia (sin marca) de las fotos que aun no la tienen.
+    Baja el original (Wasabi o Cloudinary), hace una version chica sin marca y la
+    sube a Cloudinary. Uso unico, para las fotos viejas. Solo admin."""
+    if not session.get('admin'):
+        return jsonify({'error': 'No autorizado'}), 403
+    import urllib.request
+    generadas = fallidas = ya = sin_original = 0
+    for f in Foto.query.all():
+        if getattr(f, 'url_cover', None):
+            ya += 1; continue
+        srcu = get_download_url(f.url_original) if f.url_original else None
+        if not srcu:
+            sin_original += 1; continue
+        try:
+            with urllib.request.urlopen(srcu) as resp:
+                raw = resp.read()
+            u = _generar_cover_limpia(raw)
+            if u:
+                f.url_cover = u; db.session.commit(); generadas += 1
+            else:
+                fallidas += 1
+        except Exception as e:
+            print(f'[gen-covers] foto {f.id} fallo: {e}'); db.session.rollback(); fallidas += 1
+    return jsonify({'ok': True, 'generadas': generadas, 'ya_tenian': ya,
                     'fallidas': fallidas, 'sin_original': sin_original})
 
 
