@@ -382,7 +382,7 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v23-descarga'
+WATERMARK_VERSION = 'wm-v24-diag'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
                 filas=5, escala_alto=0.7, sep_rel=0.15,
@@ -1917,31 +1917,68 @@ def migrar_wasabi():
 
 @app.route('/admin/generar-covers', methods=['POST'])
 def generar_covers():
-    """Genera la portada limpia (sin marca) de las fotos que aun no la tienen.
-    Baja el original (Wasabi o Cloudinary), hace una version chica sin marca y la
-    sube a Cloudinary. Uso unico, para las fotos viejas. Solo admin."""
+    """Genera la portada limpia (sin marca) de las fotos que aun no la tienen."""
     if not session.get('admin'):
         return jsonify({'error': 'No autorizado'}), 403
     import urllib.request
     generadas = fallidas = ya = sin_original = 0
+    errores = []
     for f in Foto.query.all():
         if getattr(f, 'url_cover', None):
             ya += 1; continue
-        srcu = get_download_url(f.url_original) if f.url_original else None
-        if not srcu:
+        if not f.url_original:
             sin_original += 1; continue
         try:
-            with urllib.request.urlopen(srcu) as resp:
+            srcu = get_download_url(f.url_original)
+            req  = urllib.request.Request(srcu, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=60) as resp:
                 raw = resp.read()
             u = _generar_cover_limpia(raw)
             if u:
                 f.url_cover = u; db.session.commit(); generadas += 1
             else:
                 fallidas += 1
+                if len(errores) < 5: errores.append(f'foto {f.id}: la generacion devolvio None')
         except Exception as e:
-            print(f'[gen-covers] foto {f.id} fallo: {e}'); db.session.rollback(); fallidas += 1
+            db.session.rollback(); fallidas += 1
+            if len(errores) < 5:
+                errores.append(f'foto {f.id}: {type(e).__name__}: {str(e)[:200]}')
     return jsonify({'ok': True, 'generadas': generadas, 'ya_tenian': ya,
-                    'fallidas': fallidas, 'sin_original': sin_original})
+                    'fallidas': fallidas, 'sin_original': sin_original, 'errores': errores})
+
+
+@app.route('/admin/diag-wasabi', methods=['GET'])
+def diag_wasabi():
+    """Diagnostico: intenta bajar el original de la primera foto y devuelve el detalle."""
+    if not session.get('admin'):
+        return jsonify({'error': 'No autorizado'}), 403
+    import urllib.request
+    f = Foto.query.first()
+    if not f:
+        return jsonify({'error': 'no hay fotos'})
+    info = {'foto_id': f.id, 'url_original': f.url_original, 'bucket': WASABI_BUCKET,
+            'region': WASABI_REGION, 'endpoint': WASABI_ENDPOINT, 'wasabi_enabled': WASABI_ENABLED}
+    try:
+        ruta = urllib.parse.urlparse(f.url_original or '').path.lstrip('/')
+        if WASABI_BUCKET and ruta.startswith(WASABI_BUCKET + '/'):
+            key = ruta[len(WASABI_BUCKET) + 1:]
+        else:
+            key = ruta.split('/', 1)[1] if '/' in ruta else ruta
+        info['key'] = key
+        presigned = get_wasabi_presigned_url(key)
+        info['presigned_ok']   = bool(presigned)
+        info['presigned_host'] = urllib.parse.urlparse(presigned).netloc if presigned else None
+        try:
+            req = urllib.request.Request(presigned, headers={'User-Agent': 'Mozilla/5.0'})
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                data = resp.read()
+                info['download_status'] = resp.status
+                info['download_bytes']  = len(data)
+        except Exception as e:
+            info['download_error'] = f'{type(e).__name__}: {str(e)[:250]}'
+    except Exception as e:
+        info['error'] = f'{type(e).__name__}: {str(e)[:250]}'
+    return jsonify(info)
 
 
 if __name__ == '__main__':
