@@ -545,6 +545,7 @@ function abrirEvento(eventoId) {
 
     document.getElementById('portfolio').style.display = 'none';
     document.getElementById('about').style.display     = 'none';
+    var _ph = document.getElementById('packs-home'); if (_ph) _ph.style.display = 'none';
 
     const view = document.getElementById('event-view');
     view.style.display = 'block';
@@ -707,6 +708,7 @@ function mostrarSubcarpetas(ev) {
     const ruta = breadcrumbEvento(ev.id, eventosData) || [ev];
     document.getElementById('portfolio').style.display = 'none';
     document.getElementById('about').style.display     = 'none';
+    var _ph = document.getElementById('packs-home'); if (_ph) _ph.style.display = 'none';
     const view = document.getElementById('event-view');
     view.style.display = 'block';
 
@@ -811,6 +813,7 @@ function cerrarEvento() {
     document.getElementById('event-view').style.display = 'none';
     document.getElementById('portfolio').style.removeProperty('display');
     document.getElementById('about').style.removeProperty('display');
+    var _ph2 = document.getElementById('packs-home'); if (_ph2) _ph2.style.removeProperty('display');
     window.scrollTo({ top: document.getElementById('portfolio').offsetTop - 68, behavior: 'smooth' });
 }
 
