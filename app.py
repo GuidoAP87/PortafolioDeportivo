@@ -210,6 +210,7 @@ class Evento(db.Model):
     fecha         = db.Column(db.String(50))
     descripcion   = db.Column(db.String(300))
     cover_foto_id = db.Column(db.Integer, nullable=True)
+    usar_portada  = db.Column(db.Boolean, default=True)   # False = carpeta madre solo-titulo (sin portada)
     parent_id     = db.Column(db.Integer, db.ForeignKey('evento.id'), nullable=True)
     creado_en     = db.Column(db.DateTime, server_default=db.func.now())
     fotos         = db.relationship('Foto', backref='evento', lazy=True, cascade='all, delete-orphan')
@@ -315,6 +316,11 @@ with app.app_context():
         db.session.commit()
     except Exception:
         db.session.rollback()
+    try:
+        db.session.execute(_sqltext('ALTER TABLE evento ADD COLUMN usar_portada BOOLEAN DEFAULT TRUE'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
 
 # ── PRICING CENTRALIZADO (única fuente de verdad) ─────────────────────────────
 def get_config():
@@ -383,7 +389,7 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v27-link-ok'
+WATERMARK_VERSION = 'wm-v28-carpetas'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
                 filas=5, escala_alto=0.7, sep_rel=0.15,
@@ -984,6 +990,8 @@ def serializar_evento(e):
             if sub.fotos:
                 cover_url = sub.fotos[0].url_cover or sub.fotos[0].url_preview
                 break
+    if getattr(e, 'usar_portada', True) is False:
+        cover_url = None          # carpeta madre solo-titulo
     return {
         'id':               e.id,
         'titulo':           e.titulo,
@@ -991,6 +999,7 @@ def serializar_evento(e):
         'fecha':            e.fecha,
         'descripcion':      e.descripcion,
         'cover_foto_id':    e.cover_foto_id,
+        'usar_portada':     bool(getattr(e, 'usar_portada', True)),
         'cover_url':        cover_url,
         'parent_id':        e.parent_id,
         'total_fotos':      len(e.fotos),
@@ -1014,6 +1023,7 @@ def crear_evento():
         deporte = d.get('deporte', '')
     ev = Evento(titulo=d.get('titulo',''), deporte=deporte,
                 fecha=d.get('fecha',''), descripcion=d.get('descripcion',''),
+                usar_portada=bool(d.get('usar_portada', True)),
                 parent_id=parent_id)
     db.session.add(ev); db.session.commit()
     return jsonify({'id': ev.id, 'mensaje': 'Carpeta creada'})
@@ -1033,6 +1043,7 @@ def editar_evento(ev_id):
     if 'deporte'     in d: ev.deporte     = d['deporte']
     if 'fecha'       in d: ev.fecha       = d['fecha']
     if 'descripcion' in d: ev.descripcion = d['descripcion']
+    if 'usar_portada' in d: ev.usar_portada = bool(d['usar_portada'])
     db.session.commit()
     return jsonify({'ok': True})
 
@@ -1068,6 +1079,7 @@ def crear_subcarpeta(ev_id):
         deporte   = padre.deporte,
         fecha     = d.get('fecha', ''),
         descripcion = d.get('descripcion', ''),
+        usar_portada = bool(d.get('usar_portada', True)),
         parent_id = ev_id
     )
     db.session.add(sub); db.session.commit()

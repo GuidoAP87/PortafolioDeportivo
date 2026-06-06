@@ -300,13 +300,33 @@ function breadcrumbEvento(id, lista, ruta = []) {
 }
 
 function renderEventoCard(ev, i) {
-    const cover    = ev.cover_url || ev.fotos?.[0]?.url_preview || '';
+    const sinPortada = ev.usar_portada === false;
     const count    = ev.total_fotos ?? ev.fotos?.length ?? 0;
     const delay    = Math.min(i * 0.06, 0.45);
     const subCount = ev.total_subcarpetas ?? ev.subcarpetas?.length ?? 0;
     const hasSub   = subCount > 0;
     const feat     = i === 0 ? ' feature' : '';
     const fold     = hasSub ? ' folder' : '';
+    const cover    = sinPortada ? '' : (ev.cover_url || ev.fotos?.[0]?.url_preview || '');
+
+    // Carpeta SOLO-TITULO (madre sin portada): tarjeta vistosa, sin imagen
+    if (sinPortada) {
+        return `
+        <article class="event-card titleonly folder reveal"
+             style="transition-delay:${delay}s"
+             onclick="abrirEvento(${ev.id})" role="button" tabindex="0"
+             onkeydown="if(event.key==='Enter')abrirEvento(${ev.id})">
+            <span class="ec-line"></span>
+            <div class="to-glow"></div>
+            <div class="ec-folder-badge"><i class="fa-solid fa-folder-open"></i></div>
+            <div class="to-content">
+                <span class="to-kicker">${ev.deporte || 'Galería'}</span>
+                <h3 class="to-title">${ev.titulo}</h3>
+                <div class="to-meta">${hasSub ? `${subCount} carpeta${subCount!==1?'s':''}` : `${count} foto${count!==1?'s':''}`}</div>
+                <span class="ec-enter">Abrir carpeta <span class="arw">→</span></span>
+            </div>
+        </article>`;
+    }
 
     const coverHtml = cover
         ? `<img class="ec-img" src="${cover}" alt="${ev.titulo}" loading="lazy">`
@@ -666,7 +686,7 @@ function renderVistaEvento(ev) {
             </div>
         </div>
         ${adminBar}
-        ${renderPackCTA(ev)}
+        
         <div class="photos-grid">${fotosHTML}</div>`;
 }
 
@@ -741,14 +761,18 @@ async function crearSubcarpeta(parentId) {
                        width:88%;margin-bottom:10px;font-family:Inter,sans-serif;">
             <input id="sub-fecha" type="date" class="swal2-input"
                 style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);
-                       width:88%;font-family:Inter,sans-serif;">`,
+                       width:88%;font-family:Inter,sans-serif;">
+            <label style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:14px;font-size:12.5px;color:#bbb;cursor:pointer;">
+                <input type="checkbox" id="sub-portada" checked style="width:auto;accent-color:#D4A843;transform:scale(1.15);">
+                Mostrar foto de portada <span style="color:#777;">(destildá para solo-título)</span>
+            </label>`,
         focusConfirm: false, showCancelButton: true,
         confirmButtonText: 'Crear subcarpeta', cancelButtonText: 'Cancelar',
         confirmButtonColor: '#D4A843', cancelButtonColor: '#555',
         preConfirm: () => {
             const titulo = document.getElementById('sub-titulo').value.trim();
             if (!titulo) { Swal.showValidationMessage('El nombre es requerido'); return false; }
-            return { titulo, parent_id: parentId, fecha: document.getElementById('sub-fecha').value };
+            return { titulo, parent_id: parentId, fecha: document.getElementById('sub-fecha').value, usar_portada: document.getElementById('sub-portada').checked };
         }
     });
     if (!vals) return;
@@ -960,7 +984,11 @@ async function crearEvento() {
             <input id="ev-fecha" type="date" class="swal2-input"
                 style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);width:88%;margin-bottom:10px;font-family:Inter,sans-serif;">
             <input id="ev-desc" class="swal2-input" placeholder="Descripción breve (opcional)"
-                style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);width:88%;font-family:Inter,sans-serif;">`,
+                style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);width:88%;font-family:Inter,sans-serif;">
+            <label style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:14px;font-size:12.5px;color:#bbb;cursor:pointer;">
+                <input type="checkbox" id="ev-portada" checked style="width:auto;accent-color:#D4A843;transform:scale(1.15);">
+                Mostrar foto de portada <span style="color:#777;">(destildá si es carpeta madre solo-título)</span>
+            </label>`,
         focusConfirm: false, showCancelButton: true,
         confirmButtonText: 'Crear evento', cancelButtonText: 'Cancelar',
         confirmButtonColor: '#D4A843', cancelButtonColor: '#555',
@@ -970,7 +998,8 @@ async function crearEvento() {
             if (!titulo || !deporte) { Swal.showValidationMessage('Título y categoría son requeridos'); return false; }
             return { titulo, deporte,
                      fecha: document.getElementById('ev-fecha').value,
-                     descripcion: document.getElementById('ev-desc').value.trim() };
+                     descripcion: document.getElementById('ev-desc').value.trim(),
+                     usar_portada: document.getElementById('ev-portada').checked };
         }
     });
     if (!vals) return;
@@ -1878,6 +1907,13 @@ async function procesarEventoIA(eventoId) {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // CTA destacado en la galería (req 3.2): "opción recomendada"
+function packWhatsApp(tipo) {
+    const msg = tipo === 'impresion'
+        ? 'Hola Nacho! Quiero el Pack Jugador + 2 impresiones 13x18 ($30.000). ¿Cómo coordino la compra?'
+        : 'Hola Nacho! Quiero el Pack Jugador ($25.000). ¿Cómo coordino la compra?';
+    window.open(`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
+}
+
 function renderPackCTA(ev) {
     const fotos = (ev.fotos || []);
     if (!fotos.length) return '';                 // sin fotos no tiene sentido
