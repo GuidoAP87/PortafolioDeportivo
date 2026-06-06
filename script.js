@@ -567,12 +567,24 @@ function renderVistaEvento(ev) {
                     <span class="upload-zone-icon"><i class="fa-solid fa-cloud-arrow-up"></i></span>
                     <span>
                         <div class="upload-zone-text" id="upload-label-${ev.id}">Subir fotos al evento</div>
-                        <div class="upload-zone-sub">Podés arrastrar archivos aquí · Se suben con marca de agua automáticamente</div>
+                        <div class="upload-zone-sub">Arrastrá fotos o una carpeta entera · Se suben con marca de agua automáticamente</div>
                     </span>
                     <input type="file" id="file-input-${ev.id}" name="foto" accept="image/*" multiple
                         onchange="this.form.dispatchEvent(new Event('submit'))" hidden>
                 </label>
             </form>
+            <input type="file" id="folder-input-${ev.id}" webkitdirectory directory multiple hidden
+                onchange="subirCarpeta(event, ${ev.id})">
+            <button type="button" onclick="document.getElementById('folder-input-${ev.id}').click()"
+                style="height:68px;padding:0 16px;border:1px solid var(--gold-dim);color:var(--gold);
+                       font-size:11px;cursor:pointer;text-transform:uppercase;letter-spacing:1px;
+                       transition:0.3s;background:none;font-family:Inter,sans-serif;
+                       display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;"
+                onmouseover="this.style.background='rgba(212,168,67,0.08)'"
+                onmouseout="this.style.background='none'">
+                <i class="fa-solid fa-folder-arrow-up"></i>
+                <span>Carpeta</span>
+            </button>
             <button onclick="editarEvento(${ev.id})"
                 style="height:68px;padding:0 16px;border:1px solid var(--ink-5);color:var(--text-dim);
                        font-size:11px;cursor:pointer;text-transform:uppercase;letter-spacing:1px;
@@ -810,16 +822,52 @@ function initDragDrop(eventoId) {
     ['dragleave','drop'].forEach(ev => {
         zone.addEventListener(ev, e => { e.preventDefault(); zone.classList.remove('dragover'); });
     });
-    zone.addEventListener('drop', e => {
-        const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
-        if (!files.length) return;
+    zone.addEventListener('drop', async e => {
+        e.preventDefault();
         const input = document.getElementById(`file-input-${eventoId}`);
         if (!input) return;
+        // webkitGetAsEntry hay que llamarlo sincrónico, durante el drop
+        const items   = e.dataTransfer.items;
+        const entries = items ? Array.from(items).map(it => it.webkitGetAsEntry && it.webkitGetAsEntry()).filter(Boolean) : [];
+        let files;
+        if (entries.some(en => en && en.isDirectory)) {
+            toast('Leyendo la carpeta…', 'info', 1500);
+            files = await leerImagenesDeEntries(entries);   // recorre carpetas y subcarpetas
+        } else {
+            files = Array.from(e.dataTransfer.files);
+        }
+        files = files.filter(f => f.type && f.type.startsWith('image/'));
+        if (!files.length) { toast('No encontré imágenes en lo que soltaste', 'info'); return; }
         const dt = new DataTransfer();
         files.forEach(f => dt.items.add(f));
         input.files = dt.files;
         document.getElementById(`upload-form-${eventoId}`)?.dispatchEvent(new Event('submit'));
     });
+}
+
+// Recorre entries (archivos y carpetas, recursivo) y junta los File de imagen
+function leerImagenesDeEntries(entries) {
+    const out = [];
+    const fileOf = entry => new Promise(res => entry.file(f => res(f), () => res(null)));
+    const readDir = reader => new Promise(res => {
+        const acc = [];
+        const next = () => reader.readEntries(batch => {
+            if (!batch.length) return res(acc);
+            acc.push(...batch); next();
+        }, () => res(acc));
+        next();
+    });
+    const walk = async entry => {
+        if (!entry) return;
+        if (entry.isFile) {
+            const f = await fileOf(entry);
+            if (f && f.type && f.type.startsWith('image/')) out.push(f);
+        } else if (entry.isDirectory) {
+            const kids = await readDir(entry.createReader());
+            for (const k of kids) await walk(k);
+        }
+    };
+    return (async () => { for (const en of entries) await walk(en); return out; })();
 }
 
 function guardarCarrito() {
@@ -1049,6 +1097,17 @@ async function editarEvento(eventoId) {
         if (evActualizado) { eventoActual = evActualizado; document.getElementById('event-view').innerHTML = renderVistaEvento(evActualizado); initDragDrop(eventoId); }
         toast('Evento actualizado', 'success');
     } else { toast('Error al guardar', 'error'); }
+}
+
+function subirCarpeta(event, eventoId) {
+    const imgs = Array.from(event.target.files || []).filter(f => f.type && f.type.startsWith('image/'));
+    if (!imgs.length) { toast('Esa carpeta no tiene imágenes', 'info'); return; }
+    const main = document.getElementById(`file-input-${eventoId}`);
+    const dt = new DataTransfer();
+    imgs.forEach(f => dt.items.add(f));
+    main.files = dt.files;
+    document.getElementById(`upload-form-${eventoId}`)?.dispatchEvent(new Event('submit'));
+    event.target.value = '';
 }
 
 async function subirFotos(event, eventoId) {
