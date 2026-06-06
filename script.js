@@ -549,6 +549,7 @@ function abrirEvento(eventoId) {
     const view = document.getElementById('event-view');
     view.style.display = 'block';
     view.innerHTML     = renderVistaEvento(ev);
+    view.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
 
     initDragDrop(ev.id);
 
@@ -759,6 +760,8 @@ function mostrarSubcarpetas(ev) {
             ${subCardsHTML}
         </div>`;
 
+    // Mostrar las tarjetas SÍ o SÍ (el observer de 'reveal' a veces no dispara al entrar)
+    view.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
     initReveal();
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
