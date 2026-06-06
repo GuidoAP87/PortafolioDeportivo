@@ -721,7 +721,40 @@ function mostrarSubcarpetas(ev) {
             <span style="color:var(--text-dim);margin:0 6px">/</span>`;
     }).join('');
 
-    const subCardsHTML = (ev.subcarpetas || []).map((sub, i) => renderEventoCard(sub, i)).join('');
+    // Render robusto de subcarpetas: tarjetas SIEMPRE visibles (sin depender de 'reveal')
+    const subs = ev.subcarpetas || [];
+    const subCardsHTML = subs.length
+        ? subs.map(sub => {
+            const sc    = sub.total_subcarpetas ?? (sub.subcarpetas ? sub.subcarpetas.length : 0);
+            const fc    = sub.total_fotos ?? (sub.fotos ? sub.fotos.length : 0);
+            const cover = (sub.usar_portada === false) ? '' : (sub.cover_url || (sub.fotos && sub.fotos[0] && sub.fotos[0].url_preview) || '');
+            const inner = cover
+                ? `<img src="${cover}" alt="${sub.titulo}" loading="lazy" style="width:100%;height:100%;object-fit:cover;">`
+                : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#19150c,var(--ink-2));color:var(--gold);font-size:34px;"><i class="fa-solid ${sc>0?'fa-folder-open':'fa-camera'}"></i></div>`;
+            return `
+            <article onclick="abrirEvento(${sub.id})" role="button" tabindex="0"
+                onkeydown="if(event.key==='Enter')abrirEvento(${sub.id})"
+                style="cursor:pointer;border:1px solid var(--ink-4);background:var(--ink-2);overflow:hidden;transition:border-color .25s,transform .25s;"
+                onmouseover="this.style.borderColor='var(--gold)';this.style.transform='translateY(-3px)'"
+                onmouseout="this.style.borderColor='var(--ink-4)';this.style.transform='none'">
+                <div style="aspect-ratio:4/3;position:relative;">
+                    ${inner}
+                    <span style="position:absolute;top:10px;left:10px;background:rgba(0,0,0,.6);color:var(--gold);font-size:10px;padding:4px 8px;letter-spacing:1px;">
+                        <i class="fa-solid ${sc>0?'fa-folder':'fa-camera'}"></i> ${sc>0?sc:fc}
+                    </span>
+                </div>
+                <div style="padding:15px 16px;">
+                    <h3 style="font-family:'Bebas Neue',sans-serif;font-weight:400;font-size:22px;color:#fff;margin:0 0 4px;letter-spacing:1px;">${sub.titulo}</h3>
+                    <div style="font-size:12px;color:var(--text-sub);">
+                        ${sc>0 ? sc+' subcarpeta'+(sc!==1?'s':'') : fc+' foto'+(fc!==1?'s':'')}
+                    </div>
+                </div>
+            </article>`;
+        }).join('')
+        : `<div style="grid-column:1/-1;text-align:center;padding:54px 20px;border:1px dashed var(--ink-5);color:var(--text-dim);">
+                <i class="fa-solid fa-folder-open" style="font-size:34px;color:var(--gold-dim);margin-bottom:14px;display:block;"></i>
+                <p style="margin:0;font-size:14px;">Esta carpeta todavía no tiene subcarpetas.<br>Creá una con el botón <strong style="color:var(--gold)">"Nueva subcarpeta"</strong> de arriba.</p>
+           </div>`;
 
     const adminBtns = isAdmin ? `
         <button onclick="crearSubcarpeta(${ev.id})"
