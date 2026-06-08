@@ -318,9 +318,7 @@ function renderEventoCard(ev, i) {
              onkeydown="if(event.key==='Enter')abrirEvento(${ev.id})">
             <span class="ec-line"></span>
             <div class="to-glow"></div>
-            <div class="ec-folder-badge"><i class="fa-solid fa-folder-open"></i></div>
             <div class="to-content">
-                <span class="to-kicker">${ev.deporte || 'Galería'}</span>
                 <h3 class="to-title">${ev.titulo}</h3>
                 <div class="to-meta">${hasSub ? `${subCount} carpeta${subCount!==1?'s':''}` : `${count} foto${count!==1?'s':''}`}</div>
                 <span class="ec-enter">Abrir carpeta <span class="arw">→</span></span>
