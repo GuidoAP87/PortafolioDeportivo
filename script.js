@@ -38,20 +38,20 @@ const PRECIO_BASE = 3000;
 // ─── LÓGICA DE PRECIOS POR VOLUMEN ───────────────────────────────────────────
 let NL_CONFIG = null;  // se carga desde /config-precios (parametrizable)
 
-function getPrecioUnitario(cantidad) {
-    // Lee la escala de volumen desde la config del backend; si no cargó, usa fallback.
-    if (NL_CONFIG && Array.isArray(NL_CONFIG.escala_volumen) && NL_CONFIG.escala_volumen.length) {
-        const escala = [...NL_CONFIG.escala_volumen].sort((a, b) => a.min - b.min);
-        let precio = escala[0].precio;
-        for (const t of escala) if (cantidad >= t.min) precio = t.precio;
-        return precio;
+function precioEscalera(n) {
+    // Escalera por cantidad (TOTAL): 1=3000, 2=5500, 5=10000, 10=17500. Interpola y es monótona.
+    n = Math.max(0, Math.floor(n));
+    if (n === 0) return 0;
+    const pts = [[1,3000],[2,5500],[5,10000],[10,17500]];
+    for (let i = 0; i < pts.length - 1; i++) {
+        const [a, pa] = pts[i], [b, pb] = pts[i+1];
+        if (n >= a && n <= b) return Math.round(pa + (pb - pa) * (n - a) / (b - a));
     }
-    if (cantidad === 1) return 3000;
-    if (cantidad === 2) return 2700;
-    if (cantidad === 3) return 2500;
-    if (cantidad === 4) return 2300;
-    if (cantidad >= 5)  return 2000;
-    return 3000;
+    return Math.round(17500 + (n - 10) * 1500);
+}
+
+function getPrecioUnitario(cantidad) {
+    return cantidad > 0 ? Math.round(precioEscalera(cantidad) / cantidad) : 0;
 }
 
 async function cargarConfigPrecios() {
@@ -67,23 +67,15 @@ async function cargarConfigPrecios() {
  * - Si tiene precio base: aplica descuento por volumen según cuántas fotos SIN precio custom hay
  */
 function calcularPreciosCarrito() {
+    // Escalera por cantidad: el total depende de CUÁNTAS fotos, no del precio individual.
     const items = [...carrito.values()];
-
-    // Separar fotos con precio custom de las normales
-    const conPrecioCustom = items.filter(({foto}) => foto.precio_custom === true);
-    const sinPrecioCustom = items.filter(({foto}) => !foto.precio_custom);
-
-    // El descuento por volumen aplica solo a las fotos sin precio custom
-    const precioUnitarioNormal = getPrecioUnitario(sinPrecioCustom.length);
-
-    return items.map(({foto, evento}) => {
-        const precio = foto.precio_custom ? foto.precio : precioUnitarioNormal;
-        return { foto, evento, precio };
-    });
+    const n = items.length;
+    const unit = n > 0 ? Math.round(precioEscalera(n) / n) : 0;
+    return items.map(({foto, evento}) => ({ foto, evento, precio: unit }));
 }
 
 function calcularTotalCarrito() {
-    return calcularPreciosCarrito().reduce((s, {precio}) => s + precio, 0);
+    return precioEscalera(carrito.size);
 }
 
 // ─── ESTADO ───────────────────────────────────────────────────────────────────
@@ -312,18 +304,13 @@ function renderEventoCard(ev, i) {
     // Carpeta SOLO-TITULO (madre sin portada): tarjeta vistosa, sin imagen
     if (sinPortada) {
         return `
-        <article class="event-card titleonly folder reveal"
-             style="transition-delay:${delay}s"
-             onclick="abrirEvento(${ev.id})" role="button" tabindex="0"
-             onkeydown="if(event.key==='Enter')abrirEvento(${ev.id})">
-            <span class="ec-line"></span>
-            <div class="to-glow"></div>
-            <div class="to-content">
-                <h3 class="to-title">${ev.titulo}</h3>
-                <div class="to-meta">${hasSub ? `${subCount} carpeta${subCount!==1?'s':''}` : `${count} foto${count!==1?'s':''}`}</div>
-                <span class="ec-enter">Abrir carpeta <span class="arw">→</span></span>
-            </div>
-        </article>`;
+        <div class="folder-bar" style="grid-column:1/-1" onclick="abrirEvento(${ev.id})"
+             role="button" tabindex="0" onkeydown="if(event.key==='Enter')abrirEvento(${ev.id})">
+            <i class="fa-solid fa-folder-open folder-bar-ico"></i>
+            <h3 class="folder-bar-title">${ev.titulo}</h3>
+            <span class="folder-bar-meta">${hasSub ? `${subCount} carpeta${subCount!==1?'s':''}` : `${count} foto${count!==1?'s':''}`}</span>
+            <i class="fa-solid fa-chevron-right folder-bar-arrow"></i>
+        </div>`;
     }
 
     const coverHtml = cover
@@ -730,24 +717,13 @@ function mostrarSubcarpetas(ev) {
                 ? `<img src="${cover}" alt="${sub.titulo}" loading="lazy" style="width:100%;height:100%;object-fit:cover;">`
                 : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#19150c,var(--ink-2));color:var(--gold);font-size:34px;"><i class="fa-solid ${sc>0?'fa-folder-open':'fa-camera'}"></i></div>`;
             return `
-            <article onclick="abrirEvento(${sub.id})" role="button" tabindex="0"
-                onkeydown="if(event.key==='Enter')abrirEvento(${sub.id})"
-                style="cursor:pointer;border:1px solid var(--ink-4);background:var(--ink-2);overflow:hidden;transition:border-color .25s,transform .25s;"
-                onmouseover="this.style.borderColor='var(--gold)';this.style.transform='translateY(-3px)'"
-                onmouseout="this.style.borderColor='var(--ink-4)';this.style.transform='none'">
-                <div style="aspect-ratio:4/3;position:relative;">
-                    ${inner}
-                    <span style="position:absolute;top:10px;left:10px;background:rgba(0,0,0,.6);color:var(--gold);font-size:10px;padding:4px 8px;letter-spacing:1px;">
-                        <i class="fa-solid ${sc>0?'fa-folder':'fa-camera'}"></i> ${sc>0?sc:fc}
-                    </span>
-                </div>
-                <div style="padding:15px 16px;">
-                    <h3 style="font-family:'Bebas Neue',sans-serif;font-weight:400;font-size:22px;color:#fff;margin:0 0 4px;letter-spacing:1px;">${sub.titulo}</h3>
-                    <div style="font-size:12px;color:var(--text-sub);">
-                        ${sc>0 ? sc+' subcarpeta'+(sc!==1?'s':'') : fc+' foto'+(fc!==1?'s':'')}
-                    </div>
-                </div>
-            </article>`;
+            <div class="folder-bar" onclick="abrirEvento(${sub.id})" role="button" tabindex="0"
+                 onkeydown="if(event.key==='Enter')abrirEvento(${sub.id})">
+                <i class="fa-solid ${sc>0?'fa-folder-open':'fa-images'} folder-bar-ico"></i>
+                <h3 class="folder-bar-title">${sub.titulo}</h3>
+                <span class="folder-bar-meta">${sc>0 ? sc+' carpeta'+(sc!==1?'s':'') : fc+' foto'+(fc!==1?'s':'')}</span>
+                <i class="fa-solid fa-chevron-right folder-bar-arrow"></i>
+            </div>`;
         }).join('')
         : `<div style="grid-column:1/-1;text-align:center;padding:54px 20px;border:1px dashed var(--ink-5);color:var(--text-dim);">
                 <i class="fa-solid fa-folder-open" style="font-size:34px;color:var(--gold-dim);margin-bottom:14px;display:block;"></i>
@@ -789,7 +765,7 @@ function mostrarSubcarpetas(ev) {
                 </span>
             </div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:2px;padding:0 8% 40px;">
+        <div style="display:flex;flex-direction:column;gap:8px;padding:0 8% 40px;max-width:880px;margin:0 auto;">
             ${subCardsHTML}
         </div>`;
 
@@ -1102,7 +1078,7 @@ async function crearEvento() {
 }
 
 async function editarEvento(eventoId) {
-    const ev = eventosData.find(e => e.id === eventoId);
+    const ev = buscarEvento(eventoId, eventosData);
     if (!ev) return;
     const { value: vals } = await Swal.fire({
         title: 'Editar Evento',
@@ -1130,7 +1106,7 @@ async function editarEvento(eventoId) {
     });
     if (res.ok) {
         await cargarEventos();
-        const evActualizado = eventosData.find(e => e.id === eventoId);
+        const evActualizado = buscarEvento(eventoId, eventosData);
         if (evActualizado) { eventoActual = evActualizado; document.getElementById('event-view').innerHTML = renderVistaEvento(evActualizado); initDragDrop(eventoId); }
         toast('Evento actualizado', 'success');
     } else { toast('Error al guardar', 'error'); }
@@ -1355,7 +1331,7 @@ function quitarDelCarritoCheckout(fotoId) {
 
 // ─── ELEGIR PORTADA ───────────────────────────────────────────────────────────
 async function elegirPortada(eventoId, fotoId, btn) {
-    const ev = eventosData.find(e => e.id === eventoId);
+    const ev = buscarEvento(eventoId, eventosData);
     if (!ev) return;
 
     // Si ya es la portada, resetear a automático

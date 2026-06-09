@@ -342,6 +342,20 @@ def precio_unitario_volumen(cantidad, cfg=None):
             precio = tramo['precio']
     return precio
 
+def precio_escalera(n):
+    """Escalera de precios por cantidad (TOTAL): 1=3000, 2=5500, 5=10000, 10=17500.
+    Interpola entre los puntos y extrapola arriba de 10. Siempre monotona."""
+    n = max(0, int(n))
+    if n == 0:
+        return 0
+    pts = [(1, 3000), (2, 5500), (5, 10000), (10, 17500)]
+    for i in range(len(pts) - 1):
+        a, pa = pts[i]; b, pb = pts[i + 1]
+        if a <= n <= b:
+            return int(round(pa + (pb - pa) * (n - a) / (b - a)))
+    return int(round(17500 + (n - 10) * 1500))
+
+
 def calcular_total(foto_ids, tipo='individual', cfg=None):
     """Calcula (total, items_mp). tipo: individual | pack_digital | pack_impresion."""
     cfg = cfg or get_config()
@@ -354,10 +368,9 @@ def calcular_total(foto_ids, tipo='individual', cfg=None):
         total = float(cfg.pack_impresion_precio)
         return total, [{'title': 'Pack Jugador + 2 impresiones 13x18', 'quantity': 1,
                         'unit_price': total, 'currency_id': 'ARS'}]
-    pu = precio_unitario_volumen(cantidad, cfg)
-    total = pu * cantidad
-    return total, [{'title': f'Nacho Lingua — {cantidad} foto(s)', 'quantity': cantidad,
-                    'unit_price': float(pu), 'currency_id': 'ARS'}]
+    total = precio_escalera(cantidad)
+    return total, [{'title': f'Nacho Lingua — {cantidad} foto(s)', 'quantity': 1,
+                    'unit_price': float(total), 'currency_id': 'ARS'}]
 
 
 def get_download_url(url_original):
@@ -389,7 +402,7 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v28-carpetas'
+WATERMARK_VERSION = 'wm-v29-escalera'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
                 filas=5, escala_alto=0.7, sep_rel=0.15,

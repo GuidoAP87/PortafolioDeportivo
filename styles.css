@@ -1391,3 +1391,12 @@ body.menu-open .mm-link:nth-of-type(3){animation-delay:.2s;}
 .event-card.titleonly .to-title { font-family:'Bebas Neue',sans-serif; font-weight:400; font-size:clamp(1.9rem,3.4vw,3.4rem); line-height:.92; letter-spacing:1px; color:#fff; margin:0 0 12px; text-shadow:0 2px 24px rgba(0,0,0,.55); }
 .event-card.titleonly .to-meta { font-size:12.5px; color:var(--text-sub); margin-bottom:16px; letter-spacing:.4px; }
 .event-card.titleonly .ec-folder-badge { z-index:3; }
+
+/* ═══ CARPETAS COMO BARRAS CHIQUITAS (navegación, sin portada) ═══ */
+.folder-bar { display:flex; align-items:center; gap:14px; padding:16px 20px; background:var(--ink-2); border:1px solid var(--ink-4); border-left:3px solid var(--gold); cursor:pointer; transition:background .2s, transform .2s, border-color .2s; }
+.folder-bar:hover { background:var(--ink-3); border-left-color:var(--gold-light); transform:translateX(4px); }
+.folder-bar-ico { color:var(--gold); font-size:20px; flex-shrink:0; width:24px; text-align:center; }
+.folder-bar-title { font-family:'Bebas Neue',sans-serif; font-weight:400; font-size:23px; letter-spacing:1px; color:#fff; flex:1; margin:0; line-height:1; }
+.folder-bar-meta { font-size:12px; color:var(--text-sub); white-space:nowrap; }
+.folder-bar-arrow { color:var(--gold); font-size:13px; margin-left:6px; flex-shrink:0; transition:transform .2s; }
+.folder-bar:hover .folder-bar-arrow { transform:translateX(3px); }
