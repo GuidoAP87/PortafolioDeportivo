@@ -385,8 +385,10 @@ body::after {
 /* ─── GALERÍA DE EVENTOS ──────────────────────────────────────── */
 #gallery-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-    gap: 2px;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    grid-auto-rows: 240px;
+    gap: 14px;
+    grid-auto-flow: dense;
 }
 
 .event-card {
@@ -1258,7 +1260,7 @@ body.menu-open .mm-link:nth-of-type(3){animation-delay:.2s;}
   border:1px solid var(--ink-5);color:var(--text-sub);font-size:15px;transition:all var(--t);}
 .mm-social a:hover{color:var(--gold);border-color:var(--gold-dim);}
 
-#gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));
+#gallery-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));
   grid-auto-rows:240px;gap:14px;grid-auto-flow:dense;}
 .event-card{position:relative;overflow:hidden;cursor:pointer;background:var(--ink-2);
   border:1px solid var(--ink-4);aspect-ratio:auto;transition:opacity .7s ease,transform .7s ease;}
@@ -1393,13 +1395,17 @@ body.menu-open .mm-link:nth-of-type(3){animation-delay:.2s;}
 .event-card.titleonly .ec-folder-badge { z-index:3; }
 
 /* ═══ CARPETAS COMO BARRAS CHIQUITAS (navegación, sin portada) ═══ */
-.folder-bar { display:flex; align-items:center; gap:14px; padding:13px 20px; background:var(--ink-2); border:1px solid var(--ink-4); border-left:3px solid var(--gold); cursor:pointer; transition:background .2s, transform .2s, border-color .2s; }
-.folder-bar:hover { background:var(--ink-3); border-left-color:var(--gold-light); transform:translateX(4px); }
-.folder-bar-ico { color:var(--gold); font-size:20px; flex-shrink:0; width:24px; text-align:center; }
-.folder-bar-title { font-family:'Bebas Neue',sans-serif; font-weight:400; font-size:21px; letter-spacing:1px; color:#fff; flex:1; margin:0; line-height:1; }
-.folder-bar-meta { font-size:12px; color:var(--text-sub); white-space:nowrap; }
-.folder-bar-arrow { color:var(--gold); font-size:13px; margin-left:6px; flex-shrink:0; transition:transform .2s; }
-.folder-bar:hover .folder-bar-arrow { transform:translateX(3px); }
+.folder-bar { 
+    display: flex; flex-direction: column; justify-content: center; align-items: center; 
+    text-align: center; gap: 10px; padding: 24px 20px; background: var(--ink-2); 
+    border: 1px solid var(--ink-4); border-bottom: 3px solid var(--gold); 
+    cursor: pointer; transition: all .2s; height: 100%; min-height: 200px; 
+}
+.folder-bar:hover { background:var(--ink-3); border-bottom-color:var(--gold-light); transform:translateY(-4px); }
+.folder-bar-ico { color:var(--gold); font-size:42px; margin-bottom: 8px; }
+.folder-bar-title { font-family:'Bebas Neue',sans-serif; font-weight:400; font-size:24px; letter-spacing:1px; color:#fff; line-height:1; }
+.folder-bar-meta { font-size:13px; color:var(--text-sub); }
+.folder-bar-arrow { display: none; }
 
 /* Contenedor de barras de carpeta: columna apilada, finitas, fuera del grid de fotos */
 #gallery-folders { display:flex; flex-direction:column; gap:8px; max-width:900px; margin:0 auto 16px; padding:0 4%; }

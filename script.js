@@ -304,7 +304,7 @@ function renderEventoCard(ev, i) {
     // Carpeta SOLO-TITULO (madre sin portada): tarjeta vistosa, sin imagen
     if (sinPortada) {
         return `
-        <div class="folder-bar" style="grid-column:1/-1" onclick="abrirEvento(${ev.id})"
+        <div class="folder-bar" onclick="abrirEvento(${ev.id})"
              role="button" tabindex="0" onkeydown="if(event.key==='Enter')abrirEvento(${ev.id})">
             <i class="fa-solid fa-folder-open folder-bar-ico"></i>
             <h3 class="folder-bar-title">${ev.titulo}</h3>
@@ -765,7 +765,7 @@ function mostrarSubcarpetas(ev) {
                 </span>
             </div>
         </div>
-        <div style="display:flex;flex-direction:column;gap:8px;padding:0 8% 40px;max-width:880px;margin:0 auto;">
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;padding:0 8% 40px;max-width:1200px;margin:0 auto;">
             ${subCardsHTML}
         </div>`;
 
