@@ -252,7 +252,7 @@ async function cargarEventos() {
                 </button>`;
             });
             if (isAdmin) {
-                html += `<button class="sport-btn sport-btn-add" onclick="adminCategorias()">
+                html += `<button class="sport-btn sport-btn-add" onclick="adminCategorias()" title="Gestionar categorías">
                     <span class="sport-btn-icon">⚙️</span>
                     <span class="sport-btn-label">Gestionar</span>
                 </button>`;
@@ -262,7 +262,8 @@ async function cargarEventos() {
 
         renderEventos();
         configurarFiltros();
-    } catch {
+    } catch (e) {
+        console.error("Error al cargar galerías:", e);
         grid.innerHTML = '<div class="empty-state"><i class="fa-solid fa-triangle-exclamation" style="font-size:28px;color:var(--text-dim);margin-bottom:12px"></i><p>No se pudieron cargar las galerías.</p></div>';
     }
 }
@@ -706,16 +707,13 @@ function mostrarSubcarpetas(ev) {
             <span style="color:var(--text-dim);margin:0 6px">/</span>`;
     }).join('');
 
-    // Render robusto de subcarpetas: tarjetas SIEMPRE visibles (sin depender de 'reveal')
+    // Render robusto de subcarpetas (formato listón)
     const subs = ev.subcarpetas || [];
     const subCardsHTML = subs.length
         ? subs.map(sub => {
             const sc    = sub.total_subcarpetas ?? (sub.subcarpetas ? sub.subcarpetas.length : 0);
             const fc    = sub.total_fotos ?? (sub.fotos ? sub.fotos.length : 0);
-            const cover = (sub.usar_portada === false) ? '' : (sub.cover_url || (sub.fotos && sub.fotos[0] && sub.fotos[0].url_preview) || '');
-            const inner = cover
-                ? `<img src="${cover}" alt="${sub.titulo}" loading="lazy" style="width:100%;height:100%;object-fit:cover;">`
-                : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#19150c,var(--ink-2));color:var(--gold);font-size:34px;"><i class="fa-solid ${sc>0?'fa-folder-open':'fa-camera'}"></i></div>`;
+            
             return `
             <div class="folder-bar" onclick="abrirEvento(${sub.id})" role="button" tabindex="0"
                  onkeydown="if(event.key==='Enter')abrirEvento(${sub.id})">
@@ -725,7 +723,7 @@ function mostrarSubcarpetas(ev) {
                 <i class="fa-solid fa-chevron-right folder-bar-arrow"></i>
             </div>`;
         }).join('')
-        : `<div style="grid-column:1/-1;text-align:center;padding:54px 20px;border:1px dashed var(--ink-5);color:var(--text-dim);">
+        : `<div style="text-align:center;padding:54px 20px;border:1px dashed var(--ink-5);color:var(--text-dim);">
                 <i class="fa-solid fa-folder-open" style="font-size:34px;color:var(--gold-dim);margin-bottom:14px;display:block;"></i>
                 <p style="margin:0;font-size:14px;">Esta carpeta todavía no tiene subcarpetas.<br>Creá una con el botón <strong style="color:var(--gold)">"Nueva subcarpeta"</strong> de arriba.</p>
            </div>`;
@@ -765,11 +763,12 @@ function mostrarSubcarpetas(ev) {
                 </span>
             </div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:14px;padding:0 8% 40px;max-width:1200px;margin:0 auto;">
+        
+        <div style="display:flex;flex-direction:column;gap:6px;padding:0 8% 40px;max-width:1200px;margin:0 auto;">
             ${subCardsHTML}
         </div>`;
 
-    // Mostrar las tarjetas SÍ o SÍ (el observer de 'reveal' a veces no dispara al entrar)
+    // Mostrar las tarjetas SÍ o SÍ
     view.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
     initReveal();
     window.scrollTo({ top: 0, behavior: 'smooth' });
