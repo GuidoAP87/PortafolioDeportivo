@@ -1393,10 +1393,14 @@ body.menu-open .mm-link:nth-of-type(3){animation-delay:.2s;}
 .event-card.titleonly .ec-folder-badge { z-index:3; }
 
 /* ═══ CARPETAS COMO BARRAS CHIQUITAS (navegación, sin portada) ═══ */
-.folder-bar { display:flex; align-items:center; gap:14px; padding:16px 20px; background:var(--ink-2); border:1px solid var(--ink-4); border-left:3px solid var(--gold); cursor:pointer; transition:background .2s, transform .2s, border-color .2s; }
+.folder-bar { display:flex; align-items:center; gap:14px; padding:13px 20px; background:var(--ink-2); border:1px solid var(--ink-4); border-left:3px solid var(--gold); cursor:pointer; transition:background .2s, transform .2s, border-color .2s; }
 .folder-bar:hover { background:var(--ink-3); border-left-color:var(--gold-light); transform:translateX(4px); }
 .folder-bar-ico { color:var(--gold); font-size:20px; flex-shrink:0; width:24px; text-align:center; }
-.folder-bar-title { font-family:'Bebas Neue',sans-serif; font-weight:400; font-size:23px; letter-spacing:1px; color:#fff; flex:1; margin:0; line-height:1; }
+.folder-bar-title { font-family:'Bebas Neue',sans-serif; font-weight:400; font-size:21px; letter-spacing:1px; color:#fff; flex:1; margin:0; line-height:1; }
 .folder-bar-meta { font-size:12px; color:var(--text-sub); white-space:nowrap; }
 .folder-bar-arrow { color:var(--gold); font-size:13px; margin-left:6px; flex-shrink:0; transition:transform .2s; }
 .folder-bar:hover .folder-bar-arrow { transform:translateX(3px); }
+
+/* Contenedor de barras de carpeta: columna apilada, finitas, fuera del grid de fotos */
+#gallery-folders { display:flex; flex-direction:column; gap:8px; max-width:900px; margin:0 auto 16px; padding:0 4%; }
+#gallery-folders:empty { display:none; }
