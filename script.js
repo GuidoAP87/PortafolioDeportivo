@@ -252,7 +252,7 @@ async function cargarEventos() {
                 </button>`;
             });
             if (isAdmin) {
-                html += `<button class="sport-btn sport-btn-add" onclick="adminCategorias()" title="Gestionar categorías">
+                html += `<button class="sport-btn sport-btn-add" onclick="adminCategorias()">
                     <span class="sport-btn-icon">⚙️</span>
                     <span class="sport-btn-label">Gestionar</span>
                 </button>`;
@@ -262,8 +262,7 @@ async function cargarEventos() {
 
         renderEventos();
         configurarFiltros();
-    } catch (e) {
-        console.error("Error al cargar galerías:", e);
+    } catch {
         grid.innerHTML = '<div class="empty-state"><i class="fa-solid fa-triangle-exclamation" style="font-size:28px;color:var(--text-dim);margin-bottom:12px"></i><p>No se pudieron cargar las galerías.</p></div>';
     }
 }
@@ -305,7 +304,7 @@ function renderEventoCard(ev, i) {
     // Carpeta SOLO-TITULO (madre sin portada): tarjeta vistosa, sin imagen
     if (sinPortada) {
         return `
-        <div class="folder-bar" onclick="abrirEvento(${ev.id})"
+        <div class="folder-bar" style="grid-column:1/-1" onclick="abrirEvento(${ev.id})"
              role="button" tabindex="0" onkeydown="if(event.key==='Enter')abrirEvento(${ev.id})">
             <i class="fa-solid fa-folder-open folder-bar-ico"></i>
             <h3 class="folder-bar-title">${ev.titulo}</h3>
@@ -348,6 +347,19 @@ function renderEventoCard(ev, i) {
     </article>`;
 }
 
+function renderEventoBarra(ev) {
+    var subCount = (ev.total_subcarpetas != null) ? ev.total_subcarpetas : (ev.subcarpetas ? ev.subcarpetas.length : 0);
+    var count    = (ev.total_fotos != null) ? ev.total_fotos : (ev.fotos ? ev.fotos.length : 0);
+    var hasSub   = subCount > 0;
+    return '' +
+    '<div class="folder-bar" onclick="abrirEvento(' + ev.id + ')" role="button" tabindex="0" onkeydown="if(event.key===\'Enter\')abrirEvento(' + ev.id + ')">' +
+        '<i class="fa-solid ' + (hasSub ? 'fa-folder-open' : 'fa-images') + ' folder-bar-ico"></i>' +
+        '<h3 class="folder-bar-title">' + ev.titulo + '</h3>' +
+        '<span class="folder-bar-meta">' + (hasSub ? subCount + ' carpeta' + (subCount!==1?'s':'') : count + ' foto' + (count!==1?'s':'')) + '</span>' +
+        '<i class="fa-solid fa-chevron-right folder-bar-arrow"></i>' +
+    '</div>';
+}
+
 function renderEventos(filtro = 'all') {
     const grid = document.getElementById('gallery-grid');
     const data = filtro === 'all'
@@ -355,12 +367,22 @@ function renderEventos(filtro = 'all') {
         : eventosData.filter(e =>
             e.deporte.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g,'') === filtro);
 
+    // Barras de carpeta en su propio contenedor (fuera del grid de fotos -> quedan finitas)
+    let foldersCont = document.getElementById('gallery-folders');
+    if (!foldersCont && grid) {
+        foldersCont = document.createElement('div');
+        foldersCont.id = 'gallery-folders';
+        grid.parentNode.insertBefore(foldersCont, grid);
+    }
+
+    if (grid) grid.innerHTML = '';  // todo se muestra como barra finita; el grid de cards queda sin usar
+
     if (!data.length) {
-        grid.innerHTML = '<div class="empty-state"><p>No hay eventos en esta categoría aún.</p></div>';
+        if (foldersCont) foldersCont.innerHTML = '<div class="empty-state"><p>No hay eventos en esta categoría aún.</p></div>';
         return;
     }
 
-    grid.innerHTML = data.map((ev, i) => renderEventoCard(ev, i)).join('');
+    if (foldersCont) foldersCont.innerHTML = data.map(renderEventoBarra).join('');
 
     initReveal();
     configurarFiltros();
@@ -707,13 +729,16 @@ function mostrarSubcarpetas(ev) {
             <span style="color:var(--text-dim);margin:0 6px">/</span>`;
     }).join('');
 
-    // Render robusto de subcarpetas (formato listón)
+    // Render robusto de subcarpetas: tarjetas SIEMPRE visibles (sin depender de 'reveal')
     const subs = ev.subcarpetas || [];
     const subCardsHTML = subs.length
         ? subs.map(sub => {
             const sc    = sub.total_subcarpetas ?? (sub.subcarpetas ? sub.subcarpetas.length : 0);
             const fc    = sub.total_fotos ?? (sub.fotos ? sub.fotos.length : 0);
-            
+            const cover = (sub.usar_portada === false) ? '' : (sub.cover_url || (sub.fotos && sub.fotos[0] && sub.fotos[0].url_preview) || '');
+            const inner = cover
+                ? `<img src="${cover}" alt="${sub.titulo}" loading="lazy" style="width:100%;height:100%;object-fit:cover;">`
+                : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#19150c,var(--ink-2));color:var(--gold);font-size:34px;"><i class="fa-solid ${sc>0?'fa-folder-open':'fa-camera'}"></i></div>`;
             return `
             <div class="folder-bar" onclick="abrirEvento(${sub.id})" role="button" tabindex="0"
                  onkeydown="if(event.key==='Enter')abrirEvento(${sub.id})">
@@ -723,7 +748,7 @@ function mostrarSubcarpetas(ev) {
                 <i class="fa-solid fa-chevron-right folder-bar-arrow"></i>
             </div>`;
         }).join('')
-        : `<div style="text-align:center;padding:54px 20px;border:1px dashed var(--ink-5);color:var(--text-dim);">
+        : `<div style="grid-column:1/-1;text-align:center;padding:54px 20px;border:1px dashed var(--ink-5);color:var(--text-dim);">
                 <i class="fa-solid fa-folder-open" style="font-size:34px;color:var(--gold-dim);margin-bottom:14px;display:block;"></i>
                 <p style="margin:0;font-size:14px;">Esta carpeta todavía no tiene subcarpetas.<br>Creá una con el botón <strong style="color:var(--gold)">"Nueva subcarpeta"</strong> de arriba.</p>
            </div>`;
@@ -763,12 +788,11 @@ function mostrarSubcarpetas(ev) {
                 </span>
             </div>
         </div>
-        
-        <div style="display:flex;flex-direction:column;gap:6px;padding:0 8% 40px;max-width:1200px;margin:0 auto;">
+        <div style="display:flex;flex-direction:column;gap:8px;padding:0 8% 40px;max-width:880px;margin:0 auto;">
             ${subCardsHTML}
         </div>`;
 
-    // Mostrar las tarjetas SÍ o SÍ
+    // Mostrar las tarjetas SÍ o SÍ (el observer de 'reveal' a veces no dispara al entrar)
     view.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
     initReveal();
     window.scrollTo({ top: 0, behavior: 'smooth' });
