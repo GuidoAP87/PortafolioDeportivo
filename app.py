@@ -402,7 +402,7 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v29-escalera'
+WATERMARK_VERSION = 'wm-v30-testwa'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
                 filas=5, escala_alto=0.7, sep_rel=0.15,
@@ -1408,6 +1408,45 @@ def admin_re_watermark():
 
 
 # ── MÉTRICAS DE VENTAS (req. 4) ───────────────────────────────────────────────
+@app.route('/admin/test-wa', methods=['GET'])
+def admin_test_wa():
+    """Prueba de envio de WhatsApp a un numero arbitrario. Devuelve la respuesta cruda de Meta."""
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    if not META_WA_ENABLED:
+        return jsonify({'ok': False, 'error': 'WhatsApp no configurado: faltan META_WA_TOKEN o META_WA_PHONE_ID en Variables.'}), 400
+    to = (request.args.get('to') or '').strip().replace('+', '').replace(' ', '').replace('-', '')
+    if not to:
+        return jsonify({'ok': False, 'error': 'Falta el numero. Usa /admin/test-wa?to=5493546515567'}), 400
+    tipo = (request.args.get('tipo') or 'plantilla').lower()
+    if tipo == 'hello':
+        payload = {"messaging_product": "whatsapp", "to": to, "type": "template",
+                   "template": {"name": "hello_world", "language": {"code": "en_US"}}}
+    else:
+        payload = {"messaging_product": "whatsapp", "to": to, "type": "template",
+                   "template": {"name": META_WA_TEMPLATE, "language": {"code": "es_AR"},
+                                "components": [{"type": "body", "parameters": [
+                                    {"type": "text", "text": "Guido"},
+                                    {"type": "text", "text": "https://nacholingua.com/galeria/prueba"}
+                                ]}]}}
+    try:
+        req = urllib.request.Request(
+            f"https://graph.facebook.com/v19.0/{META_WA_PHONE_ID}/messages",
+            data=json.dumps(payload).encode('utf-8'),
+            headers={"Content-Type": "application/json", "Authorization": f"Bearer {META_WA_TOKEN}"},
+            method="POST")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = json.loads(resp.read().decode('utf-8'))
+        return jsonify({'ok': True, 'enviado_a': to, 'tipo': tipo, 'respuesta': body})
+    except Exception as e:
+        detail = str(e)
+        try:
+            if hasattr(e, 'read'):
+                detail = e.read().decode('utf-8', 'replace')
+        except Exception:
+            pass
+        return jsonify({'ok': False, 'enviado_a': to, 'tipo': tipo, 'error': detail}), 200
+
+
 @app.route('/admin/metricas', methods=['GET'])
 def admin_metricas():
     if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
