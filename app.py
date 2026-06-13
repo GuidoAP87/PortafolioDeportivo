@@ -402,7 +402,7 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v30-testwa'
+WATERMARK_VERSION = 'wm-v31-testwa2'
 
 def _marca_core(imagen, texto='@Nacho Lingua',
                 filas=5, escala_alto=0.7, sep_rel=0.15,
@@ -1410,8 +1410,11 @@ def admin_re_watermark():
 # ── MÉTRICAS DE VENTAS (req. 4) ───────────────────────────────────────────────
 @app.route('/admin/test-wa', methods=['GET'])
 def admin_test_wa():
-    """Prueba de envio de WhatsApp a un numero arbitrario. Devuelve la respuesta cruda de Meta."""
-    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    """Prueba de envio de WhatsApp a un numero arbitrario. Devuelve la respuesta cruda de Meta.
+    Autoriza con sesion de admin O con ?key=<ADMIN_PASSWORD> para poder probar desde la barra del navegador."""
+    _key = request.args.get('key', '')
+    if not session.get('admin') and _key != os.environ.get('ADMIN_PASSWORD', 'NachoAdmin2026!'):
+        return jsonify({'error': 'No autorizado'}), 403
     if not META_WA_ENABLED:
         return jsonify({'ok': False, 'error': 'WhatsApp no configurado: faltan META_WA_TOKEN o META_WA_PHONE_ID en Variables.'}), 400
     to = (request.args.get('to') or '').strip().replace('+', '').replace(' ', '').replace('-', '')
