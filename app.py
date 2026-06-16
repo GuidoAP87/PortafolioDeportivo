@@ -3,7 +3,7 @@ NACHO LINGUA FOTOGRAFÍA — Backend Flask 2026
 Persistencia: PostgreSQL (Render) + Cloudinary (imágenes)
 """
 
-import os, json, smtplib, io, threading, math
+import os, json, smtplib, io, threading, math, re, hmac
 import time as _time
 import hashlib
 import urllib.request, urllib.parse, urllib.error
@@ -20,6 +20,10 @@ from sqlalchemy import text as _sqltext
 import cloudinary, cloudinary.uploader
 import boto3
 from botocore.client import Config
+try:
+    import phonenumbers          # normalización de números AR (pip install phonenumbers)
+except ImportError:
+    phonenumbers = None
 
 # ── CLOUDINARY (solo para previews con marca de agua) ────────────────────────
 cloudinary.config(
@@ -179,10 +183,17 @@ SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
 SMTP_USER = os.environ.get('SMTP_USER', '')
 SMTP_PASS = os.environ.get('SMTP_PASS', '')
 
+# ── AUTH ADMIN ────────────────────────────────────────────────────────────────
+# Sin default hardcodeado: DEBE estar seteada en Railway. Si queda vacía, el
+# login de admin y el acceso por ?key= quedan deshabilitados (no exponemos la
+# contraseña en el repo público).
+ADMIN_PASSWORD = os.environ.get('ADMIN_PASSWORD', '')
+
 # ── WhatsApp (Meta Cloud API) + aviso de venta al admin (CallMeBot) ───────────
 META_WA_TOKEN    = os.environ.get('META_WA_TOKEN', '')
 META_WA_PHONE_ID = os.environ.get('META_WA_PHONE_ID', '')
 META_WA_TEMPLATE = os.environ.get('META_WA_TEMPLATE', 'entrega_fotos')
+META_GRAPH_VER   = os.environ.get('META_GRAPH_VERSION', 'v21.0')  # versión de la Graph API, configurable
 META_WA_ENABLED  = bool(META_WA_TOKEN and META_WA_PHONE_ID)
 CMB_PHONE        = os.environ.get('CMB_PHONE', '')   # tu numero (CallMeBot) para el aviso de venta
 CMB_APIKEY       = os.environ.get('CMB_APIKEY', '')
@@ -585,6 +596,32 @@ def agregar_watermark_5x(img_bytes, texto='@Nacho Lingua', **kwargs):
     return out
 
 # ── ENVÍO POR WHATSAPP (Meta Cloud API) ───────────────────────────────────────
+def normalizar_wa_ar(numero):
+    """Normaliza un número argentino al formato que espera la API de WhatsApp:
+    54 + 9 + área + número (sin 0 inicial, sin 15, sin símbolos).
+    Devuelve los dígitos sin '+', o None si el número no parece válido."""
+    if not numero:
+        return None
+    if phonenumbers is not None:
+        try:
+            p = phonenumbers.parse(numero, 'AR')
+            if phonenumbers.is_valid_number(p):
+                # E.164 devuelve '+549XXXXXXXXXX' para móviles AR; sacamos el '+'
+                return phonenumbers.format_number(
+                    p, phonenumbers.PhoneNumberFormat.E164).lstrip('+')
+        except Exception:
+            pass
+    # Fallback sin la librería: limpieza básica + prefijo 549
+    n = re.sub(r'\D', '', numero or '')
+    if not n:
+        return None
+    if n.startswith('549'):
+        return n
+    if n.startswith('54'):
+        return '549' + n[2:].lstrip('0')
+    return '549' + n.lstrip('0')
+
+
 def enviar_wa_cliente(compra):
     """Envía el link de galería al cliente por WhatsApp vía Meta Cloud API."""
     if not META_WA_ENABLED:
@@ -625,7 +662,7 @@ def enviar_wa_cliente(compra):
 
     try:
         req = urllib.request.Request(
-            f"https://graph.facebook.com/v19.0/{META_WA_PHONE_ID}/messages",
+            f"https://graph.facebook.com/{META_GRAPH_VER}/{META_WA_PHONE_ID}/messages",
             data    = json.dumps(payload).encode('utf-8'),
             headers = {
                 "Content-Type":  "application/json",
@@ -1228,7 +1265,7 @@ def crear_orden():
     total, mp_items = calcular_total([f.id for f in fotos], tipo=tipo, cfg=cfg)
     base_url = request.host_url.rstrip('/')
 
-    wa = d.get('whatsapp', '').strip().replace(' ','').replace('+','').replace('-','').replace('(','').replace(')','')
+    wa = normalizar_wa_ar(d.get('whatsapp', ''))
     compra = Compra(
         email_cliente    = email,
         nombre_cliente   = nombre,
@@ -1259,31 +1296,70 @@ def crear_orden():
         return jsonify({'init_point': result['response']['init_point'], 'compra_id': compra.id})
     return jsonify({'error': 'Error al crear preferencia MP'}), 500
 
+def _verificar_firma_mp(req):
+    """Valida la firma 'x-signature' de Mercado Pago. Solo se activa si está
+    configurado MP_WEBHOOK_SECRET en el entorno; si no, devuelve True (no valida).
+    OJO: esta validación no fue probada en vivo; tenela apagada hasta confirmarla."""
+    secret = os.environ.get('MP_WEBHOOK_SECRET', '')
+    if not secret:
+        return True  # validación desactivada
+    try:
+        x_sig   = req.headers.get('x-signature', '')
+        x_req   = req.headers.get('x-request-id', '')
+        partes  = dict(p.split('=', 1) for p in x_sig.split(',') if '=' in p)
+        ts, v1  = partes.get('ts', '').strip(), partes.get('v1', '').strip()
+        data_id = (req.args.get('data.id', '') or '').lower()
+        manifest = f'id:{data_id};request-id:{x_req};ts:{ts};'
+        firma = hmac.new(secret.encode(), manifest.encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(firma, v1)
+    except Exception as e:
+        print(f'[mp-webhook] error validando firma: {e}')
+        return False
+
+
 @app.route('/mp-webhook', methods=['POST'])
 def mp_webhook():
-    d = request.json
-    if d and d.get('type') == 'payment' and MP_HABILITADO:
+    # Validación de firma (solo si configuraste MP_WEBHOOK_SECRET)
+    if not _verificar_firma_mp(request):
+        print('[mp-webhook] firma inválida, descarto la notificación')
+        return jsonify({'status': 'invalid signature'}), 401
+
+    d = request.json or {}
+    if d.get('type') == 'payment' and MP_HABILITADO:
         pid = d.get('data', {}).get('id')
         if pid:
-            r = MP_SDK.payment().get(pid)
-            if r['status'] == 200:
+            try:
+                r = MP_SDK.payment().get(pid)
+            except Exception as e:
+                print(f'[mp-webhook] error consultando pago {pid}: {e}')
+                return jsonify({'status': 'ok'}), 200
+            if r.get('status') == 200:
                 pay = r['response']
-                compra = Compra.query.filter_by(mp_preference_id=pay.get('preference_id')).first()
+                # Buscar la compra por external_reference (exacto) y, si no,
+                # caer a preference_id como respaldo.
+                ext    = pay.get('external_reference')
+                compra = None
+                if ext and str(ext).isdigit():
+                    compra = Compra.query.get(int(ext))
+                if not compra:
+                    compra = Compra.query.filter_by(
+                        mp_preference_id=pay.get('preference_id')).first()
                 if compra:
                     compra.mp_payment_id = str(pid)
-                    compra.estado = pay.get('status', 'desconocido')
+                    compra.estado        = pay.get('status', 'desconocido')
                     db.session.commit()
-                    if compra.estado == 'approved' and not compra.email_enviado:
-                        threading.Thread(target=entregar_compra, args=(compra.id,), daemon=True).start()
+                    if compra.estado == 'approved' and (
+                            not compra.email_enviado or not compra.wa_enviado):
+                        threading.Thread(target=entregar_compra,
+                                         args=(compra.id,), daemon=True).start()
     return jsonify({'status': 'ok'}), 200
 
 @app.route('/pago-exitoso')
 def pago_exitoso():
-    cid = request.args.get('cid')
-    compra = Compra.query.get(cid) if cid else None
-    if compra and not compra.email_enviado:
-        compra.estado = 'approved'; db.session.commit()
-        threading.Thread(target=entregar_compra, args=(compra.id,), daemon=True).start()
+    # NO marcamos 'approved' ni entregamos acá: el cliente puede caer en esta
+    # página con un pago PENDIENTE o sin haber pagado (probando la URL). La
+    # única fuente de verdad es /mp-webhook, que confirma el estado real del
+    # pago consultándolo contra la API de Mercado Pago.
     return send_from_directory('.', 'pago-exitoso.html')
 
 @app.route('/pago-fallido')
@@ -1413,7 +1489,7 @@ def admin_test_wa():
     """Prueba de envio de WhatsApp a un numero arbitrario. Devuelve la respuesta cruda de Meta.
     Autoriza con sesion de admin O con ?key=<ADMIN_PASSWORD> para poder probar desde la barra del navegador."""
     _key = request.args.get('key', '')
-    if not session.get('admin') and _key != os.environ.get('ADMIN_PASSWORD', 'NachoAdmin2026!'):
+    if not session.get('admin') and not (ADMIN_PASSWORD and _key == ADMIN_PASSWORD):
         return jsonify({'error': 'No autorizado'}), 403
     if not META_WA_ENABLED:
         return jsonify({'ok': False, 'error': 'WhatsApp no configurado: faltan META_WA_TOKEN o META_WA_PHONE_ID en Variables.'}), 400
@@ -1433,7 +1509,7 @@ def admin_test_wa():
                                 ]}]}}
     try:
         req = urllib.request.Request(
-            f"https://graph.facebook.com/v19.0/{META_WA_PHONE_ID}/messages",
+            f"https://graph.facebook.com/{META_GRAPH_VER}/{META_WA_PHONE_ID}/messages",
             data=json.dumps(payload).encode('utf-8'),
             headers={"Content-Type": "application/json", "Authorization": f"Bearer {META_WA_TOKEN}"},
             method="POST")
@@ -1787,8 +1863,8 @@ def marcar_leida(cid):
 # ── AUTH ──────────────────────────────────────────────────────────────────────
 @app.route('/login', methods=['POST'])
 def login():
-    d = request.json; pw = os.environ.get('ADMIN_PASSWORD', 'NachoAdmin2026!')
-    if d.get('password') == pw:
+    d = request.json or {}
+    if ADMIN_PASSWORD and d.get('password') == ADMIN_PASSWORD:
         session.permanent = True; session['admin'] = True; return jsonify({'success': True})
     return jsonify({'success': False}), 401
 
