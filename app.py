@@ -530,7 +530,17 @@ TARGET_PREVIEW_KB = 450    # peso objetivo por preview
 CLEAN_COVER_PX    = 800    # lado largo de la portada limpia (chica, no robable)
 
 def _reducir_para_preview(imagen):
-    """Baja la resolución SOLO de la preview si supera MAX_PREVIEW_PX (nunca agranda)."""
+    """Baja la resolución SOLO de la preview si supera MAX_PREVIEW_PX (nunca agranda).
+    Usa draft() para que el decode de JPEGs grandes sea rápido y liviano en RAM:
+    le pide al decoder JPEG que cargue la imagen a ~1/2, 1/4 u 1/8 directamente, en
+    vez de descomprimir TODOS los megapíxeles y recién después redimensionar. Eso es
+    lo que evita el timeout/502 con fotos grandes. draft() nunca deja la imagen por
+    debajo del tamaño pedido, así que la preview sigue quedando en MAX_PREVIEW_PX."""
+    # draft() solo aplica a JPEG y debe llamarse ANTES de cargar los píxeles.
+    try:
+        imagen.draft('RGB', (MAX_PREVIEW_PX, MAX_PREVIEW_PX))
+    except Exception:
+        pass
     w, h = imagen.size
     lado = max(w, h)
     if lado > MAX_PREVIEW_PX:
