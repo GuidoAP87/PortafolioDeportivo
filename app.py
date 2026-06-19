@@ -110,9 +110,11 @@ def get_wasabi_presigned_url(key, expiry=3600*24*6):
     """Genera URL firmada para acceso privado (6 días; Wasabi no permite mas de 7)."""
     try:
         client = get_wasabi_client()
+        fname = os.path.basename(key) or 'nacho-lingua-foto.jpg'
         url = client.generate_presigned_url(
             'get_object',
-            Params={'Bucket': WASABI_BUCKET, 'Key': key},
+            Params={'Bucket': WASABI_BUCKET, 'Key': key,
+                    'ResponseContentDisposition': f'attachment; filename="{fname}"'},
             ExpiresIn=expiry
         )
         return url
@@ -235,7 +237,7 @@ class Foto(db.Model):
     url_preview  = db.Column(db.String(500), nullable=False)
     url_original = db.Column(db.String(500), nullable=False)
     url_cover    = db.Column(db.String(500), nullable=True)   # portada limpia (sin marca, baja res)
-    precio       = db.Column(db.Float, default=3000.0)
+    precio       = db.Column(db.Float, default=3200.0)
     evento_id    = db.Column(db.Integer, db.ForeignKey('evento.id'), nullable=False)
     subida_en    = db.Column(db.DateTime, server_default=db.func.now())
 
@@ -354,8 +356,8 @@ def precio_unitario_volumen(cantidad, cfg=None):
     return precio
 
 def precio_escalera(n):
-    """Escalera de precios por cantidad (TOTAL): 1=3000, 2=5500, 5=10000, 10=17500.
-    Interpola entre los puntos y extrapola arriba de 10. Siempre monotona."""
+    """Escalera de precios por cantidad (TOTAL): 1=3200, 2=5500, 3=7500, 5=10000.
+    De la 6ta foto en adelante, cada foto suma $2000. Interpola y es monotona creciente."""
     n = max(0, int(n))
     if n == 0:
         return 0
@@ -1174,7 +1176,7 @@ def subir_foto():
 
     archivo   = request.files['foto']
     evento_id = request.form.get('evento_id')
-    precio    = float(request.form.get('precio', 3000))
+    precio    = float(request.form.get('precio', 3200))
     filename  = f"{evento_id}_{archivo.filename}"
 
     ruta_orig    = os.path.join(CARPETA_TEMP, 'orig_'    + filename)
@@ -1960,7 +1962,7 @@ def registrar_foto():
     data      = request.json or {}
     url_clean = data.get('url_preview')
     evento_id = data.get('evento_id')
-    precio    = float(data.get('precio', 3000))
+    precio    = float(data.get('precio', 3200))
     public_id = data.get('public_id', '')
 
     if not url_clean or not evento_id:
