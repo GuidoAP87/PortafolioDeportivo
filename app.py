@@ -359,12 +359,12 @@ def precio_escalera(n):
     n = max(0, int(n))
     if n == 0:
         return 0
-    pts = [(1, 3000), (2, 5500), (5, 10000), (10, 17500)]
+    pts = [(1, 3200), (2, 5500), (3, 7500), (5, 10000)]
     for i in range(len(pts) - 1):
         a, pa = pts[i]; b, pb = pts[i + 1]
         if a <= n <= b:
             return int(round(pa + (pb - pa) * (n - a) / (b - a)))
-    return int(round(17500 + (n - 10) * 1500))
+    return int(round(10000 + (n - 5) * 2000))
 
 
 def calcular_total(foto_ids, tipo='individual', cfg=None):

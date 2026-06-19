@@ -33,21 +33,22 @@ document.addEventListener('visibilitychange', () => {
 
 // ⚠ CONFIGURACIÓN
 const WA_NUMBER   = '5493512345830';   
-const PRECIO_BASE = 3000;
+const PRECIO_BASE = 3200;
 
 // ─── LÓGICA DE PRECIOS POR VOLUMEN ───────────────────────────────────────────
 let NL_CONFIG = null;  // se carga desde /config-precios (parametrizable)
 
 function precioEscalera(n) {
-    // Escalera por cantidad (TOTAL): 1=3000, 2=5500, 5=10000, 10=17500. Interpola y es monótona.
+    // Escalera por cantidad (TOTAL): 1=3200, 2=5500, 3=7500, 5=10000.
+    // De la 6ta foto en adelante, cada foto suma $2000. Interpola y es monótona creciente.
     n = Math.max(0, Math.floor(n));
     if (n === 0) return 0;
-    const pts = [[1,3000],[2,5500],[5,10000],[10,17500]];
+    const pts = [[1,3200],[2,5500],[3,7500],[5,10000]];
     for (let i = 0; i < pts.length - 1; i++) {
         const [a, pa] = pts[i], [b, pb] = pts[i+1];
         if (n >= a && n <= b) return Math.round(pa + (pb - pa) * (n - a) / (b - a));
     }
-    return Math.round(17500 + (n - 10) * 1500);
+    return Math.round(10000 + (n - 5) * 2000);
 }
 
 function getPrecioUnitario(cantidad) {
@@ -1892,7 +1893,7 @@ async function buscarJugador(q) {
                         ${f.fuente === 'manual' ? '✏ Manual' : '🤖 IA'}
                     </span>
                 </div>
-                <div class="search-result-precio">$${Number(f.precio||3000).toLocaleString('es-AR')} ARS</div>
+                <div class="search-result-precio">$${Number(f.precio||3200).toLocaleString('es-AR')} ARS</div>
             </div>
             <button onclick="event.stopPropagation();agregarAlCarritoDesdeSearch(${f.foto_id}, ${f.evento_id})"
                 style="background:var(--gold);border:none;color:#000;font-size:10px;font-weight:700;
