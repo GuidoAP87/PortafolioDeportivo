@@ -763,7 +763,7 @@ function renderVistaEvento(ev) {
                 <div class="price-info">
                     <div class="price-badge" style="font-size:20px; color:var(--gold);">Promos en Carrito</div>
                     <div style="font-size:11px; color:var(--text-dim); margin-top:4px; text-align:right;">
-                        1x $3.000 | 2x $2.700 c/u | +3 desde $2.500 c/u
+                        1x $3.200 | 2x $2.750 c/u | +3 desde $2.500 c/u
                     </div>
                 </div>
             </div>
