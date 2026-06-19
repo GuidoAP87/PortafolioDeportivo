@@ -84,6 +84,8 @@ let eventoActual    = null;
 let carrito         = new Map();
 let isAdmin         = false;
 let lbFotos         = [];
+let scrollMem       = {};       // memoria de scroll por vista (home / evento) - restaura al volver
+let vistaKey        = 'home';   // clave de la vista actual
 let lbIdx           = 0;
 let adminClicks     = 0;
 let adminClickTimer = null;
@@ -382,7 +384,7 @@ function renderEventos(filtro = 'all') {
         return;
     }
 
-    if (foldersCont) foldersCont.innerHTML = data.map(renderEventoBarra).join('');
+    if (foldersCont) foldersCont.innerHTML = data.map(renderEventoEntrada).join('');
 
     initReveal();
     configurarFiltros();
@@ -538,37 +540,102 @@ async function borrarCat(id, btn) {
     btn.closest('.cat-admin-row')?.remove();
 }
 
+function _coverDe(ev) {
+    // Imagen para miniatura o portada (no depende del toggle)
+    return ev.cover_url || (ev.fotos && ev.fotos[0] && ev.fotos[0].url_preview) || '';
+}
+
+function _scrollVista(key) {
+    // Restaura la posición guardada de esa vista; si no hay, va al inicio de la galería
+    const guardado = scrollMem[key];
+    if (guardado != null) { window.scrollTo({ top: guardado }); return; }
+    const vw = document.getElementById('event-view');
+    window.scrollTo({ top: vw ? vw.offsetTop - 68 : 0 });
+}
+
+// Una carpeta se dibuja como PORTADA grande (usar_portada === true) o como BARRA con miniatura
+function renderEventoEntrada(ev) {
+    const subCount = ev.total_subcarpetas ?? (ev.subcarpetas ? ev.subcarpetas.length : 0);
+    const count    = ev.total_fotos ?? (ev.fotos ? ev.fotos.length : 0);
+    const hasSub   = subCount > 0;
+    const cover    = _coverDe(ev);
+    const meta     = hasSub ? (subCount + ' carpeta' + (subCount !== 1 ? 's' : ''))
+                            : (count + ' foto' + (count !== 1 ? 's' : ''));
+
+    // PORTADA GRANDE
+    if (ev.usar_portada === true) {
+        const img = cover
+            ? `<img src="${cover}" alt="${ev.titulo}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;">`
+            : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#19150c,#0f0d08);color:#D4A843;font-size:46px;"><i class="fa-solid ${hasSub ? 'fa-folder-open' : 'fa-camera'}"></i></div>`;
+        return `
+        <div class="evento-portada" onclick="abrirEvento(${ev.id})" role="button" tabindex="0"
+             onkeydown="if(event.key==='Enter')abrirEvento(${ev.id})"
+             style="position:relative;cursor:pointer;border:1px solid rgba(212,168,67,0.25);border-radius:4px;overflow:hidden;height:230px;margin-bottom:10px;background:#0f0d08;">
+            <div style="position:absolute;inset:0;">${img}</div>
+            <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.88) 0%,rgba(0,0,0,0.18) 55%,transparent 100%);"></div>
+            <div style="position:absolute;left:0;right:0;bottom:0;padding:18px 20px;">
+                <span style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#D4A843;display:block;margin-bottom:4px;">${ev.deporte || ''}</span>
+                <h3 style="margin:0;font-size:24px;line-height:1.05;color:#fff;font-family:'Bebas Neue',sans-serif;letter-spacing:1px;">${ev.titulo}</h3>
+                <span style="font-size:12px;color:#cbb88f;display:block;margin-top:5px;"><i class="fa-solid ${hasSub ? 'fa-folder' : 'fa-camera'}" style="margin-right:6px;"></i>${meta}</span>
+            </div>
+            <span style="position:absolute;top:14px;right:14px;width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;"><i class="fa-solid fa-chevron-right"></i></span>
+        </div>`;
+    }
+
+    // BARRA CON MINIATURA
+    const thumb = cover
+        ? `<img src="${cover}" alt="" loading="lazy" style="width:48px;height:48px;border-radius:6px;object-fit:cover;flex:0 0 auto;">`
+        : `<i class="fa-solid ${hasSub ? 'fa-folder-open' : 'fa-images'} folder-bar-ico"></i>`;
+    return `
+    <div class="folder-bar" onclick="abrirEvento(${ev.id})" role="button" tabindex="0"
+         onkeydown="if(event.key==='Enter')abrirEvento(${ev.id})">
+        ${thumb}
+        <h3 class="folder-bar-title">${ev.titulo}</h3>
+        <span class="folder-bar-meta">${meta}</span>
+        <i class="fa-solid fa-chevron-right folder-bar-arrow"></i>
+    </div>`;
+}
+
 function abrirEvento(eventoId) {
     const ev = buscarEvento(eventoId, eventosData);
     if (!ev) return;
 
-    // Si tiene subcarpetas, mostrar navegación de subcarpetas
+    // Guardar la posición de scroll de la vista que dejamos
+    scrollMem[vistaKey] = window.scrollY;
+
     if ((ev.total_subcarpetas ?? ev.subcarpetas?.length ?? 0) > 0) {
         mostrarSubcarpetas(ev);
-        return;
+    } else {
+        eventoActual = ev;
+        lbFotos      = ev.fotos || [];
+
+        document.getElementById('portfolio').style.display = 'none';
+        document.getElementById('about').style.display     = 'none';
+        var _ph = document.getElementById('packs-home'); if (_ph) _ph.style.display = 'none';
+
+        const view = document.getElementById('event-view');
+        view.style.display = 'block';
+        view.innerHTML     = renderVistaEvento(ev);
+        view.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
+
+        initDragDrop(ev.id);
+        actualizarCarritoBar();
     }
 
-    eventoActual    = ev;
-    lbFotos         = ev.fotos || [];
-
-    document.getElementById('portfolio').style.display = 'none';
-    document.getElementById('about').style.display     = 'none';
-    var _ph = document.getElementById('packs-home'); if (_ph) _ph.style.display = 'none';
-
-    const view = document.getElementById('event-view');
-    view.style.display = 'block';
-    view.innerHTML     = renderVistaEvento(ev);
-    view.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
-
-    initDragDrop(ev.id);
-
-    const offset = document.getElementById('event-view').offsetTop - 68;
-    window.scrollTo({ top: offset, behavior: 'smooth' });
-    actualizarCarritoBar();
+    vistaKey = 'ev' + eventoId;
+    _scrollVista(vistaKey);
 }
 
 function renderVistaEvento(ev) {
     const fotos = ev.fotos || [];
+
+    // Breadcrumb + botón "Volver" al nivel anterior (no al inicio)
+    const ruta = breadcrumbEvento(ev.id, eventosData) || [ev];
+    const breadcrumbHTML = ruta.map((item, idx) => {
+        if (idx === ruta.length - 1)
+            return `<span style="color:var(--text)">${item.titulo}</span>`;
+        return `<button onclick="abrirEvento(${item.id})" style="background:none;border:none;color:var(--gold);cursor:pointer;font-size:inherit;font-family:inherit;padding:0;">${item.titulo}</button><span style="color:var(--text-dim);margin:0 6px">/</span>`;
+    }).join('');
 
     const adminBar = isAdmin ? `
         <div class="admin-upload-bar">
@@ -681,11 +748,12 @@ function renderVistaEvento(ev) {
     return `
         <div class="event-view-header">
             <div class="event-view-nav">
-                <button class="back-btn" onclick="cerrarEvento()">
-                    <i class="fa-solid fa-arrow-left-long"></i> Todas las galerías
+                <button class="back-btn" onclick="${ev.parent_id ? 'abrirEvento('+ev.parent_id+')' : 'cerrarEvento()'}">
+                    <i class="fa-solid fa-arrow-left-long"></i> ${ev.parent_id ? 'Volver' : 'Todas las galerías'}
                 </button>
                 <span class="event-view-sport-tag">${ev.deporte}</span>
                 <div>
+                    <div style="font-size:11px;color:var(--text-dim);margin-bottom:5px;display:flex;align-items:center;flex-wrap:wrap;gap:2px;">${breadcrumbHTML}</div>
                     <div class="event-view-title">${ev.titulo}</div>
                     ${ev.fecha ? `<div class="event-view-date">
                         <i class="fa-regular fa-calendar" style="color:var(--gold);margin-right:6px"></i>${ev.fecha}
@@ -732,22 +800,7 @@ function mostrarSubcarpetas(ev) {
     // Render robusto de subcarpetas: tarjetas SIEMPRE visibles (sin depender de 'reveal')
     const subs = ev.subcarpetas || [];
     const subCardsHTML = subs.length
-        ? subs.map(sub => {
-            const sc    = sub.total_subcarpetas ?? (sub.subcarpetas ? sub.subcarpetas.length : 0);
-            const fc    = sub.total_fotos ?? (sub.fotos ? sub.fotos.length : 0);
-            const cover = (sub.usar_portada === false) ? '' : (sub.cover_url || (sub.fotos && sub.fotos[0] && sub.fotos[0].url_preview) || '');
-            const inner = cover
-                ? `<img src="${cover}" alt="${sub.titulo}" loading="lazy" style="width:100%;height:100%;object-fit:cover;">`
-                : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#19150c,var(--ink-2));color:var(--gold);font-size:34px;"><i class="fa-solid ${sc>0?'fa-folder-open':'fa-camera'}"></i></div>`;
-            return `
-            <div class="folder-bar" onclick="abrirEvento(${sub.id})" role="button" tabindex="0"
-                 onkeydown="if(event.key==='Enter')abrirEvento(${sub.id})">
-                <i class="fa-solid ${sc>0?'fa-folder-open':'fa-images'} folder-bar-ico"></i>
-                <h3 class="folder-bar-title">${sub.titulo}</h3>
-                <span class="folder-bar-meta">${sc>0 ? sc+' carpeta'+(sc!==1?'s':'') : fc+' foto'+(fc!==1?'s':'')}</span>
-                <i class="fa-solid fa-chevron-right folder-bar-arrow"></i>
-            </div>`;
-        }).join('')
+        ? subs.map(renderEventoEntrada).join('')
         : `<div style="grid-column:1/-1;text-align:center;padding:54px 20px;border:1px dashed var(--ink-5);color:var(--text-dim);">
                 <i class="fa-solid fa-folder-open" style="font-size:34px;color:var(--gold-dim);margin-bottom:14px;display:block;"></i>
                 <p style="margin:0;font-size:14px;">Esta carpeta todavía no tiene subcarpetas.<br>Creá una con el botón <strong style="color:var(--gold)">"Nueva subcarpeta"</strong> de arriba.</p>
@@ -795,7 +848,7 @@ function mostrarSubcarpetas(ev) {
     // Mostrar las tarjetas SÍ o SÍ (el observer de 'reveal' a veces no dispara al entrar)
     view.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
     initReveal();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // (el scroll lo centraliza abrirEvento)
 }
 
 async function crearSubcarpeta(parentId) {
@@ -810,8 +863,8 @@ async function crearSubcarpeta(parentId) {
                 style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);
                        width:88%;font-family:Inter,sans-serif;">
             <label style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:14px;font-size:12.5px;color:#bbb;cursor:pointer;">
-                <input type="checkbox" id="sub-portada" checked style="width:auto;accent-color:#D4A843;transform:scale(1.15);">
-                Mostrar foto de portada <span style="color:#777;">(destildá para solo-título)</span>
+                <input type="checkbox" id="sub-portada" style="width:auto;accent-color:#D4A843;transform:scale(1.15);">
+                Destacar con portada grande <span style="color:#777;">(si no, se ve como miniatura)</span>
             </label>`,
         focusConfirm: false, showCancelButton: true,
         confirmButtonText: 'Crear subcarpeta', cancelButtonText: 'Cancelar',
@@ -844,7 +897,11 @@ function cerrarEvento() {
     document.getElementById('portfolio').style.removeProperty('display');
     document.getElementById('about').style.removeProperty('display');
     var _ph2 = document.getElementById('packs-home'); if (_ph2) _ph2.style.removeProperty('display');
-    window.scrollTo({ top: document.getElementById('portfolio').offsetTop - 68, behavior: 'smooth' });
+    // Volver al inicio: restaurar la posición que tenía en la lista de galerías
+    vistaKey = 'home';
+    const homeY = scrollMem['home'];
+    if (homeY != null) window.scrollTo({ top: homeY });
+    else window.scrollTo({ top: document.getElementById('portfolio').offsetTop - 68 });
 }
 
 function initDragDrop(eventoId) {
@@ -1070,8 +1127,8 @@ async function crearEvento() {
             <input id="ev-desc" class="swal2-input" placeholder="Descripción breve (opcional)"
                 style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);width:88%;font-family:Inter,sans-serif;">
             <label style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:14px;font-size:12.5px;color:#bbb;cursor:pointer;">
-                <input type="checkbox" id="ev-portada" checked style="width:auto;accent-color:#D4A843;transform:scale(1.15);">
-                Mostrar foto de portada <span style="color:#777;">(destildá si es carpeta madre solo-título)</span>
+                <input type="checkbox" id="ev-portada" style="width:auto;accent-color:#D4A843;transform:scale(1.15);">
+                Destacar con portada grande <span style="color:#777;">(si no, se ve como miniatura)</span>
             </label>`,
         focusConfirm: false, showCancelButton: true,
         confirmButtonText: 'Crear evento', cancelButtonText: 'Cancelar',
@@ -1112,14 +1169,19 @@ async function editarEvento(eventoId) {
             <input id="ev-fecha-e" type="date" value="${ev.fecha||''}" class="swal2-input"
                 style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);width:88%;margin-bottom:10px;font-family:Inter,sans-serif;">
             <input id="ev-desc-e" class="swal2-input" value="${ev.descripcion||''}" placeholder="Descripción"
-                style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);width:88%;font-family:Inter,sans-serif;">`,
+                style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);width:88%;font-family:Inter,sans-serif;">
+            <label style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:14px;font-size:12.5px;color:#bbb;cursor:pointer;">
+                <input type="checkbox" id="ev-portada-e" ${ev.usar_portada ? 'checked' : ''} style="width:auto;accent-color:#D4A843;transform:scale(1.15);">
+                Destacar con portada grande <span style="color:#777;">(si no, se ve como miniatura)</span>
+            </label>`,
         focusConfirm: false, showCancelButton: true,
         confirmButtonText: 'Guardar', cancelButtonText: 'Cancelar',
         confirmButtonColor: '#D4A843', cancelButtonColor: '#555',
         preConfirm: () => ({
             titulo:      document.getElementById('ev-titulo-e').value.trim(),
             fecha:       document.getElementById('ev-fecha-e').value,
-            descripcion: document.getElementById('ev-desc-e').value.trim()
+            descripcion: document.getElementById('ev-desc-e').value.trim(),
+            usar_portada: document.getElementById('ev-portada-e').checked
         })
     });
     if (!vals) return;
