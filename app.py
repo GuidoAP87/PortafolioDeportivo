@@ -185,6 +185,10 @@ SMTP_PORT = int(os.environ.get('SMTP_PORT', 587))
 SMTP_USER = os.environ.get('SMTP_USER', '')
 SMTP_PASS = os.environ.get('SMTP_PASS', '')
 
+# ── Resend (email por API HTTPS — Railway bloquea SMTP saliente en Free/Hobby) ─
+RESEND_API_KEY = os.environ.get('RESEND_API_KEY', '')
+MAIL_FROM      = os.environ.get('MAIL_FROM', 'Nacho Lingua Fotografía <fotos@nacholingua.com>')
+
 # ── AUTH ADMIN ────────────────────────────────────────────────────────────────
 # Sin default hardcodeado: DEBE estar seteada en Railway. Si queda vacía, el
 # login de admin y el acceso por ?key= quedan deshabilitados (no exponemos la
@@ -739,7 +743,7 @@ def entregar_compra(compra_id):
 def enviar_fotos_email(compra_id):
     compra = Compra.query.get(compra_id)
     if not compra or compra.email_enviado: return False
-    if not SMTP_USER or not SMTP_PASS: return False
+    if not RESEND_API_KEY: return False
 
     ids   = json.loads(compra.foto_ids or '[]')
     fotos = Foto.query.filter(Foto.id.in_(ids)).all()
@@ -808,19 +812,31 @@ def enviar_fotos_email(compra_id):
 </div></body></html>"""
 
     try:
-        msg            = MIMEMultipart('alternative')
-        msg['Subject'] = f"Tus fotos listas — Nacho Lingua ({len(fotos)} foto{'s' if len(fotos)>1 else ''})"
-        msg['From']    = f'Nacho Lingua Fotografía <{SMTP_USER}>'
-        msg['To']      = compra.email_cliente
-        msg.attach(MIMEText(html, 'html'))
-        with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as srv:
-            srv.ehlo(); srv.starttls()
-            srv.login(SMTP_USER, SMTP_PASS)
-            srv.sendmail(SMTP_USER, compra.email_cliente, msg.as_string())
+        payload = {
+            "from":    MAIL_FROM,
+            "to":      [compra.email_cliente],
+            "subject": f"Tus fotos listas — Nacho Lingua ({len(fotos)} foto{'s' if len(fotos)>1 else ''})",
+            "html":    html
+        }
+        req = urllib.request.Request(
+            "https://api.resend.com/emails",
+            data    = json.dumps(payload).encode('utf-8'),
+            headers = {
+                "Content-Type":  "application/json",
+                "Authorization": f"Bearer {RESEND_API_KEY}"
+            },
+            method = "POST"
+        )
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            body = json.loads(resp.read().decode('utf-8'))
         compra.email_enviado = True
         db.session.commit()
-        print(f'✓ Email enviado a {compra.email_cliente}')
+        print(f'✓ Email enviado a {compra.email_cliente} (id {body.get("id","?")})')
         return True
+    except urllib.error.HTTPError as e:
+        detalle = e.read().decode('utf-8', 'ignore')
+        print(f'✗ Error email (HTTP {e.code}): {detalle}')
+        return False
     except Exception as e:
         print(f'✗ Error email: {e}'); return False
 
