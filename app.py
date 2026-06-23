@@ -823,7 +823,8 @@ def enviar_fotos_email(compra_id):
             data    = json.dumps(payload).encode('utf-8'),
             headers = {
                 "Content-Type":  "application/json",
-                "Authorization": f"Bearer {RESEND_API_KEY}"
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "User-Agent":    "nacholingua-mailer/1.0"
             },
             method = "POST"
         )
