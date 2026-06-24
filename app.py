@@ -690,6 +690,10 @@ def enviar_wa_cliente(compra):
             body = json.loads(resp.read().decode('utf-8'))
             print(f"✓ WhatsApp enviado a {compra.whatsapp_cliente}: {body}")
             return True
+    except urllib.error.HTTPError as e:
+        detalle = e.read().decode('utf-8', 'ignore')
+        print(f"✗ Error WhatsApp (HTTP {e.code}) [ver={META_GRAPH_VER} phone={META_WA_PHONE_ID}]: {detalle}")
+        return False
     except Exception as e:
         print(f"✗ Error enviando WhatsApp: {e}")
         return False
