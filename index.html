@@ -73,7 +73,7 @@
         <a href="#portfolio" class="mm-cta">Explorar galerías</a>
         <div class="mm-social">
             <a href="https://www.instagram.com/nacho.lingua/" target="_blank" rel="noopener" title="Instagram"><i class="fa-brands fa-instagram"></i></a>
-            <a href="https://wa.me/5493512345830?text=Hola%21%20Quiero%20consultar%20por%20las%20fotos%20deportivas" target="_blank" rel="noopener" title="WhatsApp"><i class="fa-brands fa-whatsapp"></i></a>
+            <a href="https://wa.me/5493546515567?text=Hola%21%20Quiero%20consultar%20por%20las%20fotos%20deportivas" target="_blank" rel="noopener" title="WhatsApp"><i class="fa-brands fa-whatsapp"></i></a>
             </div>
     </div>
 </aside>
@@ -151,8 +151,84 @@
 <!-- ═══ ABOUT ══════════════════════════════════════════════════════════════════ -->
 <section id="about" class="section">
     <div class="about-grid">
-        <div class="about-photo reveal">
-            <img src="nacho_lingua.jpg" alt="Nacho Lingua fotógrafo deportivo">
+        <div class="about-carrusel reveal" id="foto-carrusel"
+             style="position:relative;width:100%;aspect-ratio:3/2;background:#0c0c0e;border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:hidden;">
+            <div id="carr-slides" style="position:absolute;inset:0;"></div>
+            <button id="carr-prev" aria-label="Anterior" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);z-index:3;width:40px;height:40px;border:none;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:22px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;">&#8249;</button>
+            <button id="carr-next" aria-label="Siguiente" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:3;width:40px;height:40px;border:none;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:22px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center;">&#8250;</button>
+            <div id="carr-dots" style="position:absolute;left:0;right:0;bottom:10px;z-index:3;display:flex;gap:7px;justify-content:center;"></div>
+            <script>
+            (function(){
+                // ╔═══════════════════════════════════════════════════════════════╗
+                // ║  FOTOS DEL CARRUSEL — agregá acá las mejores fotos de Nacho.    ║
+                // ║  Cada foto entre comillas, separadas por coma. Pueden ser       ║
+                // ║  archivos del repo ("foto1.jpg") o links completos ("https..."). ║
+                // ╚═══════════════════════════════════════════════════════════════╝
+                const FOTOS_CARRUSEL = [
+                    "foto1.jpg",  "foto2.jpg",  "foto3.jpg",  "foto4.jpg",
+                    "foto5.jpg",  "foto6.jpg",  "foto7.jpg",  "foto8.jpg",
+                    "foto9.jpg",  "foto10.jpg", "foto11.jpg", "foto12.jpg",
+                    "foto13.jpg", "foto14.jpg", "foto15.jpg", "foto16.jpg",
+                    "foto17.jpg", "foto18.jpg", "foto19.jpg", "foto20.jpg",
+                    "foto21.jpg", "foto22.jpg"
+                ];
+
+                const cont   = document.getElementById('foto-carrusel');
+                const slides = document.getElementById('carr-slides');
+                const dotsEl = document.getElementById('carr-dots');
+                const prevB  = document.getElementById('carr-prev');
+                const nextB  = document.getElementById('carr-next');
+                if (!cont || !FOTOS_CARRUSEL.length) return;
+
+                let idx = 0, timer = null;
+                const unaSola = FOTOS_CARRUSEL.length <= 1;
+
+                FOTOS_CARRUSEL.forEach(function(src, i){
+                    var img = document.createElement('img');
+                    img.src = src; img.alt = 'Foto de Nacho Lingua';
+                    img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity .6s ease;';
+                    slides.appendChild(img);
+                    var d = document.createElement('button');
+                    d.setAttribute('aria-label','Foto '+(i+1));
+                    d.style.cssText = 'width:8px;height:8px;border-radius:50%;border:none;cursor:pointer;padding:0;background:rgba(255,255,255,.45);transition:all .3s;';
+                    d.addEventListener('click', function(){ mostrar(i); reiniciar(); });
+                    dotsEl.appendChild(d);
+                });
+
+                const imgs = slides.querySelectorAll('img');
+                const dots = dotsEl.querySelectorAll('button');
+
+                function mostrar(n){
+                    idx = (n + imgs.length) % imgs.length;
+                    imgs.forEach(function(im,i){ im.style.opacity = (i===idx?'1':'0'); });
+                    dots.forEach(function(d,i){
+                        d.style.background = (i===idx ? '#D4A843' : 'rgba(255,255,255,.45)');
+                        d.style.width = d.style.height = (i===idx ? '9px':'8px');
+                    });
+                }
+                function sig(){ mostrar(idx+1); }
+                function ant(){ mostrar(idx-1); }
+                function arrancar(){ if(!unaSola) timer = setInterval(sig, 4500); }
+                function reiniciar(){ if(timer){ clearInterval(timer); arrancar(); } }
+
+                prevB.addEventListener('click', function(){ ant(); reiniciar(); });
+                nextB.addEventListener('click', function(){ sig(); reiniciar(); });
+                if (unaSola){ prevB.style.display = nextB.style.display = dotsEl.style.display = 'none'; }
+
+                var x0 = null;
+                cont.addEventListener('touchstart', function(e){ x0 = e.touches[0].clientX; }, {passive:true});
+                cont.addEventListener('touchend', function(e){
+                    if (x0===null) return;
+                    var dx = e.changedTouches[0].clientX - x0;
+                    if (Math.abs(dx)>40){ (dx<0?sig:ant)(); reiniciar(); }
+                    x0 = null;
+                }, {passive:true});
+                cont.addEventListener('mouseenter', function(){ if(timer) clearInterval(timer); });
+                cont.addEventListener('mouseleave', arrancar);
+
+                mostrar(0); arrancar();
+            })();
+            </script>
         </div>
         <div class="about-info reveal reveal-delay-1">
             <div class="section-eyebrow">El fotógrafo</div>
@@ -162,7 +238,7 @@
 
             <div class="contact-link-row">
                 <div class="contact-link-icon"><i class="fa-brands fa-whatsapp"></i></div>
-                <a href="https://wa.me/5493512345830?text=Hola%21%20Quiero%20consultar%20por%20las%20fotos%20deportivas" target="_blank" rel="noopener">+54 9 351 234-5830</a>
+                <a href="https://wa.me/5493546515567?text=Hola%21%20Quiero%20consultar%20por%20las%20fotos%20deportivas" target="_blank" rel="noopener">+54 9 3546 51-5567</a>
             </div>
             <div class="contact-link-row">
                 <div class="contact-link-icon"><i class="fa-solid fa-envelope"></i></div>
@@ -174,7 +250,7 @@
             </div>
             <div class="social-row">
                 <a href="https://www.instagram.com/nacho.lingua/" target="_blank" rel="noopener" class="social-icon" title="Instagram"><i class="fa-brands fa-instagram"></i></a>
-                <a href="https://wa.me/5493512345830?text=Hola%21%20Quiero%20consultar%20por%20las%20fotos%20deportivas"       target="_blank" rel="noopener" class="social-icon" title="WhatsApp"><i class="fa-brands fa-whatsapp"></i></a>
+                <a href="https://wa.me/5493546515567?text=Hola%21%20Quiero%20consultar%20por%20las%20fotos%20deportivas"       target="_blank" rel="noopener" class="social-icon" title="WhatsApp"><i class="fa-brands fa-whatsapp"></i></a>
             </div>
         </div>
     </div>
@@ -374,7 +450,7 @@
 
 <!-- ═══ FLOATING ═══════════════════════════════════════════════════════════════ -->
 <!-- ⚠ Cambiá el número -->
-<a id="whatsapp-btn" href="https://wa.me/5493512345830?text=Hola%21%20Quiero%20consultar%20por%20las%20fotos%20deportivas" target="_blank" rel="noopener" title="Escribinos por WhatsApp">
+<a id="whatsapp-btn" href="https://wa.me/5493546515567?text=Hola%21%20Quiero%20consultar%20por%20las%20fotos%20deportivas" target="_blank" rel="noopener" title="Escribinos por WhatsApp">
     <i class="fa-brands fa-whatsapp"></i>
 </a>
 <button id="back-to-top" title="Volver arriba">
