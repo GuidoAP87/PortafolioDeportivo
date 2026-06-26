@@ -6,6 +6,7 @@ Persistencia: PostgreSQL (Render) + Cloudinary (imágenes)
 import os, json, smtplib, io, threading, math, re, hmac
 import time as _time
 import hashlib
+from functools import lru_cache
 import urllib.request, urllib.parse, urllib.error
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -419,112 +420,38 @@ def get_download_url(url_original):
 # MARCA DE AGUA — Adaptada a versión Frontend (HTML5 Canvas)
 # Núcleo único usado por TODOS los flujos de subida y re-procesamiento.
 # ════════════════════════════════════════════════════════════════════════════
-WATERMARK_VERSION = 'wm-v31-testwa2'
+WATERMARK_VERSION = 'wm-v32-png-blanco'
 
-def _marca_core(imagen, texto='@Nacho Lingua',
-                filas=5, escala_alto=0.7, sep_rel=0.15,
-                min_reps=1.4, opacidad=190, angulo=0):
-    """
-    Marca de agua estilo fotografo profesional.
+@lru_cache(maxsize=1)
+def _watermark_bytes():
+    """Carga watermark.png UNA sola vez y lo deja cacheado en RAM."""
+    _aqui = os.path.dirname(os.path.abspath(__file__))
+    for fp in [os.path.join(_aqui, 'watermark.png'),
+               os.path.join(_aqui, 'assets', 'watermark.png')]:
+        if os.path.exists(fp):
+            with open(fp, 'rb') as f:
+                return f.read()
+    raise FileNotFoundError('watermark.png no está en el repo (raíz ni /assets)')
 
-    - `filas` bandas horizontales que cubren TODO el alto de la foto.
-    - En cada banda el texto se repite de forma CONTINUA hasta cubrir
-      todo el ancho (se desborda por los bordes para que no queden huecos).
-    - Las filas se alternan medio paso (patron "ladrillo"), look mas prolijo.
-    - El tamano del texto sale del alto de cada fila, asi que se adapta solo
-      a fotos verticales y horizontales. `min_reps` evita que en fotos
-      angostas el texto quede tan grande que no llegue a repetirse.
-    - Lleva un contorno oscuro sutil para que se lea sobre fondos claros
-      y oscuros por igual.
-    - `angulo=0` deja las filas horizontales; un valor (ej. 25) inclina todo
-      el patron al estilo banco de imagenes.
-    - Conserva la resolucion original de la foto intacta.
+
+def _marca_core(imagen, texto='@Nacho Lingua', opacidad=1.0, **kwargs):
+    """Marca de agua por superposición de watermark.png (PNG transparente).
+    Reemplaza el dibujado de texto. Mantiene la MISMA firma, así
+    agregar_watermark() y agregar_watermark_5x() NO se tocan: `texto` y
+    cualquier otro kwarg viejo se ignoran sin romper nada.
+
+    - El PNG se escala al tamaño de cada preview (la resolución de la foto no se toca).
+    - `opacidad` 0..1 multiplica el alpha del PNG (que ya viene a ~67%).
     """
     base = imagen.convert('RGBA')
-    W, H = base.size
-    altura_fila = H / filas
-
-    # 1) Fuente. IMPORTANTE: priorizamos una fuente TTF incluida en el repo,
-    #    porque el servidor (Railway) NO trae fuentes instaladas. Si no la
-    #    encontrara, Pillow caería a una fuente bitmap diminuta de tamaño fijo
-    #    y la marca saldría como rayitas chiquititas.
-    _aqui = os.path.dirname(os.path.abspath(__file__))
-    fuente_path = None
-    for fp in [
-        os.path.join(_aqui, 'DejaVuSans-Bold.ttf'),          # <- incluida en el repo
-        os.path.join(_aqui, 'fonts', 'DejaVuSans-Bold.ttf'),
-        '/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf',
-        '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf',
-        '/usr/share/fonts/truetype/freefont/FreeSansBold.ttf',
-        'arialbd.ttf', 'arial.ttf', 'C:\\Windows\\Fonts\\arialbd.ttf',
-    ]:
-        try:
-            ImageFont.truetype(fp, 10)
-            fuente_path = fp
-            break
-        except Exception:
-            pass
-
-    medidor = ImageDraw.Draw(Image.new('RGBA', (1, 1)))
-
-    def _cargar(size):
-        if fuente_path:
-            return ImageFont.truetype(fuente_path, size)
-        try:
-            return ImageFont.load_default(size)   # Pillow >= 10.1 sí escala
-        except TypeError:
-            return ImageFont.load_default()
-
-    def _medir(f):
-        bb = medidor.textbbox((0, 0), texto, font=f)
-        return bb[2] - bb[0], bb[3] - bb[1]
-
-    # 2) Tamano base segun el alto de cada fila (adapta a la orientacion)
-    fs = max(14, int(altura_fila * escala_alto))
-    font = _cargar(fs)
-    tw, th = _medir(font)
-
-    # 3) Si el texto no entra al menos `min_reps` veces de ancho, achicarlo
-    if fuente_path and tw > 0:
-        paso = tw * (1 + sep_rel)
-        if paso > W / min_reps:
-            fs = max(14, int(fs * (W / min_reps) / paso))
-            font = _cargar(fs)
-            tw, th = _medir(font)
-
-    paso_x = max(1, int(tw * (1 + sep_rel)))
-    grosor = max(1, fs // 45)
-
-    # 4) Capa transparente (mas grande si hay angulo, para cubrir tras rotar)
-    if angulo:
-        diag = int((W ** 2 + H ** 2) ** 0.5) + int(altura_fila) * 2
-        CW, CH = diag, diag
-    else:
-        CW, CH = W, H
-
-    capa = Image.new('RGBA', (CW, CH), (0, 0, 0, 0))
-    d = ImageDraw.Draw(capa)
-    blanco = (255, 255, 255, opacidad)
-    sombra = (0, 0, 0, int(opacidad * 0.55))
-
-    n_filas = filas if not angulo else int(CH / altura_fila) + 2
-    limite = (CW if angulo else W) + paso_x
-    for i in range(n_filas + 1):
-        cy = i * altura_fila + altura_fila / 2
-        offset = (paso_x // 2) if (i % 2) else 0
-        x = -paso_x + offset
-        while x < limite:
-            d.text((x, cy), texto, font=font, anchor="lm",
-                   fill=blanco, stroke_width=grosor, stroke_fill=sombra)
-            x += paso_x
-
-    # 5) Rotar (si corresponde) y recortar al centro al tamano de la foto
-    if angulo:
-        capa = capa.rotate(angulo, resample=Image.BICUBIC, expand=False)
-        left, top = (CW - W) // 2, (CH - H) // 2
-        capa = capa.crop((left, top, left + W, top + H))
-
-    return Image.alpha_composite(base, capa).convert('RGB')
+    wm = (Image.open(io.BytesIO(_watermark_bytes()))
+                .convert('RGBA')
+                .resize(base.size, Image.LANCZOS))
+    if opacidad < 1.0:
+        r, g, b, a = wm.split()
+        wm = Image.merge('RGBA', (r, g, b, a.point(lambda v: int(v * opacidad))))
+    base.alpha_composite(wm)
+    return base.convert('RGB')
 
 
 # ── PREVIEWS LIVIANAS (para que entren muchas fotos en poco espacio) ──────────
