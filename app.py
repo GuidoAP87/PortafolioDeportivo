@@ -436,13 +436,10 @@ def _watermark_bytes():
 
 def _marca_core(imagen, texto='@Nacho Lingua', opacidad=1.0, **kwargs):
     """Marca de agua por superposición de watermark.png (PNG transparente).
-    Reemplaza el dibujado de texto. Mantiene la MISMA firma, así
-    agregar_watermark() y agregar_watermark_5x() NO se tocan: `texto` y
-    cualquier otro kwarg viejo se ignoran sin romper nada.
-
-    - El PNG se escala al tamaño de cada preview (la resolución de la foto no se toca).
-    - `opacidad` 0..1 multiplica el alpha del PNG (que ya viene a ~67%).
-    """
+    Mantiene la MISMA firma, así agregar_watermark() y agregar_watermark_5x()
+    no se tocan: `texto` y otros kwargs viejos se ignoran sin romper nada.
+    El PNG se escala al tamaño de cada preview. `opacidad` 0..1 multiplica
+    el alpha (el PNG ya trae su propia opacidad horneada)."""
     base = imagen.convert('RGBA')
     wm = (Image.open(io.BytesIO(_watermark_bytes()))
                 .convert('RGBA')
@@ -1444,48 +1441,6 @@ def admin_re_watermark():
 
 
 # ── MÉTRICAS DE VENTAS (req. 4) ───────────────────────────────────────────────
-@app.route('/admin/test-wa', methods=['GET'])
-def admin_test_wa():
-    """Prueba de envio de WhatsApp a un numero arbitrario. Devuelve la respuesta cruda de Meta.
-    Autoriza con sesion de admin O con ?key=<ADMIN_PASSWORD> para poder probar desde la barra del navegador."""
-    _key = request.args.get('key', '')
-    if not session.get('admin') and not (ADMIN_PASSWORD and _key == ADMIN_PASSWORD):
-        return jsonify({'error': 'No autorizado'}), 403
-    if not META_WA_ENABLED:
-        return jsonify({'ok': False, 'error': 'WhatsApp no configurado: faltan META_WA_TOKEN o META_WA_PHONE_ID en Variables.'}), 400
-    to = (request.args.get('to') or '').strip().replace('+', '').replace(' ', '').replace('-', '')
-    if not to:
-        return jsonify({'ok': False, 'error': 'Falta el numero. Usa /admin/test-wa?to=5493546515567'}), 400
-    tipo = (request.args.get('tipo') or 'plantilla').lower()
-    if tipo == 'hello':
-        payload = {"messaging_product": "whatsapp", "to": to, "type": "template",
-                   "template": {"name": "hello_world", "language": {"code": "en_US"}}}
-    else:
-        payload = {"messaging_product": "whatsapp", "to": to, "type": "template",
-                   "template": {"name": META_WA_TEMPLATE, "language": {"code": "es_AR"},
-                                "components": [{"type": "body", "parameters": [
-                                    {"type": "text", "text": "Guido"},
-                                    {"type": "text", "text": "https://nacholingua.com/galeria/prueba"}
-                                ]}]}}
-    try:
-        req = urllib.request.Request(
-            f"https://graph.facebook.com/{META_GRAPH_VER}/{META_WA_PHONE_ID}/messages",
-            data=json.dumps(payload).encode('utf-8'),
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {META_WA_TOKEN}"},
-            method="POST")
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            body = json.loads(resp.read().decode('utf-8'))
-        return jsonify({'ok': True, 'enviado_a': to, 'tipo': tipo, 'respuesta': body})
-    except Exception as e:
-        detail = str(e)
-        try:
-            if hasattr(e, 'read'):
-                detail = e.read().decode('utf-8', 'replace')
-        except Exception:
-            pass
-        return jsonify({'ok': False, 'enviado_a': to, 'tipo': tipo, 'error': detail}), 200
-
-
 @app.route('/admin/metricas', methods=['GET'])
 def admin_metricas():
     if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
@@ -1833,49 +1788,6 @@ def check_auth(): return jsonify({'isAdmin': session.get('admin', False)})
 
 @app.route('/logout', methods=['POST'])
 def logout(): session.pop('admin', None); return jsonify({'success': True})
-
-@app.route('/test-wasabi')
-def test_wasabi():
-    import time
-    resultados = {}
-
-    # Test 1: Variables de entorno
-    resultados['wasabi_enabled'] = WASABI_ENABLED
-    resultados['bucket'] = WASABI_BUCKET
-    resultados['endpoint'] = WASABI_ENDPOINT
-    resultados['region'] = WASABI_REGION
-    resultados['access_key_ok'] = bool(WASABI_ACCESS_KEY)
-
-    # Test 2: Conexión a Wasabi
-    try:
-        t0 = time.time()
-        client = get_wasabi_client()
-        client.list_objects_v2(Bucket=WASABI_BUCKET, MaxKeys=1)
-        resultados['conexion_wasabi'] = f'OK ({time.time()-t0:.1f}s)'
-    except Exception as e:
-        resultados['conexion_wasabi'] = f'ERROR: {str(e)}'
-
-    # Test 3: Cloudinary
-    try:
-        t0 = time.time()
-        import cloudinary.api
-        cloudinary.api.ping()
-        resultados['conexion_cloudinary'] = f'OK ({time.time()-t0:.1f}s)'
-    except Exception as e:
-        resultados['conexion_cloudinary'] = f'ERROR: {str(e)}'
-
-    # Test 4: Escritura en disco
-    try:
-        ruta = os.path.join(CARPETA_TEMP, 'test_write.txt')
-        with open(ruta, 'w') as f:
-            f.write('test')
-        os.remove(ruta)
-        resultados['escritura_disco'] = 'OK'
-    except Exception as e:
-        resultados['escritura_disco'] = f'ERROR: {str(e)}'
-
-    return jsonify(resultados)
-
 
 @app.route('/cloudinary-signature', methods=['POST'])
 def cloudinary_signature():
