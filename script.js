@@ -566,13 +566,13 @@ function renderEventoEntrada(ev) {
     // PORTADA GRANDE
     if (ev.usar_portada === true) {
         const img = cover
-            ? `<img src="${cover}" alt="${ev.titulo}" loading="lazy" style="width:100%;height:100%;object-fit:cover;display:block;">`
-            : `<div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#19150c,#0f0d08);color:#D4A843;font-size:46px;"><i class="fa-solid ${hasSub ? 'fa-folder-open' : 'fa-camera'}"></i></div>`;
+            ? `<img src="${cover}" alt="${ev.titulo}" loading="lazy" style="width:100%;height:auto;display:block;">`
+            : `<div style="width:100%;height:230px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#19150c,#0f0d08);color:#D4A843;font-size:46px;"><i class="fa-solid ${hasSub ? 'fa-folder-open' : 'fa-camera'}"></i></div>`;
         return `
         <div class="evento-portada" onclick="abrirEvento(${ev.id})" role="button" tabindex="0"
              onkeydown="if(event.key==='Enter')abrirEvento(${ev.id})"
-             style="position:relative;cursor:pointer;border:1px solid rgba(212,168,67,0.25);border-radius:4px;overflow:hidden;height:230px;margin-bottom:10px;background:#0f0d08;">
-            <div style="position:absolute;inset:0;">${img}</div>
+             style="position:relative;cursor:pointer;border:1px solid rgba(212,168,67,0.25);border-radius:4px;overflow:hidden;margin-bottom:10px;background:#0f0d08;">
+            ${img}
             <div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(0,0,0,0.88) 0%,rgba(0,0,0,0.18) 55%,transparent 100%);"></div>
             <div style="position:absolute;left:0;right:0;bottom:0;padding:18px 20px;">
                 <span style="font-size:10px;letter-spacing:2px;text-transform:uppercase;color:#D4A843;display:block;margin-bottom:4px;">${ev.deporte || ''}</span>
