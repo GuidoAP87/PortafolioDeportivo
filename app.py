@@ -1253,6 +1253,42 @@ def crear_orden():
         return jsonify({'init_point': result['response']['init_point'], 'compra_id': compra.id})
     return jsonify({'error': 'Error al crear preferencia MP'}), 500
 
+@app.route('/coordinar-pedido', methods=['POST'])
+def coordinar_pedido():
+    """Registra un pedido a coordinar por WhatsApp (pago por fuera de Mercado Pago).
+    Queda en estado 'coordinar' hasta que Nacho confirme el pago desde el panel."""
+    d        = request.json or {}
+    foto_ids = d.get('foto_ids', [])
+    email    = (d.get('email') or '').strip()
+    nombre   = (d.get('nombre') or '').strip()
+    if not foto_ids or not email:
+        return jsonify({'error': 'Datos incompletos'}), 400
+
+    fotos = Foto.query.filter(Foto.id.in_(foto_ids)).all()
+    if not fotos:
+        return jsonify({'error': 'Fotos no encontradas'}), 404
+
+    tipo            = d.get('tipo', 'individual')
+    fotos_impresion = d.get('fotos_impresion_ids', [])
+    cfg             = get_config()
+    total, _        = calcular_total([f.id for f in fotos], tipo=tipo, cfg=cfg)
+    wa              = normalizar_wa_ar(d.get('whatsapp', ''))
+
+    compra = Compra(
+        email_cliente    = email,
+        nombre_cliente   = nombre,
+        whatsapp_cliente = wa if wa else None,
+        foto_ids         = json.dumps([f.id for f in fotos]),
+        monto_total      = total,
+        tipo             = tipo,
+        fotos_impresion_ids = json.dumps(fotos_impresion) if fotos_impresion else None,
+        estado           = 'coordinar',
+        token_galeria    = generar_token()
+    )
+    db.session.add(compra); db.session.commit()
+    return jsonify({'ok': True, 'compra_id': compra.id, 'total': total})
+
+
 def _verificar_firma_mp(req):
     """Valida la firma 'x-signature' de Mercado Pago. Solo se activa si está
     configurado MP_WEBHOOK_SECRET en el entorno; si no, devuelve True (no valida).
@@ -1759,6 +1795,20 @@ def reenviar_todo(cid):
     db.session.commit()
     threading.Thread(target=entregar_compra, args=(cid,), daemon=True).start()
     return jsonify({'ok': True})
+
+@app.route('/admin/compras/<int:cid>/confirmar', methods=['POST'])
+def confirmar_pago(cid):
+    """Nacho confirma que recibió el pago de un pedido coordinado y dispara el
+    envío de las fotos al cliente (email + WhatsApp con la galería)."""
+    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
+    compra = Compra.query.get_or_404(cid)
+    compra.estado        = 'approved'
+    compra.email_enviado = False
+    compra.wa_enviado    = False
+    db.session.commit()
+    threading.Thread(target=entregar_compra, args=(cid,), daemon=True).start()
+    return jsonify({'ok': True})
+
 
 @app.route('/admin/consultas', methods=['GET'])
 def ver_consultas():
