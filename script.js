@@ -1222,10 +1222,7 @@ function _cargarImagen(file) {
 function _aBlobJPEG(img, maxDim, quality) {
     return new Promise((resolve) => {
         let w = img.naturalWidth, h = img.naturalHeight;
-        if (Math.max(w, h) > maxDim) {
-            const r = maxDim / Math.max(w, h);
-            w = Math.round(w * r); h = Math.round(h * r);
-        }
+        if (Math.max(w, h) > maxDim) { const r = maxDim / Math.max(w, h); w = Math.round(w*r); h = Math.round(h*r); }
         const c = document.createElement('canvas');
         c.width = w; c.height = h;
         c.getContext('2d').drawImage(img, 0, 0, w, h);
@@ -1239,8 +1236,7 @@ async function prepararParaSubir(file, maxBytes = 9.5 * 1024 * 1024) {
     let maxDim = 5000, quality = 0.92;
     let blob = await _aBlobJPEG(img, maxDim, quality);
     while (blob && blob.size > maxBytes && (quality > 0.6 || maxDim > 2200)) {
-        if (quality > 0.7) quality -= 0.07;
-        else maxDim = Math.round(maxDim * 0.85);
+        if (quality > 0.7) quality -= 0.07; else maxDim = Math.round(maxDim * 0.85);
         blob = await _aBlobJPEG(img, maxDim, quality);
     }
     if (!blob) return file;
@@ -1696,7 +1692,6 @@ async function coordinarWA() {
         (nombre ? `Nombre: ${nombre}\n` : '') +
         `¿Cómo te puedo pagar?`
     );
-    // Registrar el pedido para que Nacho lo habilite desde su panel al recibir el pago
     try {
         await fetch('/coordinar-pedido', {
             method:'POST', credentials:'include',
@@ -1778,6 +1773,7 @@ async function abrirAdminPanel() {
     m.style.display = 'flex';
     requestAnimationFrame(() => m.classList.add('open'));
     document.body.style.overflow = 'hidden';
+    _asegurarTabCoordinados();
     await Promise.all([cargarAdminStats(), cargarCompras(), cargarConsultas()]);
 }
 
@@ -1815,27 +1811,27 @@ async function cargarAdminStats() {
     } catch {}
 }
 
-async function cargarCompras() {
-    const c = document.getElementById('tab-compras');
-    if (!c) return;
-    c.innerHTML = '<p class="admin-loading">Cargando compras...</p>';
-    try {
-        const lista = await (await fetch('/admin/compras', { credentials:'include' })).json();
-        if (!lista.length) { c.innerHTML = '<p class="admin-loading">Sin compras registradas.</p>'; return; }
-        c.innerHTML = lista.map(p => {
-            const cls      = p.estado==='approved'?'badge-approved':p.estado==='rejected'?'badge-rejected':'badge-pendiente';
-            const emailCls = p.email_enviado ? 'badge-approved' : 'badge-pendiente';
-            return `
+// Render de una compra/pedido. esCoordinar=true → botón "Confirmar pago y enviar"
+function _itemCompraHTML(p, esCoordinar) {
+    const cls       = p.estado==='approved'?'badge-approved':p.estado==='rejected'?'badge-rejected':'badge-pendiente';
+    const estadoTxt = esCoordinar ? 'a coordinar' : p.estado;
+    const emailCls  = p.email_enviado ? 'badge-approved' : 'badge-pendiente';
+    const copiar    = p.link_galeria
+        ? `<button class="admin-action-btn" onclick="navigator.clipboard.writeText('${p.link_galeria}').then(()=>toast('Link copiado','success',1800))"><i class="fa-solid fa-copy"></i> Copiar link galería</button>`
+        : '';
+    const accion = esCoordinar
+        ? `<button class="admin-action-btn primary" onclick="confirmarPago(${p.id})"><i class="fa-solid fa-circle-check"></i> Confirmar pago y enviar</button>`
+        : (p.estado==='approved' ? `<button class="admin-action-btn primary" onclick="reenviarTodo(${p.id})"><i class="fa-solid fa-paper-plane"></i> Reenviar email + WhatsApp</button>` : '');
+    return `
             <div class="admin-item" id="compra-${p.id}">
                 <div class="admin-item-hdr">
                     <div>
                         <strong>${p.nombre||p.email}</strong>
-                        <span class="badge ${cls}">${p.estado}</span>
+                        <span class="badge ${cls}">${estadoTxt}</span>
                         <span class="badge ${emailCls}">${p.email_enviado?'✓ Email':'Sin email'}</span>
                         ${p.whatsapp ? `<span class="badge ${p.wa_enviado?'badge-approved':'badge-pendiente'}">${p.wa_enviado?'✓ WhatsApp':'WA pendiente'}</span>` : ''}
                         <br><small style="color:var(--text-dim);font-size:10px">${p.email}${p.whatsapp ? ' · 📱 +' + p.whatsapp : ''}</small>
                         ${p.link_galeria ? `<br><small><a href="${p.link_galeria}" target="_blank" style="color:var(--gold);font-size:10px;word-break:break-all">🔗 ${p.link_galeria}</a></small>` : ''}
-                        <br><small style="color:var(--text-dim)">${p.email}</small>
                     </div>
                     <div style="text-align:right;flex-shrink:0">
                         <div class="admin-item-date">${p.fecha}</div>
@@ -1846,22 +1842,51 @@ async function cargarCompras() {
                     ${p.foto_ids.length} foto${p.foto_ids.length>1?'s':''} · IDs: [${p.foto_ids.join(', ')}]
                 </div>
                 <div class="admin-item-actions">
-                    ${(p.estado!=='approved' && p.estado!=='rejected') ? `
-                    <button class="admin-action-btn primary" onclick="confirmarPago(${p.id})">
-                        <i class="fa-solid fa-circle-check"></i> Confirmar pago y enviar
-                    </button>` : ''}
-                    ${p.estado==='approved' ? `
-                    <button class="admin-action-btn primary" onclick="reenviarTodo(${p.id})">
-                        <i class="fa-solid fa-paper-plane"></i> Reenviar email + WhatsApp
-                    </button>` : ''}
-                    ${p.link_galeria ? `
-                    <button class="admin-action-btn" onclick="navigator.clipboard.writeText('${p.link_galeria}').then(()=>toast('Link copiado','success',1800))">
-                        <i class="fa-solid fa-copy"></i> Copiar link galería
-                    </button>` : ''}
+                    ${accion}
+                    ${copiar}
                 </div>
             </div>`;
-        }).join('');
-    } catch { c.innerHTML = '<p class="admin-loading" style="color:var(--red)">Error al cargar.</p>'; }
+}
+// Crea la pestaña "Coordinados" clonando la de Compras (no toca el index.html)
+function _asegurarTabCoordinados() {
+    if (document.querySelector('.admin-tab[data-tab="coordinados"]')) return;
+    const tabCompras  = document.querySelector('.admin-tab[data-tab="compras"]');
+    const contCompras = document.getElementById('tab-compras');
+    if (!tabCompras || !contCompras) return;
+    const tab = tabCompras.cloneNode(true);
+    tab.classList.remove('active');
+    tab.setAttribute('data-tab', 'coordinados');
+    tab.setAttribute('onclick', "switchAdminTab('coordinados')");
+    const ic = tab.querySelector('i'); if (ic) ic.className = 'fa-brands fa-whatsapp';
+    const bg = tab.querySelector('[id^="badge-"]'); if (bg) { bg.id = 'badge-coordinados'; bg.textContent = ''; bg.style.display = 'none'; }
+    tab.childNodes.forEach(n => { if (n.nodeType === 3 && n.textContent.trim()) n.textContent = ' Coordinados '; });
+    tabCompras.insertAdjacentElement('afterend', tab);
+    const cont = document.createElement('div');
+    cont.className = contCompras.className.replace(/\bactive\b/, '').trim();
+    cont.id = 'tab-coordinados';
+    cont.innerHTML = '<p class="admin-loading">Cargando pedidos...</p>';
+    contCompras.insertAdjacentElement('afterend', cont);
+}
+
+async function cargarCompras() {
+    const elC = document.getElementById('tab-compras');
+    const elW = document.getElementById('tab-coordinados');
+    if (!elC) return;
+    elC.innerHTML = '<p class="admin-loading">Cargando compras...</p>';
+    if (elW) elW.innerHTML = '<p class="admin-loading">Cargando pedidos...</p>';
+    try {
+        const lista       = await (await fetch('/admin/compras', { credentials:'include' })).json();
+        const coordinadas = lista.filter(p => p.estado === 'coordinar');
+        const confirmadas = lista.filter(p => p.estado !== 'coordinar');
+        elC.innerHTML = confirmadas.length
+            ? confirmadas.map(p => _itemCompraHTML(p, false)).join('')
+            : '<p class="admin-loading">Sin compras registradas.</p>';
+        if (elW) elW.innerHTML = coordinadas.length
+            ? coordinadas.map(p => _itemCompraHTML(p, true)).join('')
+            : '<p class="admin-loading">Sin pedidos a coordinar. Acá aparecen los que coordinan por WhatsApp y todavía no pagaron.</p>';
+        const bw = document.getElementById('badge-coordinados');
+        if (bw) { if (coordinadas.length) { bw.textContent = coordinadas.length; bw.style.display = 'inline-flex'; } else bw.style.display = 'none'; }
+    } catch { elC.innerHTML = '<p class="admin-loading" style="color:var(--red)">Error al cargar.</p>'; }
 }
 
 async function reenviarTodo(id) {
