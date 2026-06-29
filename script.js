@@ -1209,6 +1209,45 @@ function subirCarpeta(event, eventoId) {
     event.target.value = '';
 }
 
+// ── Compresión en el navegador: evita el límite de 10MB de Cloudinary ──
+function _cargarImagen(file) {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload  = () => { URL.revokeObjectURL(url); resolve(img); };
+        img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
+        img.src = url;
+    });
+}
+function _aBlobJPEG(img, maxDim, quality) {
+    return new Promise((resolve) => {
+        let w = img.naturalWidth, h = img.naturalHeight;
+        if (Math.max(w, h) > maxDim) {
+            const r = maxDim / Math.max(w, h);
+            w = Math.round(w * r); h = Math.round(h * r);
+        }
+        const c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        c.getContext('2d').drawImage(img, 0, 0, w, h);
+        c.toBlob(resolve, 'image/jpeg', quality);
+    });
+}
+async function prepararParaSubir(file, maxBytes = 9.5 * 1024 * 1024) {
+    // Solo comprime si supera el umbral; si ya pesa menos, la deja intacta.
+    if (!file.type || !file.type.startsWith('image/') || file.size <= maxBytes) return file;
+    let img;
+    try { img = await _cargarImagen(file); } catch(e) { return file; }
+    let maxDim = 5000, quality = 0.92;
+    let blob = await _aBlobJPEG(img, maxDim, quality);
+    while (blob && blob.size > maxBytes && (quality > 0.6 || maxDim > 2200)) {
+        if (quality > 0.7) quality -= 0.07;
+        else maxDim = Math.round(maxDim * 0.85);
+        blob = await _aBlobJPEG(img, maxDim, quality);
+    }
+    if (!blob) return file;
+    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+}
+
 async function subirFotos(event, eventoId) {
     event.preventDefault();
     const input = event.target.querySelector('input[type="file"]');
@@ -1249,7 +1288,9 @@ async function subirFotos(event, eventoId) {
         try {
             // 1. Subir directo a Cloudinary desde el browser (sin pasar por Railway)
             const fd = new FormData();
-            fd.append('file',         files[i]);
+            let archivo = files[i];
+            try { archivo = await prepararParaSubir(files[i]); } catch(e) {}
+            fd.append('file',         archivo);
             fd.append('api_key',      sigData.api_key);
             fd.append('timestamp',    sigData.timestamp);
             fd.append('signature',    sigData.signature);
@@ -1589,6 +1630,7 @@ async function procesarPago() {
             const total = count * unitario;
             const msg   = encodeURIComponent(
                 `Hola Nacho! Quiero comprar ${count} foto${count>1?'s':''}.\n` +
+                `Fotos:${_detalleFotosCarrito()}\n` +
                 `Total: $${total.toLocaleString('es-AR')} ARS\n` +
                 `Email para recibir las fotos: ${email}\n` +
                 `¿Cómo te puedo pagar?`
@@ -1616,6 +1658,19 @@ async function procesarPago() {
     }
 }
 
+// Lista las fotos del carrito agrupadas por evento, para el mensaje a Nacho
+function _detalleFotosCarrito() {
+    const porEvento = new Map();
+    for (const item of carrito.values()) {
+        const titulo = (item.evento && item.evento.titulo) ? item.evento.titulo : 'Galería';
+        if (!porEvento.has(titulo)) porEvento.set(titulo, []);
+        porEvento.get(titulo).push('#' + item.foto.id);
+    }
+    let txt = '';
+    for (const [titulo, ids] of porEvento) txt += `\n- ${titulo}: ${ids.join(', ')}`;
+    return txt;
+}
+
 function coordinarWA() {
     const nombre = document.getElementById('co-nombre')?.value.trim() || '';
     const email  = document.getElementById('co-email')?.value.trim() || '';
@@ -1625,6 +1680,7 @@ function coordinarWA() {
     
     const msg    = encodeURIComponent(
         `Hola Nacho! Quiero comprar ${count} foto${count>1?'s':''}.\n` +
+        `Fotos:${_detalleFotosCarrito()}\n` +
         `Total: $${total.toLocaleString('es-AR')} ARS\n` +
         (email  ? `Email: ${email}\n` : '') +
         (nombre ? `Nombre: ${nombre}\n` : '') +
