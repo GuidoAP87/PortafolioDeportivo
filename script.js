@@ -1233,7 +1233,6 @@ function _aBlobJPEG(img, maxDim, quality) {
     });
 }
 async function prepararParaSubir(file, maxBytes = 9.5 * 1024 * 1024) {
-    // Solo comprime si supera el umbral; si ya pesa menos, la deja intacta.
     if (!file.type || !file.type.startsWith('image/') || file.size <= maxBytes) return file;
     let img;
     try { img = await _cargarImagen(file); } catch(e) { return file; }
@@ -1671,22 +1670,42 @@ function _detalleFotosCarrito() {
     return txt;
 }
 
-function coordinarWA() {
-    const nombre = document.getElementById('co-nombre')?.value.trim() || '';
-    const email  = document.getElementById('co-email')?.value.trim() || '';
-    const count  = carrito.size;
+async function coordinarWA() {
+    const nombre   = document.getElementById('co-nombre')?.value.trim() || '';
+    const email    = document.getElementById('co-email')?.value.trim() || '';
+    const whatsapp = (document.getElementById('co-whatsapp')?.value.trim() || '').replace(/[\s+\-().]/g, '');
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        document.getElementById('co-email')?.focus();
+        document.querySelector('.checkout-box')?.classList.add('shake');
+        setTimeout(() => document.querySelector('.checkout-box')?.classList.remove('shake'), 500);
+        toast('Ingresá un email válido para recibir las fotos', 'error');
+        return;
+    }
+    const itemsConPrecio = calcularPreciosCarrito();
+    const foto_ids       = itemsConPrecio.map(({foto}) => foto.id);
+    const precios_custom = {};
+    itemsConPrecio.forEach(({foto, precio}) => { if (foto.precio_custom) precios_custom[foto.id] = precio; });
+    const count    = carrito.size;
     const unitario = getPrecioUnitario(count);
-    const total  = count * unitario;
-    
-    const msg    = encodeURIComponent(
+    const total    = count * unitario;
+    const msg = encodeURIComponent(
         `Hola Nacho! Quiero comprar ${count} foto${count>1?'s':''}.\n` +
         `Fotos:${_detalleFotosCarrito()}\n` +
         `Total: $${total.toLocaleString('es-AR')} ARS\n` +
-        (email  ? `Email: ${email}\n` : '') +
+        `Email: ${email}\n` +
         (nombre ? `Nombre: ${nombre}\n` : '') +
         `¿Cómo te puedo pagar?`
     );
+    // Registrar el pedido para que Nacho lo habilite desde su panel al recibir el pago
+    try {
+        await fetch('/coordinar-pedido', {
+            method:'POST', credentials:'include',
+            headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ foto_ids, email, nombre, whatsapp, precios_custom, tipo: nlTipoCompra, fotos_impresion_ids: nlFotosImpresion })
+        });
+    } catch(e) {}
     window.open(`https://wa.me/${WA_NUMBER}?text=${msg}`, '_blank');
+    cerrarCheckout();
 }
 
 function abrirLoginModal() {
@@ -1827,6 +1846,10 @@ async function cargarCompras() {
                     ${p.foto_ids.length} foto${p.foto_ids.length>1?'s':''} · IDs: [${p.foto_ids.join(', ')}]
                 </div>
                 <div class="admin-item-actions">
+                    ${(p.estado!=='approved' && p.estado!=='rejected') ? `
+                    <button class="admin-action-btn primary" onclick="confirmarPago(${p.id})">
+                        <i class="fa-solid fa-circle-check"></i> Confirmar pago y enviar
+                    </button>` : ''}
                     ${p.estado==='approved' ? `
                     <button class="admin-action-btn primary" onclick="reenviarTodo(${p.id})">
                         <i class="fa-solid fa-paper-plane"></i> Reenviar email + WhatsApp
@@ -1848,6 +1871,27 @@ async function reenviarTodo(id) {
     const data = await res.json();
     toast(data.ok ? '✓ Email y WhatsApp reenviados' : 'Error al reenviar', data.ok ? 'success' : 'error');
     if (data.ok) setTimeout(cargarCompras, 1500);
+}
+
+async function confirmarPago(id) {
+    const btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('.admin-action-btn') : null;
+    const r = await Swal.fire({
+        icon:'question', title:'¿Confirmar el pago?',
+        text:'Se le enviarán las fotos al cliente por email y WhatsApp.',
+        showCancelButton:true, confirmButtonText:'Sí, enviar fotos', cancelButtonText:'Cancelar',
+        background:'var(--ink-2)', color:'var(--text)', confirmButtonColor:'#25D366', cancelButtonColor:'#333'
+    });
+    if (!r.isConfirmed) return;
+    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...'; }
+    try {
+        const res  = await fetch(`/admin/compras/${id}/confirmar`, { method:'POST', credentials:'include' });
+        const data = await res.json();
+        toast(data.ok ? '✓ Pago confirmado, fotos enviadas' : 'Error al confirmar', data.ok ? 'success' : 'error');
+        if (data.ok) setTimeout(cargarCompras, 1500);
+    } catch {
+        toast('Error al confirmar el pago', 'error');
+        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Confirmar pago y enviar'; }
+    }
 }
 
 async function cargarConsultas() {
