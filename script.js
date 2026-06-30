@@ -152,6 +152,10 @@ function initAdminTriggers() {
     document.addEventListener('keydown', e => {
         if (e.ctrlKey && e.shiftKey && e.key === 'A') { e.preventDefault(); isAdmin ? abrirAdminPanel() : abrirLoginModal(); }
     });
+    // Acceso desde el celular: entrar a nacholingua.com/#admin
+    if ((location.hash || '').toLowerCase().replace('#', '') === 'admin') {
+        setTimeout(() => { isAdmin ? abrirAdminPanel() : abrirLoginModal(); }, 900);
+    }
 }
 
 async function verificarSesion() {
@@ -1778,7 +1782,6 @@ async function cargarAdminStats() {
 }
 
 let _comprasCache = [];
-// Render de una compra/pedido. esCoordinar=true → botón "Confirmar pago y enviar"
 function _itemCompraHTML(p, esCoordinar) {
     const cls = p.estado==='approved'?'badge-approved':p.estado==='rejected'?'badge-rejected':'badge-pendiente';
     const estadoTxt = esCoordinar ? 'a coordinar' : p.estado;
@@ -1808,7 +1811,6 @@ function _itemCompraHTML(p, esCoordinar) {
                 <div class="admin-item-actions">${accion}${copiar}</div>
             </div>`;
 }
-// Crea la pestaña "Coordinados" clonando la de Compras (no toca el index.html)
 function _asegurarTabCoordinados() {
     if (document.querySelector('.admin-tab[data-tab="coordinados"]')) return;
     const tabC = document.querySelector('.admin-tab[data-tab="compras"]');
@@ -1828,25 +1830,27 @@ function _asegurarTabCoordinados() {
     cont.innerHTML = '<p class="admin-loading">Cargando pedidos...</p>';
     contC.insertAdjacentElement('afterend', cont);
 }
-// Inyecta la barra de filtros arriba de las pestañas (no toca el index.html)
+// Barra de filtros prolija (no toca el index.html)
 function _asegurarBarraFiltros() {
     if (document.getElementById('admin-filtros')) return;
     const tab = document.querySelector('.admin-tab[data-tab="compras"]');
     const barraTabs = tab ? tab.parentElement : null;
     if (!barraTabs) return;
-    const est = 'background:#1a1812;border:1px solid #3a3527;color:#e8e3d6;padding:7px 10px;border-radius:6px;font-size:13px;outline:none';
+    const inp = 'background:#16140e;border:1px solid #38331f;color:#ece6d6;padding:8px 11px;border-radius:8px;font-size:13px;outline:none';
     const cont = document.createElement('div');
     cont.id = 'admin-filtros';
-    cont.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 0;margin-bottom:4px';
+    cont.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 0 14px;margin-bottom:6px;border-bottom:1px solid rgba(255,255,255,.06)';
     cont.innerHTML =
-        '<input id="filtro-q" type="text" placeholder="Buscar cliente o email..." oninput="_aplicarFiltros()" style="'+est+';flex:1;min-width:150px">' +
-        '<select id="filtro-evento" onchange="_aplicarFiltros()" style="'+est+';min-width:150px"><option value="">Todos los eventos</option></select>' +
-        '<input id="filtro-desde" type="date" onchange="_aplicarFiltros()" title="Desde" style="'+est+'">' +
-        '<input id="filtro-hasta" type="date" onchange="_aplicarFiltros()" title="Hasta" style="'+est+'">' +
-        '<button onclick="_limpiarFiltros()" style="background:transparent;border:1px solid #3a3527;color:#b9b09a;padding:7px 12px;border-radius:6px;font-size:13px;cursor:pointer">Limpiar</button>';
+        '<input id="filtro-q" type="text" placeholder="Buscar cliente o email..." oninput="_aplicarFiltros()" style="'+inp+';flex:1 1 180px;min-width:150px">' +
+        '<select id="filtro-evento" onchange="_aplicarFiltros()" style="'+inp+';flex:1 1 160px;max-width:230px;text-overflow:ellipsis"><option value="">Todos los eventos</option></select>' +
+        '<div style="display:flex;gap:6px;align-items:center;background:#16140e;border:1px solid #38331f;border-radius:8px;padding:3px 9px">' +
+            '<input id="filtro-desde" type="date" onchange="_aplicarFiltros()" title="Desde" style="background:transparent;border:0;color:#ece6d6;font-size:12px;outline:none;color-scheme:dark">' +
+            '<span style="color:#7c745f;font-size:12px">→</span>' +
+            '<input id="filtro-hasta" type="date" onchange="_aplicarFiltros()" title="Hasta" style="background:transparent;border:0;color:#ece6d6;font-size:12px;outline:none;color-scheme:dark">' +
+        '</div>' +
+        '<button onclick="_limpiarFiltros()" style="background:transparent;border:1px solid #38331f;color:#b9b09a;padding:8px 14px;border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap">Limpiar</button>';
     barraTabs.insertAdjacentElement('beforebegin', cont);
 }
-// Aplica los filtros sobre la cache y re-pinta Compras + Coordinados
 function _aplicarFiltros() {
     const q = (document.getElementById('filtro-q')?.value || '').toLowerCase().trim();
     const ev = document.getElementById('filtro-evento')?.value || '';
