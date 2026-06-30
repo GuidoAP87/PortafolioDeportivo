@@ -1210,37 +1210,15 @@ function subirCarpeta(event, eventoId) {
 }
 
 // ── Compresión en el navegador: evita el límite de 10MB de Cloudinary ──
-function _cargarImagen(file) {
-    return new Promise((resolve, reject) => {
-        const url = URL.createObjectURL(file);
-        const img = new Image();
-        img.onload  = () => { URL.revokeObjectURL(url); resolve(img); };
-        img.onerror = (e) => { URL.revokeObjectURL(url); reject(e); };
-        img.src = url;
-    });
-}
-function _aBlobJPEG(img, maxDim, quality) {
-    return new Promise((resolve) => {
-        let w = img.naturalWidth, h = img.naturalHeight;
-        if (Math.max(w, h) > maxDim) { const r = maxDim / Math.max(w, h); w = Math.round(w*r); h = Math.round(h*r); }
-        const c = document.createElement('canvas');
-        c.width = w; c.height = h;
-        c.getContext('2d').drawImage(img, 0, 0, w, h);
-        c.toBlob(resolve, 'image/jpeg', quality);
-    });
-}
-async function prepararParaSubir(file, maxBytes = 9.5 * 1024 * 1024) {
-    if (!file.type || !file.type.startsWith('image/') || file.size <= maxBytes) return file;
-    let img;
-    try { img = await _cargarImagen(file); } catch(e) { return file; }
-    let maxDim = 5000, quality = 0.92;
-    let blob = await _aBlobJPEG(img, maxDim, quality);
-    while (blob && blob.size > maxBytes && (quality > 0.6 || maxDim > 2200)) {
-        if (quality > 0.7) quality -= 0.07; else maxDim = Math.round(maxDim * 0.85);
-        blob = await _aBlobJPEG(img, maxDim, quality);
-    }
-    if (!blob) return file;
-    return new File([blob], file.name.replace(/\.[^.]+$/, '') + '.jpg', { type: 'image/jpeg' });
+function _cargarImagen(file){return new Promise((res,rej)=>{const u=URL.createObjectURL(file);const i=new Image();i.onload=()=>{URL.revokeObjectURL(u);res(i);};i.onerror=e=>{URL.revokeObjectURL(u);rej(e);};i.src=u;});}
+function _aBlobJPEG(img,maxDim,q){return new Promise(res=>{let w=img.naturalWidth,h=img.naturalHeight;if(Math.max(w,h)>maxDim){const r=maxDim/Math.max(w,h);w=Math.round(w*r);h=Math.round(h*r);}const c=document.createElement('canvas');c.width=w;c.height=h;c.getContext('2d').drawImage(img,0,0,w,h);c.toBlob(res,'image/jpeg',q);});}
+async function prepararParaSubir(file,maxBytes=9.5*1024*1024){
+    if(!file.type||!file.type.startsWith('image/')||file.size<=maxBytes) return file;
+    let img; try{img=await _cargarImagen(file);}catch(e){return file;}
+    let maxDim=5000,q=0.92,blob=await _aBlobJPEG(img,maxDim,q);
+    while(blob&&blob.size>maxBytes&&(q>0.6||maxDim>2200)){ if(q>0.7)q-=0.07; else maxDim=Math.round(maxDim*0.85); blob=await _aBlobJPEG(img,maxDim,q); }
+    if(!blob) return file;
+    return new File([blob],file.name.replace(/\.[^.]+$/,'')+'.jpg',{type:'image/jpeg'});
 }
 
 async function subirFotos(event, eventoId) {
@@ -1654,16 +1632,10 @@ async function procesarPago() {
 }
 
 // Lista las fotos del carrito agrupadas por evento, para el mensaje a Nacho
-function _detalleFotosCarrito() {
-    const porEvento = new Map();
-    for (const item of carrito.values()) {
-        const titulo = (item.evento && item.evento.titulo) ? item.evento.titulo : 'Galería';
-        if (!porEvento.has(titulo)) porEvento.set(titulo, []);
-        porEvento.get(titulo).push('#' + item.foto.id);
-    }
-    let txt = '';
-    for (const [titulo, ids] of porEvento) txt += `\n- ${titulo}: ${ids.join(', ')}`;
-    return txt;
+function _detalleFotosCarrito(){
+    const m=new Map();
+    for(const it of carrito.values()){ const t=(it.evento&&it.evento.titulo)?it.evento.titulo:'Galería'; if(!m.has(t))m.set(t,[]); m.get(t).push('#'+it.foto.id); }
+    let txt=''; for(const [t,ids] of m) txt+=`\n- ${t}: ${ids.join(', ')}`; return txt;
 }
 
 async function coordinarWA() {
@@ -1674,30 +1646,23 @@ async function coordinarWA() {
         document.getElementById('co-email')?.focus();
         document.querySelector('.checkout-box')?.classList.add('shake');
         setTimeout(() => document.querySelector('.checkout-box')?.classList.remove('shake'), 500);
-        toast('Ingresá un email válido para recibir las fotos', 'error');
-        return;
+        toast('Ingresá un email válido para recibir las fotos', 'error'); return;
     }
-    const itemsConPrecio = calcularPreciosCarrito();
-    const foto_ids       = itemsConPrecio.map(({foto}) => foto.id);
+    const items = calcularPreciosCarrito();
+    const foto_ids = items.map(({foto}) => foto.id);
     const precios_custom = {};
-    itemsConPrecio.forEach(({foto, precio}) => { if (foto.precio_custom) precios_custom[foto.id] = precio; });
-    const count    = carrito.size;
-    const unitario = getPrecioUnitario(count);
-    const total    = count * unitario;
+    items.forEach(({foto, precio}) => { if (foto.precio_custom) precios_custom[foto.id] = precio; });
+    const count = carrito.size, unitario = getPrecioUnitario(count), total = count * unitario;
     const msg = encodeURIComponent(
         `Hola Nacho! Quiero comprar ${count} foto${count>1?'s':''}.\n` +
         `Fotos:${_detalleFotosCarrito()}\n` +
         `Total: $${total.toLocaleString('es-AR')} ARS\n` +
-        `Email: ${email}\n` +
-        (nombre ? `Nombre: ${nombre}\n` : '') +
-        `¿Cómo te puedo pagar?`
+        `Email: ${email}\n` + (nombre ? `Nombre: ${nombre}\n` : '') + `¿Cómo te puedo pagar?`
     );
     try {
-        await fetch('/coordinar-pedido', {
-            method:'POST', credentials:'include',
+        await fetch('/coordinar-pedido', { method:'POST', credentials:'include',
             headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ foto_ids, email, nombre, whatsapp, precios_custom, tipo: nlTipoCompra, fotos_impresion_ids: nlFotosImpresion })
-        });
+            body: JSON.stringify({ foto_ids, email, nombre, whatsapp, precios_custom, tipo: nlTipoCompra, fotos_impresion_ids: nlFotosImpresion }) });
     } catch(e) {}
     window.open(`https://wa.me/${WA_NUMBER}?text=${msg}`, '_blank');
     cerrarCheckout();
@@ -1774,6 +1739,7 @@ async function abrirAdminPanel() {
     requestAnimationFrame(() => m.classList.add('open'));
     document.body.style.overflow = 'hidden';
     _asegurarTabCoordinados();
+    _asegurarBarraFiltros();
     await Promise.all([cargarAdminStats(), cargarCompras(), cargarConsultas()]);
 }
 
@@ -1811,14 +1777,13 @@ async function cargarAdminStats() {
     } catch {}
 }
 
+let _comprasCache = [];
 // Render de una compra/pedido. esCoordinar=true → botón "Confirmar pago y enviar"
 function _itemCompraHTML(p, esCoordinar) {
-    const cls       = p.estado==='approved'?'badge-approved':p.estado==='rejected'?'badge-rejected':'badge-pendiente';
+    const cls = p.estado==='approved'?'badge-approved':p.estado==='rejected'?'badge-rejected':'badge-pendiente';
     const estadoTxt = esCoordinar ? 'a coordinar' : p.estado;
-    const emailCls  = p.email_enviado ? 'badge-approved' : 'badge-pendiente';
-    const copiar    = p.link_galeria
-        ? `<button class="admin-action-btn" onclick="navigator.clipboard.writeText('${p.link_galeria}').then(()=>toast('Link copiado','success',1800))"><i class="fa-solid fa-copy"></i> Copiar link galería</button>`
-        : '';
+    const emailCls = p.email_enviado ? 'badge-approved' : 'badge-pendiente';
+    const copiar = p.link_galeria ? `<button class="admin-action-btn" onclick="navigator.clipboard.writeText('${p.link_galeria}').then(()=>toast('Link copiado','success',1800))"><i class="fa-solid fa-copy"></i> Copiar link galería</button>` : '';
     const accion = esCoordinar
         ? `<button class="admin-action-btn primary" onclick="confirmarPago(${p.id})"><i class="fa-solid fa-circle-check"></i> Confirmar pago y enviar</button>`
         : (p.estado==='approved' ? `<button class="admin-action-btn primary" onclick="reenviarTodo(${p.id})"><i class="fa-solid fa-paper-plane"></i> Reenviar email + WhatsApp</button>` : '');
@@ -1831,6 +1796,7 @@ function _itemCompraHTML(p, esCoordinar) {
                         <span class="badge ${emailCls}">${p.email_enviado?'✓ Email':'Sin email'}</span>
                         ${p.whatsapp ? `<span class="badge ${p.wa_enviado?'badge-approved':'badge-pendiente'}">${p.wa_enviado?'✓ WhatsApp':'WA pendiente'}</span>` : ''}
                         <br><small style="color:var(--text-dim);font-size:10px">${p.email}${p.whatsapp ? ' · 📱 +' + p.whatsapp : ''}</small>
+                        ${(p.eventos&&p.eventos.length) ? `<br><small style="color:var(--text-dim);font-size:10px">📁 ${p.eventos.map(e=>e.titulo).join(' · ')}</small>` : ''}
                         ${p.link_galeria ? `<br><small><a href="${p.link_galeria}" target="_blank" style="color:var(--gold);font-size:10px;word-break:break-all">🔗 ${p.link_galeria}</a></small>` : ''}
                     </div>
                     <div style="text-align:right;flex-shrink:0">
@@ -1838,54 +1804,93 @@ function _itemCompraHTML(p, esCoordinar) {
                         <strong style="color:var(--gold);font-size:15px">$${Number(p.total).toLocaleString('es-AR')}</strong>
                     </div>
                 </div>
-                <div class="admin-item-body">
-                    ${p.foto_ids.length} foto${p.foto_ids.length>1?'s':''} · IDs: [${p.foto_ids.join(', ')}]
-                </div>
-                <div class="admin-item-actions">
-                    ${accion}
-                    ${copiar}
-                </div>
+                <div class="admin-item-body">${p.foto_ids.length} foto${p.foto_ids.length>1?'s':''} · IDs: [${p.foto_ids.join(', ')}]</div>
+                <div class="admin-item-actions">${accion}${copiar}</div>
             </div>`;
 }
 // Crea la pestaña "Coordinados" clonando la de Compras (no toca el index.html)
 function _asegurarTabCoordinados() {
     if (document.querySelector('.admin-tab[data-tab="coordinados"]')) return;
-    const tabCompras  = document.querySelector('.admin-tab[data-tab="compras"]');
-    const contCompras = document.getElementById('tab-compras');
-    if (!tabCompras || !contCompras) return;
-    const tab = tabCompras.cloneNode(true);
+    const tabC = document.querySelector('.admin-tab[data-tab="compras"]');
+    const contC = document.getElementById('tab-compras');
+    if (!tabC || !contC) return;
+    const tab = tabC.cloneNode(true);
     tab.classList.remove('active');
     tab.setAttribute('data-tab', 'coordinados');
     tab.setAttribute('onclick', "switchAdminTab('coordinados')");
     const ic = tab.querySelector('i'); if (ic) ic.className = 'fa-brands fa-whatsapp';
     const bg = tab.querySelector('[id^="badge-"]'); if (bg) { bg.id = 'badge-coordinados'; bg.textContent = ''; bg.style.display = 'none'; }
     tab.childNodes.forEach(n => { if (n.nodeType === 3 && n.textContent.trim()) n.textContent = ' Coordinados '; });
-    tabCompras.insertAdjacentElement('afterend', tab);
+    tabC.insertAdjacentElement('afterend', tab);
     const cont = document.createElement('div');
-    cont.className = contCompras.className.replace(/\bactive\b/, '').trim();
+    cont.className = contC.className.replace(/\bactive\b/, '').trim();
     cont.id = 'tab-coordinados';
     cont.innerHTML = '<p class="admin-loading">Cargando pedidos...</p>';
-    contCompras.insertAdjacentElement('afterend', cont);
+    contC.insertAdjacentElement('afterend', cont);
+}
+// Inyecta la barra de filtros arriba de las pestañas (no toca el index.html)
+function _asegurarBarraFiltros() {
+    if (document.getElementById('admin-filtros')) return;
+    const tab = document.querySelector('.admin-tab[data-tab="compras"]');
+    const barraTabs = tab ? tab.parentElement : null;
+    if (!barraTabs) return;
+    const est = 'background:#1a1812;border:1px solid #3a3527;color:#e8e3d6;padding:7px 10px;border-radius:6px;font-size:13px;outline:none';
+    const cont = document.createElement('div');
+    cont.id = 'admin-filtros';
+    cont.style.cssText = 'display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:10px 0;margin-bottom:4px';
+    cont.innerHTML =
+        '<input id="filtro-q" type="text" placeholder="Buscar cliente o email..." oninput="_aplicarFiltros()" style="'+est+';flex:1;min-width:150px">' +
+        '<select id="filtro-evento" onchange="_aplicarFiltros()" style="'+est+';min-width:150px"><option value="">Todos los eventos</option></select>' +
+        '<input id="filtro-desde" type="date" onchange="_aplicarFiltros()" title="Desde" style="'+est+'">' +
+        '<input id="filtro-hasta" type="date" onchange="_aplicarFiltros()" title="Hasta" style="'+est+'">' +
+        '<button onclick="_limpiarFiltros()" style="background:transparent;border:1px solid #3a3527;color:#b9b09a;padding:7px 12px;border-radius:6px;font-size:13px;cursor:pointer">Limpiar</button>';
+    barraTabs.insertAdjacentElement('beforebegin', cont);
+}
+// Aplica los filtros sobre la cache y re-pinta Compras + Coordinados
+function _aplicarFiltros() {
+    const q = (document.getElementById('filtro-q')?.value || '').toLowerCase().trim();
+    const ev = document.getElementById('filtro-evento')?.value || '';
+    const desde = document.getElementById('filtro-desde')?.value || '';
+    const hasta = document.getElementById('filtro-hasta')?.value || '';
+    const pasa = (c) => {
+        if (q && !(((c.nombre||'')+' '+(c.email||'')).toLowerCase().includes(q))) return false;
+        if (ev && !(c.eventos||[]).some(e => String(e.id) === ev)) return false;
+        if (desde && c.fecha_iso && c.fecha_iso < desde) return false;
+        if (hasta && c.fecha_iso && c.fecha_iso > hasta) return false;
+        return true;
+    };
+    const lista = _comprasCache.filter(pasa);
+    const conf = lista.filter(p => p.estado !== 'coordinar');
+    const coord = lista.filter(p => p.estado === 'coordinar');
+    const elC = document.getElementById('tab-compras');
+    const elW = document.getElementById('tab-coordinados');
+    if (elC) elC.innerHTML = conf.length ? conf.map(p=>_itemCompraHTML(p,false)).join('') : '<p class="admin-loading">Sin resultados.</p>';
+    if (elW) elW.innerHTML = coord.length ? coord.map(p=>_itemCompraHTML(p,true)).join('') : '<p class="admin-loading">Sin pedidos a coordinar.</p>';
+    const bw = document.getElementById('badge-coordinados');
+    if (bw) { const n = _comprasCache.filter(p=>p.estado==='coordinar').length; if (n){bw.textContent=n;bw.style.display='inline-flex';} else bw.style.display='none'; }
+}
+function _limpiarFiltros() {
+    ['filtro-q','filtro-desde','filtro-hasta'].forEach(id => { const el=document.getElementById(id); if (el) el.value=''; });
+    const sel=document.getElementById('filtro-evento'); if (sel) sel.value='';
+    _aplicarFiltros();
 }
 
 async function cargarCompras() {
     const elC = document.getElementById('tab-compras');
-    const elW = document.getElementById('tab-coordinados');
     if (!elC) return;
     elC.innerHTML = '<p class="admin-loading">Cargando compras...</p>';
-    if (elW) elW.innerHTML = '<p class="admin-loading">Cargando pedidos...</p>';
     try {
-        const lista       = await (await fetch('/admin/compras', { credentials:'include' })).json();
-        const coordinadas = lista.filter(p => p.estado === 'coordinar');
-        const confirmadas = lista.filter(p => p.estado !== 'coordinar');
-        elC.innerHTML = confirmadas.length
-            ? confirmadas.map(p => _itemCompraHTML(p, false)).join('')
-            : '<p class="admin-loading">Sin compras registradas.</p>';
-        if (elW) elW.innerHTML = coordinadas.length
-            ? coordinadas.map(p => _itemCompraHTML(p, true)).join('')
-            : '<p class="admin-loading">Sin pedidos a coordinar. Acá aparecen los que coordinan por WhatsApp y todavía no pagaron.</p>';
-        const bw = document.getElementById('badge-coordinados');
-        if (bw) { if (coordinadas.length) { bw.textContent = coordinadas.length; bw.style.display = 'inline-flex'; } else bw.style.display = 'none'; }
+        _comprasCache = await (await fetch('/admin/compras', { credentials:'include' })).json();
+        const sel = document.getElementById('filtro-evento');
+        if (sel) {
+            const vistos = new Map();
+            _comprasCache.forEach(c => (c.eventos||[]).forEach(e => vistos.set(String(e.id), e.titulo)));
+            const actual = sel.value;
+            sel.innerHTML = '<option value="">Todos los eventos</option>' +
+                [...vistos.entries()].sort((a,b)=>a[1].localeCompare(b[1])).map(([id,t]) => `<option value="${id}">${t}</option>`).join('');
+            sel.value = actual;
+        }
+        _aplicarFiltros();
     } catch { elC.innerHTML = '<p class="admin-loading" style="color:var(--red)">Error al cargar.</p>'; }
 }
 
@@ -1900,16 +1905,13 @@ async function reenviarTodo(id) {
 
 async function confirmarPago(id) {
     const btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('.admin-action-btn') : null;
-    const r = await Swal.fire({
-        icon:'question', title:'¿Confirmar el pago?',
-        text:'Se le enviarán las fotos al cliente por email y WhatsApp.',
+    const r = await Swal.fire({ icon:'question', title:'¿Confirmar el pago?', text:'Se le enviarán las fotos al cliente por email y WhatsApp.',
         showCancelButton:true, confirmButtonText:'Sí, enviar fotos', cancelButtonText:'Cancelar',
-        background:'var(--ink-2)', color:'var(--text)', confirmButtonColor:'#25D366', cancelButtonColor:'#333'
-    });
+        background:'var(--ink-2)', color:'var(--text)', confirmButtonColor:'#25D366', cancelButtonColor:'#333' });
     if (!r.isConfirmed) return;
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...'; }
     try {
-        const res  = await fetch(`/admin/compras/${id}/confirmar`, { method:'POST', credentials:'include' });
+        const res = await fetch(`/admin/compras/${id}/confirmar`, { method:'POST', credentials:'include' });
         const data = await res.json();
         toast(data.ok ? '✓ Pago confirmado, fotos enviadas' : 'Error al confirmar', data.ok ? 'success' : 'error');
         if (data.ok) setTimeout(cargarCompras, 1500);

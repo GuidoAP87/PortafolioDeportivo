@@ -1772,19 +1772,43 @@ def admin_stats():
 def ver_compras():
     if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
     base = os.environ.get('BASE_URL', request.host_url.rstrip('/'))
-    return jsonify([{
-        'id':            c.id,
-        'email':         c.email_cliente,
-        'nombre':        c.nombre_cliente,
-        'whatsapp':      c.whatsapp_cliente,
-        'foto_ids':      json.loads(c.foto_ids or '[]'),
-        'total':         c.monto_total,
-        'estado':        c.estado,
-        'email_enviado': c.email_enviado,
-        'wa_enviado':    c.wa_enviado,
-        'link_galeria':  f"{base}/galeria/{c.token_galeria}" if c.token_galeria else None,
-        'fecha':         c.creada_en.strftime('%d/%m/%Y %H:%M') if c.creada_en else ''
-    } for c in Compra.query.order_by(Compra.creada_en.desc()).all()])
+    # Mapas para resolver el evento/album de cada foto sin N+1 queries
+    foto2ev = dict(db.session.query(Foto.id, Foto.evento_id).all())
+    eventos = {e.id: e for e in Evento.query.all()}
+    def infos_de(ev):
+        out = []
+        if ev.parent_id and ev.parent_id in eventos:
+            madre = eventos[ev.parent_id]
+            out.append({'id': ev.id, 'titulo': madre.titulo + ' / ' + ev.titulo})
+            out.append({'id': madre.id, 'titulo': madre.titulo})
+        else:
+            out.append({'id': ev.id, 'titulo': ev.titulo})
+        return out
+    salida = []
+    for c in Compra.query.order_by(Compra.creada_en.desc()).all():
+        ids = json.loads(c.foto_ids or '[]')
+        evs = {}
+        for fid in ids:
+            ev = eventos.get(foto2ev.get(fid))
+            if ev:
+                for info in infos_de(ev):
+                    evs[info['id']] = info
+        salida.append({
+            'id':            c.id,
+            'email':         c.email_cliente,
+            'nombre':        c.nombre_cliente,
+            'whatsapp':      c.whatsapp_cliente,
+            'foto_ids':      ids,
+            'total':         c.monto_total,
+            'estado':        c.estado,
+            'email_enviado': c.email_enviado,
+            'wa_enviado':    c.wa_enviado,
+            'link_galeria':  f"{base}/galeria/{c.token_galeria}" if c.token_galeria else None,
+            'fecha':         c.creada_en.strftime('%d/%m/%Y %H:%M') if c.creada_en else '',
+            'fecha_iso':     c.creada_en.strftime('%Y-%m-%d') if c.creada_en else '',
+            'eventos':       list(evs.values())
+        })
+    return jsonify(salida)
 
 @app.route('/admin/compras/<int:cid>/reenviar', methods=['POST'])
 def reenviar_todo(cid):
