@@ -63,20 +63,55 @@ async function cargarConfigPrecios() {
 }
 
 /**
- * Calcula el precio de cada foto en el carrito correctamente:
- * - Si tiene precio personalizado (distinto al base): usa ese precio fijo
- * - Si tiene precio base: aplica descuento por volumen según cuántas fotos SIN precio custom hay
+ * Precios con reglas por evento/álbum (configurables por Nacho desde el panel):
+ * - Cada evento o álbum puede tener regla propia: precio fijo o escalera por cantidad.
+ * - Si no tiene, hereda la del evento madre; si tampoco, usa el precio general.
+ * - El carrito se agrupa por regla y cada grupo escala con su propia cantidad.
  */
-function calcularPreciosCarrito() {
-    // Escalera por cantidad: el total depende de CUÁNTAS fotos, no del precio individual.
-    const items = [...carrito.values()];
-    const n = items.length;
-    const unit = n > 0 ? Math.round(precioEscalera(n) / n) : 0;
-    return items.map(({foto, evento}) => ({ foto, evento, precio: unit }));
+function _reglaPorEventoId(evId, parentId) {
+    const R = (NL_CONFIG && NL_CONFIG.reglas_eventos) || {};
+    if (evId != null && R[String(evId)]) return { clave: 'ev:' + evId, regla: R[String(evId)] };
+    let pid = parentId;
+    if ((pid === undefined || pid === null) && NL_CONFIG && NL_CONFIG.parents) pid = NL_CONFIG.parents[String(evId)];
+    if (pid != null && R[String(pid)]) return { clave: 'ev:' + pid, regla: R[String(pid)] };
+    return { clave: 'global', regla: (NL_CONFIG && NL_CONFIG.precios_global) || null };
 }
-
+function _totalPorRegla(regla, n) {
+    n = Math.max(0, Math.floor(n));
+    if (n === 0) return 0;
+    if (!regla) return precioEscalera(n);
+    if (regla.modo === 'fijo') return Math.round(n * Number(regla.precio));
+    if (regla.modo === 'escalera' && Array.isArray(regla.tramos) && regla.tramos.length) {
+        const ts = [...regla.tramos].sort((a, b) => Number(a.min) - Number(b.min));
+        let u = Number(ts[0].precio);
+        for (const t of ts) if (n >= Number(t.min)) u = Number(t.precio);
+        return Math.round(n * u);
+    }
+    return precioEscalera(n);
+}
+function _gruposCarrito() {
+    const g = new Map();
+    for (const it of carrito.values()) {
+        const ev = it.evento || {};
+        const { clave, regla } = _reglaPorEventoId(ev.id, ev.parent_id);
+        if (!g.has(clave)) g.set(clave, { regla, items: [] });
+        g.get(clave).items.push(it);
+    }
+    return g;
+}
+function calcularPreciosCarrito() {
+    const out = [];
+    for (const gr of _gruposCarrito().values()) {
+        const n = gr.items.length;
+        const unit = n ? Math.round(_totalPorRegla(gr.regla, n) / n) : 0;
+        for (const it of gr.items) out.push({ foto: it.foto, evento: it.evento, precio: unit });
+    }
+    return out;
+}
 function calcularTotalCarrito() {
-    return precioEscalera(carrito.size);
+    let total = 0;
+    for (const gr of _gruposCarrito().values()) total += _totalPorRegla(gr.regla, gr.items.length);
+    return total;
 }
 
 // ─── ESTADO ───────────────────────────────────────────────────────────────────
@@ -1498,14 +1533,14 @@ function abrirCheckout(tipo = 'individual') {
     
     // Acá aplicamos el precio dinámico al momento de abrir el modal de pago
     const count = carrito.size;
-    const unitario = getPrecioUnitario(count);
-    const total = count * unitario;
+    const total    = calcularTotalCarrito();
+    const unitario = count > 0 ? Math.round(total / count) : 0;
     
     const items = [...carrito.values()];
 
     const renderCheckoutItems = () => {
         const itemsConPrecio = calcularPreciosCarrito();
-        const total2         = itemsConPrecio.reduce((s, {precio}) => s + precio, 0);
+        const total2         = calcularTotalCarrito();
         const count2         = itemsConPrecio.length;
         const precioNormal   = getPrecioUnitario(itemsConPrecio.filter(i => !i.foto.precio_custom).length);
 
@@ -1603,8 +1638,8 @@ async function procesarPago() {
         if (data.error === 'mp_no_configurado' || res.status === 503) {
             cerrarCheckout();
             const count = carrito.size;
-            const unitario = getPrecioUnitario(count);
-            const total = count * unitario;
+            const total    = calcularTotalCarrito();
+            const unitario = count > 0 ? Math.round(total / count) : 0;
             const msg   = encodeURIComponent(
                 `Hola Nacho! Quiero comprar ${count} foto${count>1?'s':''}.\n` +
                 `Fotos:${_detalleFotosCarrito()}\n` +
@@ -1652,11 +1687,9 @@ async function coordinarWA() {
         setTimeout(() => document.querySelector('.checkout-box')?.classList.remove('shake'), 500);
         toast('Ingresá un email válido para recibir las fotos', 'error'); return;
     }
-    const items = calcularPreciosCarrito();
-    const foto_ids = items.map(({foto}) => foto.id);
-    const precios_custom = {};
-    items.forEach(({foto, precio}) => { if (foto.precio_custom) precios_custom[foto.id] = precio; });
-    const count = carrito.size, unitario = getPrecioUnitario(count), total = count * unitario;
+    const foto_ids = [...carrito.values()].map(({foto}) => foto.id);
+    const count = carrito.size;
+    const total = calcularTotalCarrito();
     const msg = encodeURIComponent(
         `Hola Nacho! Quiero comprar ${count} foto${count>1?'s':''}.\n` +
         `Fotos:${_detalleFotosCarrito()}\n` +
@@ -1666,7 +1699,7 @@ async function coordinarWA() {
     try {
         await fetch('/coordinar-pedido', { method:'POST', credentials:'include',
             headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ foto_ids, email, nombre, whatsapp, precios_custom, tipo: nlTipoCompra, fotos_impresion_ids: nlFotosImpresion }) });
+            body: JSON.stringify({ foto_ids, email, nombre, whatsapp, tipo: nlTipoCompra, fotos_impresion_ids: nlFotosImpresion }) });
     } catch(e) {}
     window.open(`https://wa.me/${WA_NUMBER}?text=${msg}`, '_blank');
     cerrarCheckout();
@@ -1743,8 +1776,9 @@ async function abrirAdminPanel() {
     requestAnimationFrame(() => m.classList.add('open'));
     document.body.style.overflow = 'hidden';
     _asegurarTabCoordinados();
+    _asegurarTabPrecios();
     _asegurarBarraFiltros();
-    await Promise.all([cargarAdminStats(), cargarCompras(), cargarConsultas()]);
+    await Promise.all([cargarAdminStats(), cargarCompras(), cargarConsultas(), cargarPrecios()]);
 }
 
 function cerrarAdminPanel() {
@@ -1811,26 +1845,33 @@ function _itemCompraHTML(p, esCoordinar) {
                 <div class="admin-item-actions">${accion}${copiar}</div>
             </div>`;
 }
-function _asegurarTabCoordinados() {
-    if (document.querySelector('.admin-tab[data-tab="coordinados"]')) return;
-    const tabC = document.querySelector('.admin-tab[data-tab="compras"]');
-    const contC = document.getElementById('tab-compras');
-    if (!tabC || !contC) return;
-    const tab = tabC.cloneNode(true);
+function _clonarTabAdmin(dataTab, icono, texto, refTab, refCont, conBadge) {
+    if (document.querySelector('.admin-tab[data-tab="'+dataTab+'"]')) return;
+    if (!refTab || !refCont) return;
+    const tab = refTab.cloneNode(true);
     tab.classList.remove('active');
-    tab.setAttribute('data-tab', 'coordinados');
-    tab.setAttribute('onclick', "switchAdminTab('coordinados')");
-    const ic = tab.querySelector('i'); if (ic) ic.className = 'fa-brands fa-whatsapp';
-    const bg = tab.querySelector('[id^="badge-"]'); if (bg) { bg.id = 'badge-coordinados'; bg.textContent = ''; bg.style.display = 'none'; }
-    tab.childNodes.forEach(n => { if (n.nodeType === 3 && n.textContent.trim()) n.textContent = ' Coordinados '; });
-    tabC.insertAdjacentElement('afterend', tab);
+    tab.setAttribute('data-tab', dataTab);
+    tab.setAttribute('onclick', "switchAdminTab('"+dataTab+"')");
+    const ic = tab.querySelector('i'); if (ic) ic.className = icono;
+    const bg = tab.querySelector('[id^="badge-"]');
+    if (bg) { if (conBadge) { bg.id = 'badge-'+dataTab; bg.textContent=''; bg.style.display='none'; } else bg.remove(); }
+    tab.childNodes.forEach(n => { if (n.nodeType === 3 && n.textContent.trim()) n.textContent = ' '+texto+' '; });
+    refTab.insertAdjacentElement('afterend', tab);
     const cont = document.createElement('div');
-    cont.className = contC.className.replace(/\bactive\b/, '').trim();
-    cont.id = 'tab-coordinados';
-    cont.innerHTML = '<p class="admin-loading">Cargando pedidos...</p>';
-    contC.insertAdjacentElement('afterend', cont);
+    cont.className = refCont.className.replace(/\bactive\b/, '').trim();
+    cont.id = 'tab-'+dataTab;
+    cont.innerHTML = '<p class="admin-loading">Cargando...</p>';
+    refCont.insertAdjacentElement('afterend', cont);
 }
-// Barra de filtros prolija (no toca el index.html)
+function _asegurarTabCoordinados() {
+    _clonarTabAdmin('coordinados', 'fa-brands fa-whatsapp', 'Coordinados',
+        document.querySelector('.admin-tab[data-tab="compras"]'), document.getElementById('tab-compras'), true);
+}
+function _asegurarTabPrecios() {
+    _clonarTabAdmin('precios', 'fa-solid fa-tag', 'Precios',
+        document.querySelector('.admin-tab[data-tab="coordinados"]') || document.querySelector('.admin-tab[data-tab="compras"]'),
+        document.getElementById('tab-coordinados') || document.getElementById('tab-compras'), false);
+}
 function _asegurarBarraFiltros() {
     if (document.getElementById('admin-filtros')) return;
     const tab = document.querySelector('.admin-tab[data-tab="compras"]');
@@ -1877,6 +1918,148 @@ function _limpiarFiltros() {
     ['filtro-q','filtro-desde','filtro-hasta'].forEach(id => { const el=document.getElementById(id); if (el) el.value=''; });
     const sel=document.getElementById('filtro-evento'); if (sel) sel.value='';
     _aplicarFiltros();
+}
+// ── PESTAÑA PRECIOS: Nacho gestiona precio general, por evento/álbum y packs ──
+let _preciosData = null, _precioEditKey = null, _precioDraft = null;
+const _inpP = 'background:#16140e;border:1px solid #38331f;color:#ece6d6;padding:7px 10px;border-radius:7px;font-size:13px;outline:none';
+async function cargarPrecios() {
+    const el = document.getElementById('tab-precios');
+    if (!el) return;
+    try {
+        _preciosData = await (await fetch('/admin/precios', { credentials:'include' })).json();
+        _renderPrecios();
+    } catch { el.innerHTML = '<p class="admin-loading" style="color:var(--red)">Error al cargar precios.</p>'; }
+}
+function _descRegla(r, esGlobal) {
+    if (!r) return esGlobal ? 'Escalera por defecto' : 'Hereda el general';
+    if (r.modo === 'fijo') return 'Fijo $' + Number(r.precio).toLocaleString('es-AR') + ' c/u';
+    return 'Escalera propia';
+}
+function _abrirEditorPrecio(key) {
+    _precioEditKey = String(key);
+    let base = null;
+    if (String(key) === 'global') base = _preciosData.global;
+    else { const e = _preciosData.eventos.find(x => String(x.id) === String(key)); base = e && e.regla; }
+    _precioDraft = base ? JSON.parse(JSON.stringify(base)) : { modo: '' };
+    _renderPrecios();
+}
+function _cerrarEditorPrecio() { _precioEditKey = null; _precioDraft = null; _renderPrecios(); }
+function _precioModo(m) {
+    _precioDraft = m === 'fijo'
+        ? { modo:'fijo', precio: Number(_precioDraft.precio) > 0 ? _precioDraft.precio : 3000 }
+        : m === 'escalera'
+        ? { modo:'escalera', tramos: (_precioDraft.tramos && _precioDraft.tramos.length ? _precioDraft.tramos : [{min:1,precio:3200},{min:2,precio:2750},{min:3,precio:2500},{min:5,precio:2000}]) }
+        : { modo:'' };
+    _renderPrecios();
+}
+function _precioSet(campo, val) { _precioDraft[campo] = val; }
+function _tramoSet(i, campo, val) { _precioDraft.tramos[i][campo] = val; }
+function _tramoAdd() { const ts=_precioDraft.tramos, u=ts[ts.length-1]; ts.push({ min: Number(u.min)+1, precio: Number(u.precio) }); _renderPrecios(); }
+function _tramoDel(i) { if (_precioDraft.tramos.length > 1) { _precioDraft.tramos.splice(i,1); _renderPrecios(); } }
+function _editorPrecioHTML(esGlobal) {
+    const d = _precioDraft;
+    let cuerpo;
+    if (d.modo === 'fijo') {
+        cuerpo = `<label style="font-size:12px;color:#b9b09a">Precio por foto: $
+            <input type="number" min="1" value="${d.precio ?? ''}" oninput="_precioSet('precio', this.value)" style="${_inpP};width:110px"></label>
+            <div style="font-size:11px;color:#7c745f;margin-top:6px">Todas las fotos valen lo mismo, sin importar cuántas lleve el cliente.</div>`;
+    } else if (d.modo === 'escalera') {
+        cuerpo = d.tramos.map((t, i) => `
+            <div style="display:flex;gap:6px;align-items:center;margin:4px 0;flex-wrap:wrap">
+                <span style="font-size:12px;color:#b9b09a">Desde</span>
+                <input type="number" min="1" value="${t.min}" oninput="_tramoSet(${i},'min',this.value)" style="${_inpP};width:62px" ${i===0?'disabled':''}>
+                <span style="font-size:12px;color:#b9b09a">fotos → $</span>
+                <input type="number" min="1" value="${t.precio}" oninput="_tramoSet(${i},'precio',this.value)" style="${_inpP};width:95px">
+                <span style="font-size:12px;color:#b9b09a">c/u</span>
+                ${i>0 ? `<button onclick="_tramoDel(${i})" style="background:none;border:none;color:#c0665a;cursor:pointer;font-size:14px;padding:2px 6px">✕</button>` : ''}
+            </div>`).join('') +
+            `<button onclick="_tramoAdd()" style="background:transparent;border:1px dashed #38331f;color:#b9b09a;padding:5px 10px;border-radius:7px;font-size:12px;cursor:pointer;margin-top:5px">+ Agregar tramo</button>
+            <div style="font-size:11px;color:#7c745f;margin-top:7px">Cuantas más fotos lleva, más barata sale cada una. Total = cantidad × precio del tramo.</div>`;
+    } else {
+        cuerpo = `<div style="font-size:11px;color:#7c745f">${esGlobal
+            ? 'Escalera por defecto: 1 = $3.200 · 2 = $5.500 · 3 = $7.500 · 5 = $10.000 (y +$2.000 por foto extra).'
+            : 'Este álbum usa el precio general (o el de su evento madre, si tiene uno propio).'}</div>`;
+    }
+    return `
+        <div style="margin-top:10px;padding:12px;border:1px solid #38331f;border-radius:9px;background:#141209">
+            <select onchange="_precioModo(this.value)" style="${_inpP};margin-bottom:9px;max-width:100%">
+                <option value="" ${!d.modo?'selected':''}>${esGlobal?'Escalera por defecto':'Heredar el precio general'}</option>
+                <option value="fijo" ${d.modo==='fijo'?'selected':''}>Precio fijo por foto</option>
+                <option value="escalera" ${d.modo==='escalera'?'selected':''}>Escalera por cantidad</option>
+            </select>
+            <div>${cuerpo}</div>
+            <div style="display:flex;gap:8px;margin-top:11px">
+                <button onclick="guardarRegla()" class="admin-action-btn primary" style="cursor:pointer"><i class="fa-solid fa-floppy-disk"></i> Guardar</button>
+                <button onclick="_cerrarEditorPrecio()" class="admin-action-btn" style="cursor:pointer">Cancelar</button>
+            </div>
+        </div>`;
+}
+function _renderPrecios() {
+    const el = document.getElementById('tab-precios');
+    if (!el || !_preciosData) return;
+    const chip = (t, ok) => `<span class="badge ${ok?'badge-approved':'badge-pendiente'}" style="margin-left:6px">${t}</span>`;
+    const filaEv = (e) => {
+        const hijo = !!e.parent_id;
+        return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 4px;border-bottom:1px solid rgba(255,255,255,.05)">
+            <div style="min-width:0;font-size:13px;color:#ece6d6;${hijo?'padding-left:16px':''}">${hijo?'└ ':''}${e.titulo}${chip(_descRegla(e.regla,false), !!e.regla)}</div>
+            ${String(_precioEditKey)===String(e.id)?'':`<button onclick="_abrirEditorPrecio(${e.id})" class="admin-action-btn" style="cursor:pointer;flex-shrink:0"><i class="fa-solid fa-pen"></i> Editar</button>`}
+        </div>` + (String(_precioEditKey)===String(e.id) ? _editorPrecioHTML(false) : '');
+    };
+    el.innerHTML = `
+        <div style="padding:4px 2px 14px">
+            <div style="border:1px solid #38331f;border-radius:10px;padding:13px;margin-bottom:12px;background:#131108">
+                <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">
+                    <div style="font-size:13px;color:#ece6d6"><strong>Precio general</strong>${chip(_descRegla(_preciosData.global,true), !!_preciosData.global)}
+                        <br><small style="color:#7c745f;font-size:11px">Se aplica a todos los eventos que no tengan precio propio.</small></div>
+                    ${_precioEditKey==='global'?'':`<button onclick="_abrirEditorPrecio('global')" class="admin-action-btn" style="cursor:pointer;flex-shrink:0"><i class="fa-solid fa-pen"></i> Editar</button>`}
+                </div>
+                ${_precioEditKey==='global' ? _editorPrecioHTML(true) : ''}
+            </div>
+            <div style="border:1px solid #38331f;border-radius:10px;padding:13px;margin-bottom:12px;background:#131108">
+                <div style="font-size:13px;color:#ece6d6;margin-bottom:9px"><strong>Packs</strong></div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
+                    <label style="font-size:11px;color:#b9b09a">Pack digital $<br><input id="precio-pack-dig" type="number" min="1" value="${_preciosData.pack_digital_precio}" style="${_inpP};width:115px;margin-top:3px"></label>
+                    <label style="font-size:11px;color:#b9b09a">Pack + impresiones $<br><input id="precio-pack-imp" type="number" min="1" value="${_preciosData.pack_impresion_precio}" style="${_inpP};width:115px;margin-top:3px"></label>
+                    <button onclick="guardarPacks()" class="admin-action-btn primary" style="cursor:pointer"><i class="fa-solid fa-floppy-disk"></i> Guardar packs</button>
+                </div>
+            </div>
+            <div style="font-size:12px;color:#7c745f;margin:0 0 4px 2px">Precio por evento / álbum</div>
+            ${_preciosData.eventos.map(filaEv).join('')}
+        </div>`;
+}
+async function guardarRegla() {
+    let regla = null;
+    if (_precioDraft.modo === 'fijo') {
+        const p = Number(_precioDraft.precio);
+        if (!(p > 0)) return toast('Ingresá un precio válido', 'error');
+        regla = { modo:'fijo', precio: p };
+    } else if (_precioDraft.modo === 'escalera') {
+        const ts = (_precioDraft.tramos || []).map(t => ({ min: Number(t.min), precio: Number(t.precio) }));
+        if (!ts.length || ts.some(t => !(t.min >= 1) || !(t.precio > 0))) return toast('Revisá los tramos', 'error');
+        ts.sort((a,b) => a.min - b.min);
+        if (ts[0].min !== 1) return toast('La escalera tiene que empezar en 1 foto', 'error');
+        regla = { modo:'escalera', tramos: ts };
+    }
+    const url = _precioEditKey === 'global' ? '/admin/precios/global' : '/admin/precios/evento/' + _precioEditKey;
+    try {
+        const r = await fetch(url, { method:'POST', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ regla }) });
+        const d = await r.json();
+        if (d.ok) {
+            toast('Precios guardados', 'success');
+            _precioEditKey = null; _precioDraft = null;
+            await Promise.all([cargarPrecios(), cargarConfigPrecios()]);
+        } else toast(d.error || 'Error al guardar', 'error');
+    } catch { toast('Error al guardar', 'error'); }
+}
+async function guardarPacks() {
+    const pd = Number(document.getElementById('precio-pack-dig')?.value);
+    const pi = Number(document.getElementById('precio-pack-imp')?.value);
+    if (!(pd > 0) || !(pi > 0)) return toast('Precios de pack inválidos', 'error');
+    try {
+        const r = await fetch('/config-precios', { method:'PATCH', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ pack_digital_precio: pd, pack_impresion_precio: pi }) });
+        if (r.ok) { toast('Packs actualizados', 'success'); await Promise.all([cargarPrecios(), cargarConfigPrecios()]); }
+        else { const d = await r.json().catch(()=>({})); toast(d.error || 'Error al guardar', 'error'); }
+    } catch { toast('Error al guardar', 'error'); }
 }
 
 async function cargarCompras() {
