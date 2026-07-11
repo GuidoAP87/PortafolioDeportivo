@@ -63,8 +63,8 @@ async function cargarConfigPrecios() {
 }
 
 /**
- * Precios con reglas por evento/álbum (configurables por Nacho desde el panel):
- * - Cada evento o álbum puede tener regla propia: precio fijo o escalera por cantidad.
+ * Precios con reglas por evento/álbum (Nacho las configura desde el panel):
+ * - Cada evento o álbum puede tener regla propia: precio fijo por foto o escalera por cantidad.
  * - Si no tiene, hereda la del evento madre; si tampoco, usa el precio general.
  * - El carrito se agrupa por regla y cada grupo escala con su propia cantidad.
  */
@@ -132,6 +132,8 @@ let nlUpsellMostrado = false;         // evita repetir el modal de upsell
 // ─── INIT ─────────────────────────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
     cargarCarrito();
+    document.getElementById('packs-home')?.remove();                                  // packs desactivados
+    document.querySelectorAll('[onclick*="coordinarWA"]').forEach(b => b.remove());   // coordinar por WhatsApp desactivado
     await Promise.all([verificarSesion(), cargarEventos(), cargarConfigPrecios()]);
 
     initNavScroll();
@@ -905,23 +907,31 @@ async function crearSubcarpeta(parentId) {
             <label style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:14px;font-size:12.5px;color:#bbb;cursor:pointer;">
                 <input type="checkbox" id="sub-portada" style="width:auto;accent-color:#D4A843;transform:scale(1.15);">
                 Destacar con portada grande <span style="color:#777;">(si no, se ve como miniatura)</span>
-            </label>`,
+            </label>
+            ${_npHTML()}`,
         focusConfirm: false, showCancelButton: true,
         confirmButtonText: 'Crear subcarpeta', cancelButtonText: 'Cancelar',
         confirmButtonColor: '#D4A843', cancelButtonColor: '#555',
+        didOpen: () => { _npReset(); _npRender(); },
         preConfirm: () => {
             const titulo = document.getElementById('sub-titulo').value.trim();
             if (!titulo) { Swal.showValidationMessage('El nombre es requerido'); return false; }
-            return { titulo, parent_id: parentId, fecha: document.getElementById('sub-fecha').value, usar_portada: document.getElementById('sub-portada').checked };
+            const pr = _npValidar();
+            if (!pr.ok) { Swal.showValidationMessage(pr.msg); return false; }
+            return { titulo, parent_id: parentId, fecha: document.getElementById('sub-fecha').value,
+                     usar_portada: document.getElementById('sub-portada').checked, regla: pr.regla };
         }
     });
     if (!vals) return;
 
+    const { regla, ...datos } = vals;
     const res = await fetch('/crear-evento', {
         method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(vals)
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(datos)
     });
     if (res.ok) {
+        const d = await res.json().catch(() => ({}));
+        await _npGuardarRegla(d.id, regla);
         await cargarEventos();
         const padre = buscarEvento(parentId, eventosData);
         if (padre) mostrarSubcarpetas(padre);
@@ -1169,27 +1179,35 @@ async function crearEvento() {
             <label style="display:flex;align-items:center;gap:8px;justify-content:center;margin-top:14px;font-size:12.5px;color:#bbb;cursor:pointer;">
                 <input type="checkbox" id="ev-portada" style="width:auto;accent-color:#D4A843;transform:scale(1.15);">
                 Destacar con portada grande <span style="color:#777;">(si no, se ve como miniatura)</span>
-            </label>`,
+            </label>
+            ${_npHTML()}`,
         focusConfirm: false, showCancelButton: true,
         confirmButtonText: 'Crear evento', cancelButtonText: 'Cancelar',
         confirmButtonColor: '#D4A843', cancelButtonColor: '#555',
+        didOpen: () => { _npReset(); _npRender(); },
         preConfirm: () => {
             const titulo  = document.getElementById('ev-titulo').value.trim();
             const deporte = document.getElementById('ev-deporte').value;
             if (!titulo || !deporte) { Swal.showValidationMessage('Título y categoría son requeridos'); return false; }
+            const pr = _npValidar();
+            if (!pr.ok) { Swal.showValidationMessage(pr.msg); return false; }
             return { titulo, deporte,
                      fecha: document.getElementById('ev-fecha').value,
                      descripcion: document.getElementById('ev-desc').value.trim(),
-                     usar_portada: document.getElementById('ev-portada').checked };
+                     usar_portada: document.getElementById('ev-portada').checked,
+                     regla: pr.regla };
         }
     });
     if (!vals) return;
 
+    const { regla, ...datos } = vals;
     const res = await fetch('/crear-evento', {
         method: 'POST', credentials: 'include',
-        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(vals)
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(datos)
     });
     if (res.ok) {
+        const d = await res.json().catch(() => ({}));
+        await _npGuardarRegla(d.id, regla);
         await cargarEventos();
         toast('¡Evento creado correctamente!', 'success');
     } else {
@@ -1526,6 +1544,13 @@ async function borrarFoto(id) {
     }
 }
 
+// Lista las fotos del carrito agrupadas por evento (para el mensaje de emergencia a Nacho)
+function _detalleFotosCarrito(){
+    const m=new Map();
+    for(const it of carrito.values()){ const t=(it.evento&&it.evento.titulo)?it.evento.titulo:'Galería'; if(!m.has(t))m.set(t,[]); m.get(t).push('#'+it.foto.id); }
+    let txt=''; for(const [t,ids] of m) txt+=`\n- ${t}: ${ids.join(', ')}`; return txt;
+}
+
 function abrirCheckout(tipo = 'individual') {
     if (!carrito.size) return;
     nlTipoCompra = tipo;
@@ -1670,40 +1695,6 @@ async function procesarPago() {
     }
 }
 
-// Lista las fotos del carrito agrupadas por evento, para el mensaje a Nacho
-function _detalleFotosCarrito(){
-    const m=new Map();
-    for(const it of carrito.values()){ const t=(it.evento&&it.evento.titulo)?it.evento.titulo:'Galería'; if(!m.has(t))m.set(t,[]); m.get(t).push('#'+it.foto.id); }
-    let txt=''; for(const [t,ids] of m) txt+=`\n- ${t}: ${ids.join(', ')}`; return txt;
-}
-
-async function coordinarWA() {
-    const nombre   = document.getElementById('co-nombre')?.value.trim() || '';
-    const email    = document.getElementById('co-email')?.value.trim() || '';
-    const whatsapp = (document.getElementById('co-whatsapp')?.value.trim() || '').replace(/[\s+\-().]/g, '');
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-        document.getElementById('co-email')?.focus();
-        document.querySelector('.checkout-box')?.classList.add('shake');
-        setTimeout(() => document.querySelector('.checkout-box')?.classList.remove('shake'), 500);
-        toast('Ingresá un email válido para recibir las fotos', 'error'); return;
-    }
-    const foto_ids = [...carrito.values()].map(({foto}) => foto.id);
-    const count = carrito.size;
-    const total = calcularTotalCarrito();
-    const msg = encodeURIComponent(
-        `Hola Nacho! Quiero comprar ${count} foto${count>1?'s':''}.\n` +
-        `Fotos:${_detalleFotosCarrito()}\n` +
-        `Total: $${total.toLocaleString('es-AR')} ARS\n` +
-        `Email: ${email}\n` + (nombre ? `Nombre: ${nombre}\n` : '') + `¿Cómo te puedo pagar?`
-    );
-    try {
-        await fetch('/coordinar-pedido', { method:'POST', credentials:'include',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify({ foto_ids, email, nombre, whatsapp, tipo: nlTipoCompra, fotos_impresion_ids: nlFotosImpresion }) });
-    } catch(e) {}
-    window.open(`https://wa.me/${WA_NUMBER}?text=${msg}`, '_blank');
-    cerrarCheckout();
-}
 
 function abrirLoginModal() {
     const m = document.getElementById('login-modal');
@@ -1775,7 +1766,6 @@ async function abrirAdminPanel() {
     m.style.display = 'flex';
     requestAnimationFrame(() => m.classList.add('open'));
     document.body.style.overflow = 'hidden';
-    _asegurarTabCoordinados();
     _asegurarTabPrecios();
     _asegurarBarraFiltros();
     await Promise.all([cargarAdminStats(), cargarCompras(), cargarConsultas(), cargarPrecios()]);
@@ -1816,20 +1806,17 @@ async function cargarAdminStats() {
 }
 
 let _comprasCache = [];
-function _itemCompraHTML(p, esCoordinar) {
+function _itemCompraHTML(p) {
     const cls = p.estado==='approved'?'badge-approved':p.estado==='rejected'?'badge-rejected':'badge-pendiente';
-    const estadoTxt = esCoordinar ? 'a coordinar' : p.estado;
     const emailCls = p.email_enviado ? 'badge-approved' : 'badge-pendiente';
     const copiar = p.link_galeria ? `<button class="admin-action-btn" onclick="navigator.clipboard.writeText('${p.link_galeria}').then(()=>toast('Link copiado','success',1800))"><i class="fa-solid fa-copy"></i> Copiar link galería</button>` : '';
-    const accion = esCoordinar
-        ? `<button class="admin-action-btn primary" onclick="confirmarPago(${p.id})"><i class="fa-solid fa-circle-check"></i> Confirmar pago y enviar</button>`
-        : (p.estado==='approved' ? `<button class="admin-action-btn primary" onclick="reenviarTodo(${p.id})"><i class="fa-solid fa-paper-plane"></i> Reenviar email + WhatsApp</button>` : '');
+    const reenviar = p.estado==='approved' ? `<button class="admin-action-btn primary" onclick="reenviarTodo(${p.id})"><i class="fa-solid fa-paper-plane"></i> Reenviar email + WhatsApp</button>` : '';
     return `
             <div class="admin-item" id="compra-${p.id}">
                 <div class="admin-item-hdr">
                     <div>
                         <strong>${p.nombre||p.email}</strong>
-                        <span class="badge ${cls}">${estadoTxt}</span>
+                        <span class="badge ${cls}">${p.estado}</span>
                         <span class="badge ${emailCls}">${p.email_enviado?'✓ Email':'Sin email'}</span>
                         ${p.whatsapp ? `<span class="badge ${p.wa_enviado?'badge-approved':'badge-pendiente'}">${p.wa_enviado?'✓ WhatsApp':'WA pendiente'}</span>` : ''}
                         <br><small style="color:var(--text-dim);font-size:10px">${p.email}${p.whatsapp ? ' · 📱 +' + p.whatsapp : ''}</small>
@@ -1842,35 +1829,28 @@ function _itemCompraHTML(p, esCoordinar) {
                     </div>
                 </div>
                 <div class="admin-item-body">${p.foto_ids.length} foto${p.foto_ids.length>1?'s':''} · IDs: [${p.foto_ids.join(', ')}]</div>
-                <div class="admin-item-actions">${accion}${copiar}</div>
+                <div class="admin-item-actions">${reenviar}${copiar}</div>
             </div>`;
 }
-function _clonarTabAdmin(dataTab, icono, texto, refTab, refCont, conBadge) {
-    if (document.querySelector('.admin-tab[data-tab="'+dataTab+'"]')) return;
+// Crea la pestaña "Precios" clonando la de Compras (no toca el index.html)
+function _asegurarTabPrecios() {
+    if (document.querySelector('.admin-tab[data-tab="precios"]')) return;
+    const refTab = document.querySelector('.admin-tab[data-tab="compras"]');
+    const refCont = document.getElementById('tab-compras');
     if (!refTab || !refCont) return;
     const tab = refTab.cloneNode(true);
     tab.classList.remove('active');
-    tab.setAttribute('data-tab', dataTab);
-    tab.setAttribute('onclick', "switchAdminTab('"+dataTab+"')");
-    const ic = tab.querySelector('i'); if (ic) ic.className = icono;
-    const bg = tab.querySelector('[id^="badge-"]');
-    if (bg) { if (conBadge) { bg.id = 'badge-'+dataTab; bg.textContent=''; bg.style.display='none'; } else bg.remove(); }
-    tab.childNodes.forEach(n => { if (n.nodeType === 3 && n.textContent.trim()) n.textContent = ' '+texto+' '; });
+    tab.setAttribute('data-tab', 'precios');
+    tab.setAttribute('onclick', "switchAdminTab('precios')");
+    const ic = tab.querySelector('i'); if (ic) ic.className = 'fa-solid fa-tag';
+    tab.querySelector('[id^="badge-"]')?.remove();
+    tab.childNodes.forEach(n => { if (n.nodeType === 3 && n.textContent.trim()) n.textContent = ' Precios '; });
     refTab.insertAdjacentElement('afterend', tab);
     const cont = document.createElement('div');
     cont.className = refCont.className.replace(/\bactive\b/, '').trim();
-    cont.id = 'tab-'+dataTab;
+    cont.id = 'tab-precios';
     cont.innerHTML = '<p class="admin-loading">Cargando...</p>';
     refCont.insertAdjacentElement('afterend', cont);
-}
-function _asegurarTabCoordinados() {
-    _clonarTabAdmin('coordinados', 'fa-brands fa-whatsapp', 'Coordinados',
-        document.querySelector('.admin-tab[data-tab="compras"]'), document.getElementById('tab-compras'), true);
-}
-function _asegurarTabPrecios() {
-    _clonarTabAdmin('precios', 'fa-solid fa-tag', 'Precios',
-        document.querySelector('.admin-tab[data-tab="coordinados"]') || document.querySelector('.admin-tab[data-tab="compras"]'),
-        document.getElementById('tab-coordinados') || document.getElementById('tab-compras'), false);
 }
 function _asegurarBarraFiltros() {
     if (document.getElementById('admin-filtros')) return;
@@ -1897,29 +1877,22 @@ function _aplicarFiltros() {
     const ev = document.getElementById('filtro-evento')?.value || '';
     const desde = document.getElementById('filtro-desde')?.value || '';
     const hasta = document.getElementById('filtro-hasta')?.value || '';
-    const pasa = (c) => {
+    const lista = _comprasCache.filter(c => {
         if (q && !(((c.nombre||'')+' '+(c.email||'')).toLowerCase().includes(q))) return false;
         if (ev && !(c.eventos||[]).some(e => String(e.id) === ev)) return false;
         if (desde && c.fecha_iso && c.fecha_iso < desde) return false;
         if (hasta && c.fecha_iso && c.fecha_iso > hasta) return false;
         return true;
-    };
-    const lista = _comprasCache.filter(pasa);
-    const conf = lista.filter(p => p.estado !== 'coordinar');
-    const coord = lista.filter(p => p.estado === 'coordinar');
-    const elC = document.getElementById('tab-compras');
-    const elW = document.getElementById('tab-coordinados');
-    if (elC) elC.innerHTML = conf.length ? conf.map(p=>_itemCompraHTML(p,false)).join('') : '<p class="admin-loading">Sin resultados.</p>';
-    if (elW) elW.innerHTML = coord.length ? coord.map(p=>_itemCompraHTML(p,true)).join('') : '<p class="admin-loading">Sin pedidos a coordinar.</p>';
-    const bw = document.getElementById('badge-coordinados');
-    if (bw) { const n = _comprasCache.filter(p=>p.estado==='coordinar').length; if (n){bw.textContent=n;bw.style.display='inline-flex';} else bw.style.display='none'; }
+    });
+    const el = document.getElementById('tab-compras');
+    if (el) el.innerHTML = lista.length ? lista.map(_itemCompraHTML).join('') : '<p class="admin-loading">Sin resultados.</p>';
 }
 function _limpiarFiltros() {
     ['filtro-q','filtro-desde','filtro-hasta'].forEach(id => { const el=document.getElementById(id); if (el) el.value=''; });
     const sel=document.getElementById('filtro-evento'); if (sel) sel.value='';
     _aplicarFiltros();
 }
-// ── PESTAÑA PRECIOS: Nacho gestiona precio general, por evento/álbum y packs ──
+// ── PESTAÑA PRECIOS: general + por evento/álbum (fijo o escalera) ──
 let _preciosData = null, _precioEditKey = null, _precioDraft = null;
 const _inpP = 'background:#16140e;border:1px solid #38331f;color:#ece6d6;padding:7px 10px;border-radius:7px;font-size:13px;outline:none';
 async function cargarPrecios() {
@@ -1948,13 +1921,13 @@ function _precioModo(m) {
     _precioDraft = m === 'fijo'
         ? { modo:'fijo', precio: Number(_precioDraft.precio) > 0 ? _precioDraft.precio : 3000 }
         : m === 'escalera'
-        ? { modo:'escalera', tramos: (_precioDraft.tramos && _precioDraft.tramos.length ? _precioDraft.tramos : [{min:1,precio:3200},{min:2,precio:2750},{min:3,precio:2500},{min:5,precio:2000}]) }
+        ? { modo:'escalera', tramos: (_precioDraft.tramos && _precioDraft.tramos.length ? _precioDraft.tramos : [{min:1,precio:3200},{min:3,precio:2750},{min:5,precio:2400}]) }
         : { modo:'' };
     _renderPrecios();
 }
-function _precioSet(campo, val) { _precioDraft[campo] = val; }
-function _tramoSet(i, campo, val) { _precioDraft.tramos[i][campo] = val; }
-function _tramoAdd() { const ts=_precioDraft.tramos, u=ts[ts.length-1]; ts.push({ min: Number(u.min)+1, precio: Number(u.precio) }); _renderPrecios(); }
+function _precioSet(c, v) { _precioDraft[c] = v; }
+function _tramoSet(i, c, v) { _precioDraft.tramos[i][c] = v; }
+function _tramoAdd() { const ts=_precioDraft.tramos, u=ts[ts.length-1]; ts.push({ min:Number(u.min)+1, precio:Number(u.precio) }); _renderPrecios(); }
 function _tramoDel(i) { if (_precioDraft.tramos.length > 1) { _precioDraft.tramos.splice(i,1); _renderPrecios(); } }
 function _editorPrecioHTML(esGlobal) {
     const d = _precioDraft;
@@ -1978,7 +1951,7 @@ function _editorPrecioHTML(esGlobal) {
     } else {
         cuerpo = `<div style="font-size:11px;color:#7c745f">${esGlobal
             ? 'Escalera por defecto: 1 = $3.200 · 2 = $5.500 · 3 = $7.500 · 5 = $10.000 (y +$2.000 por foto extra).'
-            : 'Este álbum usa el precio general (o el de su evento madre, si tiene uno propio).'}</div>`;
+            : 'Usa el precio general (o el de su evento madre, si tiene uno propio).'}</div>`;
     }
     return `
         <div style="margin-top:10px;padding:12px;border:1px solid #38331f;border-radius:9px;background:#141209">
@@ -2015,14 +1988,6 @@ function _renderPrecios() {
                 </div>
                 ${_precioEditKey==='global' ? _editorPrecioHTML(true) : ''}
             </div>
-            <div style="border:1px solid #38331f;border-radius:10px;padding:13px;margin-bottom:12px;background:#131108">
-                <div style="font-size:13px;color:#ece6d6;margin-bottom:9px"><strong>Packs</strong></div>
-                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end">
-                    <label style="font-size:11px;color:#b9b09a">Pack digital $<br><input id="precio-pack-dig" type="number" min="1" value="${_preciosData.pack_digital_precio}" style="${_inpP};width:115px;margin-top:3px"></label>
-                    <label style="font-size:11px;color:#b9b09a">Pack + impresiones $<br><input id="precio-pack-imp" type="number" min="1" value="${_preciosData.pack_impresion_precio}" style="${_inpP};width:115px;margin-top:3px"></label>
-                    <button onclick="guardarPacks()" class="admin-action-btn primary" style="cursor:pointer"><i class="fa-solid fa-floppy-disk"></i> Guardar packs</button>
-                </div>
-            </div>
             <div style="font-size:12px;color:#7c745f;margin:0 0 4px 2px">Precio por evento / álbum</div>
             ${_preciosData.eventos.map(filaEv).join('')}
         </div>`;
@@ -2051,21 +2016,81 @@ async function guardarRegla() {
         } else toast(d.error || 'Error al guardar', 'error');
     } catch { toast('Error al guardar', 'error'); }
 }
-async function guardarPacks() {
-    const pd = Number(document.getElementById('precio-pack-dig')?.value);
-    const pi = Number(document.getElementById('precio-pack-imp')?.value);
-    if (!(pd > 0) || !(pi > 0)) return toast('Precios de pack inválidos', 'error');
+// ── Editor de precio dentro de los modales de crear evento / álbum ──
+let _npDraft = { modo: '' };
+const _npInp = 'background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);padding:7px 9px;border-radius:6px;font-size:13px;font-family:Inter,sans-serif;';
+function _npReset() { _npDraft = { modo: '' }; }
+function _npHTML() {
+    return `
+        <div style="text-align:left;margin-top:15px;padding-top:13px;border-top:1px solid var(--ink-5)">
+            <div style="font-size:12.5px;color:#bbb;margin-bottom:7px">Precio de las fotos</div>
+            <select id="np-modo" onchange="_npModo(this.value)" style="${_npInp}width:100%;margin-bottom:8px">
+                <option value="">Usar el precio general del sitio</option>
+                <option value="fijo">Precio fijo por foto</option>
+                <option value="escalera">Escalera por cantidad</option>
+            </select>
+            <div id="np-editor"></div>
+        </div>`;
+}
+function _npModo(m) {
+    _npDraft = m === 'fijo' ? { modo:'fijo', precio:3000 }
+        : m === 'escalera' ? { modo:'escalera', tramos:[{min:1,precio:3200},{min:3,precio:2750},{min:5,precio:2400}] }
+        : { modo:'' };
+    _npRender();
+}
+function _npSet(c, v) { _npDraft[c] = v; }
+function _npTramoSet(i, c, v) { _npDraft.tramos[i][c] = v; }
+function _npTramoAdd() { const ts=_npDraft.tramos, u=ts[ts.length-1]; ts.push({ min:Number(u.min)+1, precio:Number(u.precio) }); _npRender(); }
+function _npTramoDel(i) { if (_npDraft.tramos.length > 1) { _npDraft.tramos.splice(i,1); _npRender(); } }
+function _npRender() {
+    const el = document.getElementById('np-editor');
+    if (!el) return;
+    if (_npDraft.modo === 'fijo') {
+        el.innerHTML = `<label style="font-size:12px;color:#bbb">$ <input type="number" min="1" value="${_npDraft.precio}" oninput="_npSet('precio', this.value)" style="${_npInp}width:110px"> por foto</label>
+            <div style="font-size:11px;color:#777;margin-top:5px">Todas las fotos de este álbum valen lo mismo.</div>`;
+    } else if (_npDraft.modo === 'escalera') {
+        el.innerHTML = _npDraft.tramos.map((t,i) => `
+            <div style="display:flex;gap:5px;align-items:center;margin:4px 0;flex-wrap:wrap">
+                <span style="font-size:12px;color:#bbb">Desde</span>
+                <input type="number" min="1" value="${t.min}" oninput="_npTramoSet(${i},'min',this.value)" style="${_npInp}width:58px" ${i===0?'disabled':''}>
+                <span style="font-size:12px;color:#bbb">fotos → $</span>
+                <input type="number" min="1" value="${t.precio}" oninput="_npTramoSet(${i},'precio',this.value)" style="${_npInp}width:88px">
+                <span style="font-size:12px;color:#bbb">c/u</span>
+                ${i>0?`<button type="button" onclick="_npTramoDel(${i})" style="background:none;border:none;color:#c0665a;cursor:pointer;font-size:14px">✕</button>`:''}
+            </div>`).join('') +
+            `<button type="button" onclick="_npTramoAdd()" style="background:transparent;border:1px dashed var(--ink-5);color:#bbb;padding:5px 9px;border-radius:6px;font-size:12px;cursor:pointer;margin-top:4px">+ Agregar tramo</button>`;
+    } else {
+        el.innerHTML = '<div style="font-size:11px;color:#777">Después lo podés cambiar desde el panel → Precios.</div>';
+    }
+}
+function _npValidar() {
+    if (_npDraft.modo === 'fijo') {
+        const p = Number(_npDraft.precio);
+        if (!(p > 0)) return { ok:false, msg:'Poné un precio por foto válido' };
+        return { ok:true, regla:{ modo:'fijo', precio:p } };
+    }
+    if (_npDraft.modo === 'escalera') {
+        const ts = (_npDraft.tramos||[]).map(t => ({ min:Number(t.min), precio:Number(t.precio) }));
+        if (!ts.length || ts.some(t => !(t.min>=1) || !(t.precio>0))) return { ok:false, msg:'Revisá los tramos de la escalera' };
+        ts.sort((a,b)=>a.min-b.min);
+        if (ts[0].min !== 1) return { ok:false, msg:'La escalera tiene que empezar en 1 foto' };
+        return { ok:true, regla:{ modo:'escalera', tramos:ts } };
+    }
+    return { ok:true, regla:null };
+}
+async function _npGuardarRegla(evId, regla) {
+    if (!regla || !evId) return;
     try {
-        const r = await fetch('/config-precios', { method:'PATCH', credentials:'include', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ pack_digital_precio: pd, pack_impresion_precio: pi }) });
-        if (r.ok) { toast('Packs actualizados', 'success'); await Promise.all([cargarPrecios(), cargarConfigPrecios()]); }
-        else { const d = await r.json().catch(()=>({})); toast(d.error || 'Error al guardar', 'error'); }
-    } catch { toast('Error al guardar', 'error'); }
+        await fetch('/admin/precios/evento/' + evId, { method:'POST', credentials:'include',
+            headers:{'Content-Type':'application/json'}, body: JSON.stringify({ regla }) });
+        await cargarConfigPrecios();
+    } catch(e) {}
 }
 
 async function cargarCompras() {
-    const elC = document.getElementById('tab-compras');
-    if (!elC) return;
-    elC.innerHTML = '<p class="admin-loading">Cargando compras...</p>';
+    const el = document.getElementById('tab-compras');
+    if (!el) return;
+    el.innerHTML = '<p class="admin-loading">Cargando compras...</p>';
     try {
         _comprasCache = await (await fetch('/admin/compras', { credentials:'include' })).json();
         const sel = document.getElementById('filtro-evento');
@@ -2078,7 +2103,7 @@ async function cargarCompras() {
             sel.value = actual;
         }
         _aplicarFiltros();
-    } catch { elC.innerHTML = '<p class="admin-loading" style="color:var(--red)">Error al cargar.</p>'; }
+    } catch { el.innerHTML = '<p class="admin-loading" style="color:var(--red)">Error al cargar.</p>'; }
 }
 
 async function reenviarTodo(id) {
@@ -2088,24 +2113,6 @@ async function reenviarTodo(id) {
     const data = await res.json();
     toast(data.ok ? '✓ Email y WhatsApp reenviados' : 'Error al reenviar', data.ok ? 'success' : 'error');
     if (data.ok) setTimeout(cargarCompras, 1500);
-}
-
-async function confirmarPago(id) {
-    const btn = (typeof event !== 'undefined' && event && event.target) ? event.target.closest('.admin-action-btn') : null;
-    const r = await Swal.fire({ icon:'question', title:'¿Confirmar el pago?', text:'Se le enviarán las fotos al cliente por email y WhatsApp.',
-        showCancelButton:true, confirmButtonText:'Sí, enviar fotos', cancelButtonText:'Cancelar',
-        background:'var(--ink-2)', color:'var(--text)', confirmButtonColor:'#25D366', cancelButtonColor:'#333' });
-    if (!r.isConfirmed) return;
-    if (btn) { btn.disabled = true; btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Enviando...'; }
-    try {
-        const res = await fetch(`/admin/compras/${id}/confirmar`, { method:'POST', credentials:'include' });
-        const data = await res.json();
-        toast(data.ok ? '✓ Pago confirmado, fotos enviadas' : 'Error al confirmar', data.ok ? 'success' : 'error');
-        if (data.ok) setTimeout(cargarCompras, 1500);
-    } catch {
-        toast('Error al confirmar el pago', 'error');
-        if (btn) { btn.disabled = false; btn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Confirmar pago y enviar'; }
-    }
 }
 
 async function cargarConsultas() {
@@ -2386,40 +2393,7 @@ function packWhatsApp(tipo) {
     window.open(`https://wa.me/${WA_NUMBER}?text=${encodeURIComponent(msg)}`, '_blank', 'noopener');
 }
 
-function renderPackCTA(ev) {
-    const fotos = (ev.fotos || []);
-    if (!fotos.length) return '';                 // sin fotos no tiene sentido
-    if (NL_CONFIG && !NL_CONFIG.pack_digital_activo && !NL_CONFIG.pack_impresion_activo) return '';
-
-    const pDig = NL_CONFIG ? NL_CONFIG.pack_digital_precio   : 20000;
-    const pImp = NL_CONFIG ? NL_CONFIG.pack_impresion_precio : 25000;
-    const digActivo = !NL_CONFIG || NL_CONFIG.pack_digital_activo;
-    const impActivo = !NL_CONFIG || NL_CONFIG.pack_impresion_activo;
-
-    const btnDig = digActivo ? `
-        <button onclick="comprarConPack('pack_digital')" style="flex:1; display:flex; align-items:center; justify-content:space-between; padding:12px 20px; background:rgba(212,168,67,0.1); border:1px solid var(--gold-dim); border-radius:6px; color:var(--text); cursor:pointer; transition:all 0.3s;" onmouseover="this.style.background='rgba(212,168,67,0.2)'" onmouseout="this.style.background='rgba(212,168,67,0.1)'">
-            <div style="display:flex; align-items:center; gap:10px;">
-                <i class="fa-solid fa-layer-group" style="color:var(--gold); font-size:16px;"></i>
-                <span style="font-size:13px; font-weight:600; letter-spacing:0.5px;">Pack Jugador</span>
-            </div>
-            <strong style="color:var(--gold); font-size:16px;">$${pDig.toLocaleString('es-AR')}</strong>
-        </button>` : '';
-
-    const btnImp = impActivo ? `
-        <button onclick="comprarConPack('pack_impresion')" style="flex:1; display:flex; align-items:center; justify-content:space-between; padding:12px 20px; background:rgba(212,168,67,0.1); border:1px solid var(--gold-dim); border-radius:6px; color:var(--text); cursor:pointer; transition:all 0.3s;" onmouseover="this.style.background='rgba(212,168,67,0.2)'" onmouseout="this.style.background='rgba(212,168,67,0.1)'">
-            <div style="display:flex; align-items:center; gap:10px;">
-                <i class="fa-solid fa-print" style="color:var(--gold); font-size:16px;"></i>
-                <span style="font-size:13px; font-weight:600; letter-spacing:0.5px;">Pack Jugador + 2 impres. 13x18</span>
-            </div>
-            <strong style="color:var(--gold); font-size:16px;">$${pImp.toLocaleString('es-AR')}</strong>
-        </button>` : '';
-
-    return `
-    <div class="pack-cta-wrap" style="margin:0 8% 18px; display:flex; gap:14px; flex-wrap:wrap;">
-        ${btnDig}
-        ${btnImp}
-    </div>`;
-}
+function renderPackCTA(ev) { return ''; }   // packs desactivados (Nacho ya no los vende)
 
 // Compra agrupada: usa las fotos que ya están en el carrito como contenido del pack
 function comprarConPack(tipo) {
@@ -2518,36 +2492,7 @@ function toggleImpresion(fotoId, el) {
 }
 
 // Upsell dinámico (req 3.2): sugerir el pack cuando se acerca al precio
-async function chequearUpsell() {
-    if (!NL_CONFIG || !NL_CONFIG.pack_digital_activo) return;
-    const n = carrito.size;
-    if (n === 0) { nlUpsellMostrado = false; return; }
-    if (nlUpsellMostrado) return;
-    if (n < (NL_CONFIG.upsell_trigger_qty || 6)) return;
-
-    const totalActual = calcularTotalCarrito();
-    const pack = NL_CONFIG.pack_digital_precio;
-    if (totalActual < pack) return;   // solo si ya conviene el pack
-
-    nlUpsellMostrado = true;
-    const { isConfirmed } = await Swal.fire({
-        icon: 'info',
-        title: '¡Estás a un paso del Pack!',
-        html: `<p style="color:#999;font-size:14px;line-height:1.7;">
-                 Llevás <strong style="color:#fff">${n} fotos</strong> por
-                 <strong style="color:#fff">$${totalActual.toLocaleString('es-AR')}</strong>.<br>
-                 Con el <strong style="color:var(--gold)">Pack Jugador</strong> te llevás
-                 <strong style="color:#fff">TODAS las que elijas</strong> por
-                 <strong style="color:var(--gold)">$${pack.toLocaleString('es-AR')}</strong>.
-               </p>`,
-        background: 'var(--ink-2)', color: 'var(--text)',
-        showCancelButton: true,
-        confirmButtonText: '<i class="fa-solid fa-layer-group"></i>&nbsp; Quiero el Pack',
-        cancelButtonText: 'Seguir eligiendo',
-        confirmButtonColor: '#D4A843', cancelButtonColor: '#333'
-    });
-    if (isConfirmed) { abrirCheckout('pack_digital'); aplicarBannerPackCheckout(); }
-}
+async function chequearUpsell() { return; }   // upsell de packs desactivado
 
 // Enganche del upsell: envolver actualizarCarritoBar sin tocar el original
 const _nl_actualizarCarritoBar = actualizarCarritoBar;
