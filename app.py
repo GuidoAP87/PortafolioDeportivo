@@ -229,7 +229,7 @@ class Evento(db.Model):
     descripcion   = db.Column(db.String(300))
     cover_foto_id = db.Column(db.Integer, nullable=True)
     usar_portada  = db.Column(db.Boolean, default=True)   # False = carpeta madre solo-titulo (sin portada)
-    precios_json  = db.Column(db.Text, nullable=True)   # regla de precios propia (None = hereda del padre o del general)
+    precios_json  = db.Column(db.Text, nullable=True)   # regla propia (None = hereda del padre o del general)
     parent_id     = db.Column(db.Integer, db.ForeignKey('evento.id'), nullable=True)
     creado_en     = db.Column(db.DateTime, server_default=db.func.now())
     fotos         = db.relationship('Foto', backref='evento', lazy=True, cascade='all, delete-orphan')
@@ -325,7 +325,7 @@ class ConfigPrecios(db.Model):
     pack_impresion_precio = db.Column(db.Float,   default=25000.0)
     pack_impresion_activo = db.Column(db.Boolean, default=True)
     upsell_trigger_qty    = db.Column(db.Integer, default=6)
-    precios_json          = db.Column(db.Text, nullable=True)   # regla de precios general personalizada (None = escalera original)
+    precios_json          = db.Column(db.Text, nullable=True)   # regla de precios general (None = escalera por defecto)
     actualizado_en        = db.Column(db.DateTime, server_default=db.func.now())
 
 with app.app_context():
@@ -387,41 +387,41 @@ def precio_escalera(n):
 
 
 def _validar_regla(r):
-    """Valida/normaliza una regla de precios. None = heredar. Devuelve (regla|None|False, error)."""
+    """Valida una regla de precios. None = heredar. Devuelve (regla|None|False, error)."""
     if r is None:
         return None, None
     if not isinstance(r, dict):
-        return False, 'Regla inválida'
+        return False, 'Regla invalida'
     modo = r.get('modo')
     if modo == 'fijo':
         try:
             p = float(r.get('precio'))
         except (TypeError, ValueError):
-            return False, 'Precio inválido'
+            return False, 'Precio invalido'
         if p <= 0:
             return False, 'El precio debe ser mayor a 0'
         return {'modo': 'fijo', 'precio': p}, None
     if modo == 'escalera':
         ts = r.get('tramos')
         if not isinstance(ts, list) or not ts:
-            return False, 'Faltan tramos en la escalera'
+            return False, 'Faltan tramos'
         norm = []
         for t in ts:
             try:
                 m, p = int(t['min']), float(t['precio'])
             except (TypeError, ValueError, KeyError):
-                return False, 'Tramo inválido'
+                return False, 'Tramo invalido'
             if m < 1 or p <= 0:
-                return False, 'Tramo inválido'
+                return False, 'Tramo invalido'
             norm.append({'min': m, 'precio': p})
         norm.sort(key=lambda t: t['min'])
         if norm[0]['min'] != 1:
             return False, 'La escalera debe empezar en 1 foto'
         return {'modo': 'escalera', 'tramos': norm}, None
-    return False, 'Modo inválido'
+    return False, 'Modo invalido'
 
 def _total_por_regla(regla, n):
-    """Total para n fotos bajo una regla. Sin regla → escalera original."""
+    """Total de n fotos bajo una regla. Sin regla -> escalera por defecto."""
     n = int(n)
     if n <= 0:
         return 0
@@ -455,8 +455,8 @@ def calcular_total(foto_ids, tipo='individual', cfg=None):
         total = float(cfg.pack_impresion_precio)
         return total, [{'title': 'Pack Jugador + 2 impresiones 13x18', 'quantity': 1,
                         'unit_price': total, 'currency_id': 'ARS'}]
-    # Total por reglas: cada evento/álbum puede tener regla propia (fijo o escalera);
-    # si no tiene, hereda del evento madre o del precio general.
+    # Cada evento/album puede tener regla propia (fijo o escalera). Si no tiene,
+    # hereda la del evento madre; si tampoco, usa el precio general.
     fotos_db = Foto.query.filter(Foto.id.in_(foto_ids)).all() if foto_ids else []
     eventos  = {e.id: e for e in Evento.query.all()}
     regla_global = json.loads(cfg.precios_json) if getattr(cfg, 'precios_json', None) else None
@@ -1339,44 +1339,9 @@ def crear_orden():
         return jsonify({'init_point': result['response']['init_point'], 'compra_id': compra.id})
     return jsonify({'error': 'Error al crear preferencia MP'}), 500
 
-@app.route('/coordinar-pedido', methods=['POST'])
-def coordinar_pedido():
-    """Registra un pedido a coordinar por WhatsApp (pago por fuera de Mercado Pago).
-    Queda en estado 'coordinar' hasta que Nacho confirme el pago desde el panel."""
-    d        = request.json or {}
-    foto_ids = d.get('foto_ids', [])
-    email    = (d.get('email') or '').strip()
-    nombre   = (d.get('nombre') or '').strip()
-    if not foto_ids or not email:
-        return jsonify({'error': 'Datos incompletos'}), 400
-
-    fotos = Foto.query.filter(Foto.id.in_(foto_ids)).all()
-    if not fotos:
-        return jsonify({'error': 'Fotos no encontradas'}), 404
-
-    tipo            = d.get('tipo', 'individual')
-    fotos_impresion = d.get('fotos_impresion_ids', [])
-    cfg             = get_config()
-    total, _        = calcular_total([f.id for f in fotos], tipo=tipo, cfg=cfg)
-    wa              = normalizar_wa_ar(d.get('whatsapp', ''))
-
-    compra = Compra(
-        email_cliente    = email,
-        nombre_cliente   = nombre,
-        whatsapp_cliente = wa if wa else None,
-        foto_ids         = json.dumps([f.id for f in fotos]),
-        monto_total      = total,
-        tipo             = tipo,
-        fotos_impresion_ids = json.dumps(fotos_impresion) if fotos_impresion else None,
-        estado           = 'coordinar',
-        token_galeria    = generar_token()
-    )
-    db.session.add(compra); db.session.commit()
-    return jsonify({'ok': True, 'compra_id': compra.id, 'total': total})
-
 @app.route('/admin/precios', methods=['GET'])
 def admin_precios():
-    """Config de precios para el panel: regla general, packs y regla de cada evento/álbum."""
+    """Precios para el panel: regla general + regla de cada evento/album."""
     if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
     cfg   = get_config()
     todos = Evento.query.all()
@@ -1390,9 +1355,7 @@ def admin_precios():
         orden.append(p)
         orden.extend(sorted(hijos.get(p.id, []), key=lambda e: (e.titulo or '').lower()))
     return jsonify({
-        'global':                json.loads(cfg.precios_json) if getattr(cfg, 'precios_json', None) else None,
-        'pack_digital_precio':   cfg.pack_digital_precio,
-        'pack_impresion_precio': cfg.pack_impresion_precio,
+        'global': json.loads(cfg.precios_json) if getattr(cfg, 'precios_json', None) else None,
         'eventos': [{'id': e.id, 'titulo': e.titulo, 'parent_id': e.parent_id,
                      'regla': json.loads(e.precios_json) if e.precios_json else None} for e in orden]
     })
@@ -1952,20 +1915,6 @@ def reenviar_todo(cid):
     db.session.commit()
     threading.Thread(target=entregar_compra, args=(cid,), daemon=True).start()
     return jsonify({'ok': True})
-
-@app.route('/admin/compras/<int:cid>/confirmar', methods=['POST'])
-def confirmar_pago(cid):
-    """Nacho confirma que recibió el pago de un pedido coordinado y dispara el
-    envío de las fotos al cliente (email + WhatsApp con la galería)."""
-    if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
-    compra = Compra.query.get_or_404(cid)
-    compra.estado        = 'approved'
-    compra.email_enviado = False
-    compra.wa_enviado    = False
-    db.session.commit()
-    threading.Thread(target=entregar_compra, args=(cid,), daemon=True).start()
-    return jsonify({'ok': True})
-
 
 @app.route('/admin/consultas', methods=['GET'])
 def ver_consultas():
