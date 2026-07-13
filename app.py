@@ -14,6 +14,7 @@ from datetime import timedelta
 from flask import (Flask, request, send_from_directory,
                    jsonify, session, send_file)
 from flask_cors import CORS
+from flask_compress import Compress
 from PIL import Image, ImageDraw, ImageFont
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_sqlalchemy import SQLAlchemy
@@ -125,6 +126,22 @@ def get_wasabi_presigned_url(key, expiry=3600*24*6):
 
 # ── APP ───────────────────────────────────────────────────────────────────────
 app = Flask(__name__, static_folder='.', static_url_path='')
+Compress(app)   # gzip: el JSON de eventos y los estáticos viajan ~80% más livianos
+
+@app.after_request
+def _cache_y_headers(resp):
+    # Cualquier escritura exitosa invalida el cache público (el admin ve sus cambios al instante)
+    if request.method in ('POST', 'PATCH', 'PUT', 'DELETE') and resp.status_code < 400:
+        invalidar_cache_publica()
+    # Estáticos con cache en el navegador: no se vuelven a pedir en cada visita
+    if request.method == 'GET' and resp.status_code == 200:
+        p = request.path
+        if p.endswith(('.jpg', '.jpeg', '.png', '.webp', '.gif', '.ico')):
+            resp.headers.setdefault('Cache-Control', 'public, max-age=86400')
+        elif p.endswith(('.js', '.css')):
+            resp.headers.setdefault('Cache-Control', 'public, max-age=600')
+    return resp
+
 app.secret_key = os.environ.get('SECRET_KEY', 'nl-sports-2026-CAMBIAR-en-produccion')
 
 # ── BASE DE DATOS ─────────────────────────────────────────────────────────────
@@ -146,8 +163,8 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS']      = {
     'pool_pre_ping':  True,
     'pool_recycle':   300,
     'pool_timeout':   30,
-    'pool_size':      5,
-    'max_overflow':   10,
+    'pool_size':      10,
+    'max_overflow':   20,
     'connect_args':   {
         'connect_timeout':     10,
         'keepalives':          1,
@@ -353,6 +370,24 @@ with app.app_context():
         db.session.rollback()
 
 # ── PRICING CENTRALIZADO (única fuente de verdad) ─────────────────────────────
+# ── Cache en memoria para los endpoints públicos calientes ──────────────────
+# Con mucha gente entrando a la vez, /obtener-eventos y /config-precios se
+# calculan UNA vez cada 30s en lugar de una vez por visitante.
+_CACHE_PUB = {}
+
+def _cache_get(clave, ttl=30):
+    v = _CACHE_PUB.get(clave)
+    if v and (_time.time() - v[0]) < ttl:
+        return v[1]
+    return None
+
+def _cache_set(clave, data):
+    _CACHE_PUB[clave] = (_time.time(), data)
+    return data
+
+def invalidar_cache_publica():
+    _CACHE_PUB.clear()
+
 def get_config():
     """Devuelve la fila de configuración, creándola con defaults si no existe."""
     cfg = ConfigPrecios.query.get(1)
@@ -1124,8 +1159,11 @@ def crear_evento():
 @app.route('/obtener-eventos', methods=['GET'])
 def obtener_eventos():
     # Solo raíces (sin padre) — las subcarpetas van anidadas dentro
-    raices = Evento.query.filter_by(parent_id=None).order_by(Evento.id.desc()).all()
-    return jsonify([serializar_evento(e) for e in raices])
+    datos = _cache_get('eventos')
+    if datos is None:
+        raices = Evento.query.filter_by(parent_id=None).order_by(Evento.id.desc()).all()
+        datos  = _cache_set('eventos', [serializar_evento(e) for e in raices])
+    return jsonify(datos)
 
 @app.route('/editar-evento/<int:ev_id>', methods=['PATCH'])
 def editar_evento(ev_id):
@@ -1456,8 +1494,11 @@ def pago_fallido():
 # ── CONFIGURACIÓN DE PRECIOS (parametrización, req. 3.4) ──────────────────────
 @app.route('/config-precios', methods=['GET'])
 def obtener_config_precios():
+    datos = _cache_get('config')
+    if datos is not None:
+        return jsonify(datos)
     cfg = get_config()
-    return jsonify({
+    return jsonify(_cache_set('config', {
         'escala_volumen':        json.loads(cfg.escala_volumen),
         'pack_digital_precio':   cfg.pack_digital_precio,
         'pack_digital_activo':   cfg.pack_digital_activo,
@@ -1467,7 +1508,7 @@ def obtener_config_precios():
         'precios_global':        json.loads(cfg.precios_json) if getattr(cfg, 'precios_json', None) else None,
         'reglas_eventos':        {str(e.id): json.loads(e.precios_json) for e in Evento.query.filter(Evento.precios_json.isnot(None)).all()},
         'parents':               {str(e.id): e.parent_id for e in Evento.query.all()},
-    })
+    }))
 
 @app.route('/config-precios', methods=['PATCH'])
 def actualizar_config_precios():

@@ -13,7 +13,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
-    <link rel="stylesheet" href="styles.css?v=31">
+    <link rel="stylesheet" href="styles.css?v=32">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11" defer></script>
 </head>
 <body>
@@ -185,7 +185,8 @@
 
                 FOTOS_CARRUSEL.forEach(function(src, i){
                     var img = document.createElement('img');
-                    img.src = src; img.alt = 'Foto de Nacho Lingua';
+                    if (i === 0) { img.src = src; } else { img.dataset.src = src; }   // carga diferida: solo la 1ª baja de entrada
+                    img.alt = 'Foto de Nacho Lingua'; img.decoding = 'async';
                     img.style.cssText = 'position:absolute;inset:0;width:100%;height:100%;object-fit:contain;opacity:0;transition:opacity .6s ease;';
                     slides.appendChild(img);
                     var d = document.createElement('button');
@@ -198,8 +199,13 @@
                 const imgs = slides.querySelectorAll('img');
                 const dots = dotsEl.querySelectorAll('button');
 
+                function cargarImgCarrusel(n){
+                    var im = imgs[(n + imgs.length) % imgs.length];
+                    if (im && !im.getAttribute('src') && im.dataset.src) im.src = im.dataset.src;
+                }
                 function mostrar(n){
                     idx = (n + imgs.length) % imgs.length;
+                    cargarImgCarrusel(idx); cargarImgCarrusel(idx + 1);   // baja la actual y precarga la que sigue
                     imgs.forEach(function(im,i){ im.style.opacity = (i===idx?'1':'0'); });
                     dots.forEach(function(d,i){
                         d.style.background = (i===idx ? '#D4A843' : 'rgba(255,255,255,.45)');
@@ -457,6 +463,6 @@
     <i class="fa-solid fa-chevron-up"></i>
 </button>
 
-<script src="script.js?v=31"></script>
+<script src="script.js?v=32"></script>
 </body>
 </html>
