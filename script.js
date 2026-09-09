@@ -38,6 +38,12 @@ const PRECIO_BASE = 3200;
 // ─── LÓGICA DE PRECIOS POR VOLUMEN ───────────────────────────────────────────
 let NL_CONFIG = null;  // se carga desde /config-precios (parametrizable)
 
+// ── Miniaturas optimizadas de Cloudinary: misma foto, 10-20x mas liviana ──
+function thumbUrl(u, w) {
+    if (!u || u.indexOf('/upload/') === -1) return u || '';
+    return u.replace('/upload/', '/upload/w_' + (w || 600) + ',c_limit,q_auto:eco,f_auto/');
+}
+
 function precioEscalera(n) {
     // Escalera por cantidad (TOTAL): 1=3200, 2=5500, 3=7500, 5=10000.
     // De la 6ta foto en adelante, cada foto suma $2000. Interpola y es monótona creciente.
@@ -343,7 +349,7 @@ function renderEventoCard(ev, i) {
     const hasSub   = subCount > 0;
     const feat     = i === 0 ? ' feature' : '';
     const fold     = hasSub ? ' folder' : '';
-    const cover    = sinPortada ? '' : (ev.cover_url || ev.fotos?.[0]?.url_preview || '');
+    const cover    = sinPortada ? '' : thumbUrl(ev.cover_url || ev.fotos?.[0]?.url_preview || '', 900);
 
     // Carpeta SOLO-TITULO (madre sin portada): tarjeta vistosa, sin imagen
     if (sinPortada) {
@@ -584,7 +590,7 @@ async function borrarCat(id, btn) {
 
 function _coverDe(ev) {
     // Imagen para miniatura o portada (no depende del toggle)
-    return ev.cover_url || (ev.fotos && ev.fotos[0] && ev.fotos[0].url_preview) || '';
+    return thumbUrl(ev.cover_url || (ev.fotos && ev.fotos[0] && ev.fotos[0].url_preview) || '', 900);
 }
 
 function _scrollVista(key) {
@@ -745,7 +751,7 @@ function renderVistaEvento(ev) {
             const sel = carrito.has(f.id);
             return `
             <div class="photo-item${sel?' selected':''}" id="photo-${f.id}" onclick="abrirLightbox(${idx})" style="cursor: pointer;">
-                <img src="${f.url_preview}" alt="Foto deportiva" loading="lazy"
+                <img src="${thumbUrl(f.url_preview, 600)}" alt="Foto deportiva" loading="lazy"
                      title="Clic para ampliar">
                 <div class="photo-item-overlay">
                     <div class="photo-select-icon" onclick="event.stopPropagation(); toggleFoto(${f.id})" title="Agregar/quitar del carrito">
@@ -1574,7 +1580,7 @@ function abrirCheckout(tipo = 'individual') {
             return `
             <div class="checkout-summary-row" id="checkout-row-${foto.id}">
                 <div class="row-thumb">
-                    <img src="${foto.url_preview}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:3px;opacity:0.8">
+                    <img src="${thumbUrl(foto.url_preview, 200)}" alt="" style="width:44px;height:44px;object-fit:cover;border-radius:3px;opacity:0.8">
                 </div>
                 <div class="row-title">
                     <div style="color:var(--text);font-size:13px">${evento.titulo}</div>
@@ -2205,7 +2211,7 @@ async function buscarJugador(q) {
 
     cont.innerHTML = data.fotos.slice(0, 12).map(f => `
         <div class="search-result-item" onclick="verFotoDesdeSearch(${f.foto_id}, ${f.evento_id})">
-            <img src="${f.url_preview}" alt="" loading="lazy">
+            <img src="${thumbUrl(f.url_preview, 600)}" alt="" loading="lazy">
             <div class="search-result-info">
                 <div class="search-result-nombre">${f.jugador || 'Jugador detectado'}</div>
                 <div class="search-result-meta">
@@ -2439,7 +2445,7 @@ async function abrirSelectorImpresiones() {
     const grid = items.map(({foto}) => `
         <div class="imp-pick" data-id="${foto.id}" onclick="toggleImpresion(${foto.id}, this)"
              style="position:relative;cursor:pointer;border:2px solid transparent;border-radius:6px;overflow:hidden;">
-            <img src="${foto.url_preview}" style="width:100%;height:90px;object-fit:cover;display:block;opacity:0.85;">
+            <img src="${thumbUrl(foto.url_preview, 300)}" style="width:100%;height:90px;object-fit:cover;display:block;opacity:0.85;">
             <div class="imp-check" style="position:absolute;top:4px;right:4px;width:22px;height:22px;border-radius:50%;
                  background:var(--gold);color:#000;display:none;align-items:center;justify-content:center;font-size:11px;">
                 <i class="fa-solid fa-check"></i>
