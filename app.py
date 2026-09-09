@@ -1421,6 +1421,137 @@ def admin_precios_evento(eid):
     return jsonify({'ok': True})
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+#  REGENERACIÓN DE PREVIEWS (recuperación tras la baja de la cuenta Cloudinary)
+#  Recorre las fotos cuyo preview NO apunta a la cuenta actual, baja el
+#  original desde Wasabi, le aplica la marca de agua y sube preview + portada
+#  a la cuenta nueva. Corre por tandas cortas, es idempotente y reanudable.
+# ═══════════════════════════════════════════════════════════════════════════
+_REGEN_SKIP = set()   # fotos que fallaron en esta sesión (se reintentan tras un redeploy)
+
+def _regen_bajar_original(f):
+    """Devuelve (bytes, None) o (None, motivo)."""
+    u = f.url_original or ''
+    try:
+        if 'wasabisys.com' in u or (WASABI_BUCKET and WASABI_BUCKET in u):
+            firmada = get_download_url(u)
+            with urllib.request.urlopen(firmada, timeout=90) as r:
+                return r.read(), None
+        if not u:
+            return None, 'sin url_original'
+        with urllib.request.urlopen(u, timeout=60) as r:
+            return r.read(), None
+    except Exception as e:
+        return None, f'{type(e).__name__}: {e}'
+
+@app.route('/admin/regenerar-previews', methods=['POST'])
+def regenerar_previews():
+    if not session.get('admin'):
+        return jsonify({'error': 'No autorizado'}), 403
+    cloud_actual = os.environ.get('CLOUD_NAME') or ''
+    if not cloud_actual:
+        return jsonify({'error': 'CLOUD_NAME no configurado en el servidor'}), 500
+    marca_cloud = f'res.cloudinary.com/{cloud_actual}/'
+
+    pendientes_totales = Foto.query.filter(~Foto.url_preview.contains(marca_cloud)).count()
+    if request.args.get('solo_estado') == '1':
+        return jsonify({'ok': 0, 'errores': [], 'pendientes': pendientes_totales, 'lote': 0})
+
+    try:
+        batch = max(1, min(int(request.args.get('batch', 10)), 20))
+    except Exception:
+        batch = 10
+
+    filtro = ~Foto.url_preview.contains(marca_cloud)
+    if _REGEN_SKIP:
+        filtro = filtro & ~Foto.id.in_(_REGEN_SKIP)
+    fotos = Foto.query.filter(filtro).order_by(Foto.id.asc()).limit(batch).all()
+
+    ok, errores = 0, []
+    for f in fotos:
+        raw, err = _regen_bajar_original(f)
+        if raw is None:
+            _REGEN_SKIP.add(f.id)
+            errores.append({'id': f.id, 'motivo': f'original: {err}'})
+            continue
+        try:
+            prev = agregar_watermark_5x(io.BytesIO(raw))
+            r_wm = cloudinary.uploader.upload(
+                prev, folder='nacholingua',
+                public_id=f'regen_{f.id}_{int(_time.time())}',
+                resource_type='image', invalidate=True,
+            )
+            f.url_preview = r_wm['secure_url']
+            if f.url_cover:
+                nueva_cover = _generar_cover_limpia(raw)
+                if nueva_cover:
+                    f.url_cover = nueva_cover
+            db.session.commit()
+            ok += 1
+        except Exception as e:
+            db.session.rollback()
+            _REGEN_SKIP.add(f.id)
+            errores.append({'id': f.id, 'motivo': f'{type(e).__name__}: {e}'})
+
+    invalidar_cache_publica()
+    restantes = Foto.query.filter(~Foto.url_preview.contains(marca_cloud)).count()
+    return jsonify({'ok': ok, 'errores': errores, 'pendientes': restantes, 'lote': len(fotos)})
+
+@app.route('/admin/regenerar', methods=['GET'])
+def regenerar_pagina():
+    if not session.get('admin'):
+        return 'No autorizado. Inicia sesion de admin en la pagina principal y volve a entrar aca.', 403
+    return """<!doctype html><html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Regenerar previews</title>
+<style>
+body{background:#0f0d08;color:#ece6d6;font-family:system-ui,sans-serif;max-width:640px;margin:40px auto;padding:0 16px}
+h2{color:#D4A843;letter-spacing:1px}
+#bar{height:14px;background:#1a1812;border:1px solid #38331f;border-radius:8px;overflow:hidden}
+#fill{height:100%;width:0%;background:#D4A843;transition:width .4s}
+button{background:#D4A843;color:#111;border:0;padding:11px 22px;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer}
+button:disabled{opacity:.5;cursor:default}
+#log{font-size:12px;color:#b9b09a;white-space:pre-wrap;margin-top:14px;max-height:300px;overflow:auto;border-top:1px solid #38331f;padding-top:10px}
+</style></head><body>
+<h2>REGENERAR PREVIEWS</h2>
+<p>Baja cada original desde Wasabi, le aplica la marca de agua y la sube a la cuenta nueva de Cloudinary. <strong>Deja esta pestana abierta</strong> hasta que termine (puede tardar mas de una hora). Si se corta, volve a entrar y toca Iniciar: retoma donde quedo.</p>
+<p id="estado">Pendientes: calculando...</p>
+<div id="bar"><div id="fill"></div></div>
+<p style="margin-top:16px"><button id="btn" onclick="arrancar()">Iniciar</button></p>
+<div id="log"></div>
+<script>
+var total0=null, corriendo=false;
+function log(t){var l=document.getElementById('log');l.textContent+=t+'\n';l.scrollTop=l.scrollHeight;}
+function esperar(ms){return new Promise(function(r){setTimeout(r,ms);});}
+function pintar(pend){
+  var hechas = (total0===null)?0:(total0-pend);
+  document.getElementById('estado').textContent='Pendientes: '+pend+(total0?('  |  Hechas: '+hechas+' de '+total0):'');
+  if(total0) document.getElementById('fill').style.width=Math.round(hechas*100/total0)+'%';
+}
+async function tanda(extra){
+  var r=await fetch('/admin/regenerar-previews?batch=10'+(extra||''),{method:'POST',credentials:'include'});
+  return r.json();
+}
+async function arrancar(){
+  if(corriendo) return; corriendo=true;
+  document.getElementById('btn').disabled=true;
+  var sinAvance=0;
+  while(true){
+    var d;
+    try{ d=await tanda(); }catch(e){ log('Error de red, reintento en 5 segundos...'); await esperar(5000); continue; }
+    if(d.error){ log('ERROR: '+d.error); break; }
+    if(total0===null) total0=d.pendientes+d.ok;
+    (d.errores||[]).forEach(function(e){ log('foto #'+e.id+' -> '+e.motivo); });
+    pintar(d.pendientes);
+    if(d.pendientes===0){ log('LISTO: todas las previews regeneradas. La galeria ya esta viva.'); break; }
+    if(d.ok===0){ sinAvance++; if(sinAvance>=3){ log('Quedaron '+d.pendientes+' fotos con error (detalle arriba). El resto ya esta online.'); break; } }
+    else { sinAvance=0; }
+  }
+  corriendo=false; document.getElementById('btn').disabled=false;
+}
+tanda('&solo_estado=1').then(function(d){ if(!d.error){ total0=d.pendientes; pintar(d.pendientes); } });
+</script></body></html>"""
+
 def _verificar_firma_mp(req):
     """Valida la firma 'x-signature' de Mercado Pago. Solo se activa si está
     configurado MP_WEBHOOK_SECRET en el entorno; si no, devuelve True (no valida).
