@@ -153,6 +153,11 @@ if not database_url:
     )
 if database_url.startswith('postgres://'):
     database_url = database_url.replace('postgres://', 'postgresql://', 1)
+# SQLAlchemy 2.1 cambio el driver por defecto de "postgresql://" a psycopg (v3).
+# Este proyecto usa psycopg2-binary, asi que se pide psycopg2 de forma explicita
+# y la app deja de depender de cual sea el driver por defecto de cada version.
+if database_url.startswith('postgresql://'):
+    database_url = database_url.replace('postgresql://', 'postgresql+psycopg2://', 1)
 
 print(f'✓ Base de datos: {database_url.split("@")[-1]}')
 
