@@ -1137,8 +1137,10 @@ def serializar_evento(e):
         'parent_id':        e.parent_id,
         'total_fotos':      len(e.fotos),
         'total_subcarpetas': len(e.subcarpetas),
-        'fotos': [{'id': f.id, 'url_preview': f.url_preview,
-                   'url_original': f.url_original, 'precio': f.precio}
+        # Sin url_original: /obtener-eventos es publico y ademas se cachea, asi
+        # que la ruta del original no tiene que salir del servidor. El front no
+        # la usa; para descargar esta get_download_url(), que firma el acceso.
+        'fotos': [{'id': f.id, 'url_preview': f.url_preview, 'precio': f.precio}
                   for f in e.fotos],
         'subcarpetas': [serializar_evento(s) for s in
                         sorted(e.subcarpetas, key=lambda x: x.id)]
