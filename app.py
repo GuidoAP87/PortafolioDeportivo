@@ -958,6 +958,19 @@ def galeria_privada(token):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Tus fotos — Nacho Lingua Fotografía</title>
+    <!-- Galería privada: que no la indexe Google -->
+    <meta name="robots" content="noindex, nofollow">
+    <!-- Vista previa al compartir por WhatsApp. Se usa la imagen de marca a
+         propósito, nunca una foto del cliente: el link se reenvía y la tarjeta
+         la ve cualquiera que lo reciba. -->
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Nacho Lingua Fotografía">
+    <meta property="og:title" content="Tus fotos ya están listas">
+    <meta property="og:description" content="Galería privada. Entrá y descargá tus fotos en alta resolución.">
+    <meta property="og:image" content="{PUBLIC_BASE_URL}/nacho_lingua_web.jpg">
+    <meta property="og:image:width" content="2000">
+    <meta property="og:image:height" content="1331">
+    <meta name="twitter:card" content="summary_large_image">
     <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Inter:wght@400;600&display=swap" rel="stylesheet">
     <style>
         *,*::before,*::after{{margin:0;padding:0;box-sizing:border-box;}}
