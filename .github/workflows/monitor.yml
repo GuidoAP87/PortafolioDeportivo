@@ -1,0 +1,57 @@
+name: Monitor del sitio
+
+# Revisa cada 10 minutos que nacholingua.com siga en pie.
+# Si algo falla, GitHub manda un mail al duenio del repositorio.
+# Tambien se puede correr a mano desde la pestania "Actions".
+#
+# OJO: GitHub apaga las tareas programadas si el repositorio pasa 60 dias
+# sin ningun commit. Si eso pasa, se vuelve a activar desde Actions.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Revisar que el sitio responda
+        run: |
+          fallos=""
+
+          revisar() {
+            nombre="$1"
+            url="$2"
+            intento=1
+            while [ $intento -le 3 ]; do
+              codigo=$(curl -s -o /dev/null -w '%{http_code}' --max-time 25 "$url" || echo 000)
+              if [ "$codigo" = "200" ]; then
+                echo "OK     $nombre"
+                return 0
+              fi
+              echo "       $nombre respondio $codigo (intento $intento de 3)"
+              intento=$((intento + 1))
+              [ $intento -le 3 ] && sleep 20
+            done
+            echo "FALLA  $nombre -> $codigo"
+            fallos="$fallos | $nombre ($codigo)"
+            return 1
+          }
+
+          # La portada: si esto falla, el sitio esta caido.
+          revisar "portada con www" "https://www.nacholingua.com/" || true
+
+          # Sin www: ademas del sitio, vigila que el registro A del dominio
+          # siga apuntando a la IP correcta de Railway.
+          revisar "portada sin www" "https://nacholingua.com/" || true
+
+          # El catalogo toca la base de datos: detecta que la app arranco mal,
+          # como paso el 29/09 cuando una dependencia rompio el arranque.
+          revisar "catalogo (app + base de datos)" "https://www.nacholingua.com/obtener-eventos" || true
+
+          if [ -n "$fallos" ]; then
+            echo "::error::nacholingua.com tiene problemas:$fallos"
+            exit 1
+          fi
+          echo "Todo en pie."
