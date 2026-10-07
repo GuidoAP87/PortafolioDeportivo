@@ -10,7 +10,7 @@ from functools import lru_cache
 import urllib.request, urllib.parse, urllib.error
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from datetime import timedelta
+from datetime import timedelta, datetime, timezone
 from flask import (Flask, request, send_from_directory,
                    jsonify, session, send_file)
 from flask_cors import CORS
@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw, ImageFont
 from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text as _sqltext
+from sqlalchemy.dialects.postgresql import insert as _pg_insert
 import cloudinary, cloudinary.uploader
 import boto3
 from botocore.client import Config
@@ -346,6 +347,18 @@ class ConfigPrecios(db.Model):
     precios_json          = db.Column(db.Text, nullable=True)   # regla de precios general (None = escalera por defecto)
     actualizado_en        = db.Column(db.DateTime, server_default=db.func.now())
 
+class Metrica(db.Model):
+    """Contadores por día: cuánta gente entra y cuánta termina comprando.
+
+    Se guarda un número por día y por tipo de evento, no una fila por visita:
+    la tabla queda chica para siempre y no hay datos personales adentro."""
+    __tablename__  = 'metrica'
+    __table_args__ = (db.UniqueConstraint('dia', 'clave', name='uq_metrica_dia_clave'),)
+    id    = db.Column(db.Integer, primary_key=True)
+    dia   = db.Column(db.String(10),  nullable=False)   # AAAA-MM-DD, hora de Argentina
+    clave = db.Column(db.String(40),  nullable=False)
+    valor = db.Column(db.Integer,     default=0)
+
 with app.app_context():
     db.create_all()
     # migracion idempotente: agregar columna url_cover si falta
@@ -369,6 +382,30 @@ with app.app_context():
         db.session.commit()
     except Exception:
         db.session.rollback()
+
+# ── MÉTRICAS ──────────────────────────────────────────────────────────────────
+#  Para saber cuánta gente entra y cuánta termina comprando. Son contadores por
+#  día: no se guarda IP, ni cookie, ni nada que identifique a una persona.
+def _dia_hoy():
+    """Fecha de hoy en Argentina (UTC-3), para que el día corte a medianoche."""
+    return (datetime.now(timezone.utc) - timedelta(hours=3)).strftime('%Y-%m-%d')
+
+
+def contar(clave, cuanto=1):
+    """Suma al contador del día. Si falla no pasa nada: son estadísticas y
+    nunca tienen que romper una visita ni, mucho menos, una compra."""
+    try:
+        stmt = _pg_insert(Metrica.__table__).values(
+            dia=_dia_hoy(), clave=clave, valor=cuanto)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=['dia', 'clave'],
+            set_={'valor': Metrica.__table__.c.valor + cuanto})
+        db.session.execute(stmt)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f'[metricas] no pude contar "{clave}": {e}')
+
 
 # ── PRICING CENTRALIZADO (única fuente de verdad) ─────────────────────────────
 # ── Cache en memoria para los endpoints públicos calientes ──────────────────
@@ -924,6 +961,7 @@ def galeria_privada(token):
             <p><a href="/">← Volver al portfolio</a></p>
         </div></body></html>""", 404
 
+    contar('galerias_abiertas')
     ids   = json.loads(compra.foto_ids or '[]')
     fotos = Foto.query.filter(Foto.id.in_(ids)).all()
     nombre = compra.nombre_cliente or 'Cliente'
@@ -1179,6 +1217,8 @@ def crear_evento():
 
 @app.route('/obtener-eventos', methods=['GET'])
 def obtener_eventos():
+    # Esta ruta la pide la portada al cargar: sirve de medida de visitas.
+    contar('visitas')
     # Solo raíces (sin padre) — las subcarpetas van anidadas dentro
     datos = _cache_get('eventos')
     if datos is None:
@@ -1380,6 +1420,7 @@ def crear_orden():
         token_galeria    = generar_token()
     )
     db.session.add(compra); db.session.commit()
+    contar('compras_iniciadas')
 
     if not MP_HABILITADO: return jsonify({'error': 'mp_no_configurado', 'compra_id': compra.id, 'total': total}), 503
 
@@ -1622,9 +1663,13 @@ def mp_webhook():
                     compra = Compra.query.filter_by(
                         mp_preference_id=pay.get('preference_id')).first()
                 if compra:
+                    estado_previo        = compra.estado
                     compra.mp_payment_id = str(pid)
                     compra.estado        = pay.get('status', 'desconocido')
                     db.session.commit()
+                    # Solo cuando pasa a aprobada, no en cada reintento de Mercado Pago
+                    if compra.estado == 'approved' and estado_previo != 'approved':
+                        contar('compras_pagadas')
                     if compra.estado == 'approved' and (
                             not compra.email_enviado or not compra.wa_enviado):
                         threading.Thread(target=entregar_compra,
@@ -2057,6 +2102,78 @@ def admin_stats():
         'emails_pend': Compra.query.filter_by(estado='approved', email_enviado=False).count(),
         'mensajes_nue': Consulta.query.filter_by(leida=False).count()
     })
+
+@app.route('/admin/metricas', methods=['GET'])
+def ver_metricas():
+    """Cuánta gente entra y cuánta termina comprando, día por día.
+    Se abre desde el navegador: nacholingua.com/admin/metricas"""
+    if not session.get('admin'):
+        return jsonify({'error': 'No autorizado'}), 403
+
+    por_dia = {}
+    for m in Metrica.query.all():
+        por_dia.setdefault(m.dia, {})[m.clave] = m.valor
+
+    COLUMNAS = [('visitas',           'Visitas'),
+                ('compras_iniciadas', 'Empezaron a comprar'),
+                ('compras_pagadas',   'Compraron'),
+                ('galerias_abiertas', 'Abrieron su galería')]
+
+    dias   = sorted(por_dia.keys(), reverse=True)[:30]
+    totales = {c: 0 for c, _ in COLUMNAS}
+    filas   = ''
+    for d in dias:
+        datos = por_dia[d]
+        for c, _ in COLUMNAS:
+            totales[c] += datos.get(c, 0)
+        visitas = datos.get('visitas', 0)
+        pagadas = datos.get('compras_pagadas', 0)
+        conv    = f'{pagadas / visitas * 100:.1f}%' if visitas else '—'
+        filas  += ('<tr><td>' + d + '</td>'
+                   + ''.join(f'<td>{datos.get(c, 0)}</td>' for c, _ in COLUMNAS)
+                   + f'<td class="conv">{conv}</td></tr>')
+
+    tv = totales['visitas']
+    tp = totales['compras_pagadas']
+    conv_total = f'{tp / tv * 100:.1f}%' if tv else '—'
+    totales_html = ('<tr class="total"><td>Total</td>'
+                    + ''.join(f'<td>{totales[c]}</td>' for c, _ in COLUMNAS)
+                    + f'<td class="conv">{conv_total}</td></tr>')
+
+    if not dias:
+        filas = ('<tr><td colspan="6" style="padding:30px;color:#888">'
+                 'Todavía no hay datos. Se empiezan a juntar desde ahora.</td></tr>')
+
+    cabecera = ''.join(f'<th>{t}</th>' for _, t in COLUMNAS)
+    return f'''<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Métricas — Nacho Lingua</title>
+<style>
+  body{{background:#06060A;color:#f2f2f2;font-family:system-ui,sans-serif;padding:24px;}}
+  h1{{color:#D4A843;font-size:22px;margin-bottom:4px;}}
+  p.sub{{color:#888;font-size:13px;margin-bottom:20px;}}
+  table{{border-collapse:collapse;width:100%;max-width:760px;font-size:14px;}}
+  th,td{{padding:9px 12px;text-align:right;border-bottom:1px solid #1c1c24;}}
+  th:first-child,td:first-child{{text-align:left;}}
+  th{{color:#888;font-weight:500;font-size:12px;text-transform:uppercase;}}
+  .conv{{color:#D4A843;font-weight:600;}}
+  tr.total td{{border-top:2px solid #D4A843;border-bottom:none;font-weight:700;}}
+  a{{color:#D4A843;}}
+</style></head><body>
+<h1>Métricas</h1>
+<p class="sub">Últimos 30 días. "Visitas" son cargas de la portada.
+   La conversión es cuántos de los que entraron terminaron comprando.</p>
+<table>
+  <tr><th>Día</th>{cabecera}<th>Conversión</th></tr>
+  {filas}
+  {totales_html}
+</table>
+<p class="sub" style="margin-top:22px">No se guarda ningún dato personal:
+   son contadores por día, sin IP ni cookies. <a href="/">← Volver al sitio</a></p>
+</body></html>'''
+
 
 @app.route('/admin/compras', methods=['GET'])
 def ver_compras():
