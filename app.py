@@ -22,10 +22,6 @@ from sqlalchemy import text as _sqltext
 import cloudinary, cloudinary.uploader
 import boto3
 from botocore.client import Config
-try:
-    import phonenumbers          # normalización de números AR (pip install phonenumbers)
-except ImportError:
-    phonenumbers = None
 
 # ── CLOUDINARY (solo para previews con marca de agua) ────────────────────────
 cloudinary.config(
@@ -663,29 +659,34 @@ def agregar_watermark_5x(img_bytes, texto='@Nacho Lingua', **kwargs):
 
 # ── ENVÍO POR WHATSAPP (Meta Cloud API) ───────────────────────────────────────
 def normalizar_wa_ar(numero):
-    """Normaliza un número argentino al formato que espera la API de WhatsApp:
-    54 + 9 + área + número (sin 0 inicial, sin 15, sin símbolos).
-    Devuelve los dígitos sin '+', o None si el número no parece válido."""
-    if not numero:
-        return None
-    if phonenumbers is not None:
-        try:
-            p = phonenumbers.parse(numero, 'AR')
-            if phonenumbers.is_valid_number(p):
-                # E.164 devuelve '+549XXXXXXXXXX' para móviles AR; sacamos el '+'
-                return phonenumbers.format_number(
-                    p, phonenumbers.PhoneNumberFormat.E164).lstrip('+')
-        except Exception:
-            pass
-    # Fallback sin la librería: limpieza básica + prefijo 549
+    """Normaliza un número argentino al formato que exige WhatsApp: 54 + 9 +
+    área + número, sin el 0 de larga distancia y sin el 15 del celular.
+
+    El 15 es la trampa: la gente escribe "351 15 512 3456" y, si ese 15 queda
+    en el medio, Meta acepta el envío igual (responde "accepted") pero el
+    mensaje no llega nunca, porque ese número no existe en WhatsApp.
+
+    Devuelve los dígitos sin '+', o None si el número no parece argentino."""
     n = re.sub(r'\D', '', numero or '')
     if not n:
         return None
-    if n.startswith('549'):
-        return n
-    if n.startswith('54'):
-        return '549' + n[2:].lstrip('0')
-    return '549' + n.lstrip('0')
+    if n.startswith('00'):          # 0054...
+        n = n[2:]
+    if n.startswith('54'):          # +54 / 54
+        n = n[2:]
+    n = n.lstrip('0')               # 0351 -> 351
+    if n.startswith('9') and len(n) > 10:   # el 9 de celular, ya puesto
+        n = n[1:]
+    # Sacar el 15 que va justo después del código de área (2, 3 o 4 dígitos).
+    # Solo si al sacarlo quedan exactamente 10 dígitos: así no se rompe un
+    # número legítimo que casualmente tenga un 15 en esa posición.
+    for largo_area in (2, 3, 4):
+        if n[largo_area:largo_area + 2] == '15' and len(n) == 12:
+            n = n[:largo_area] + n[largo_area + 2:]
+            break
+    if len(n) != 10:                # en AR: área + número = 10 dígitos
+        return None
+    return '549' + n
 
 
 def enviar_wa_cliente(compra):
