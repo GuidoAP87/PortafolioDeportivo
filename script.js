@@ -807,12 +807,6 @@ function renderVistaEvento(ev) {
                         <i class="fa-regular fa-calendar" style="color:var(--gold);margin-right:6px"></i>${ev.fecha}
                     </div>` : ''}
                 </div>
-                <div class="price-info">
-                    <div class="price-badge" style="font-size:20px; color:var(--gold);">Promos en Carrito</div>
-                    <div style="font-size:11px; color:var(--text-dim); margin-top:4px; text-align:right;">
-                        1x $3.200 | 2x $2.750 c/u | +3 desde $2.500 c/u
-                    </div>
-                </div>
             </div>
             <div class="selection-info">
                 <i class="fa-solid fa-circle-info"></i>
@@ -1453,12 +1447,15 @@ async function editarPrecioFoto(fotoId, precioActual, isCustom = false) {
     });
     const data = await res.json();
     if (data.ok) {
-        const esCustom = nuevoPrecio !== PRECIO_BASE;
+        // Quien decide si el precio es especial es el servidor: conoce la regla
+        // del evento, que no siempre es el precio base de 3200.
+        const esCustom    = data.precio_custom === true;
+        const precioFinal = (data.precio !== undefined) ? data.precio : nuevoPrecio;
         // Actualizar precio en eventosData
         for (const ev of eventosData) {
             const foto = (ev.fotos || []).find(f => f.id === fotoId);
             if (foto) {
-                foto.precio        = nuevoPrecio;
+                foto.precio        = precioFinal;
                 foto.precio_custom = esCustom;
                 break;
             }
@@ -1466,12 +1463,12 @@ async function editarPrecioFoto(fotoId, precioActual, isCustom = false) {
         // Actualizar carrito si la foto está en él
         if (carrito.has(fotoId)) {
             const item = carrito.get(fotoId);
-            item.foto.precio        = nuevoPrecio;
+            item.foto.precio        = precioFinal;
             item.foto.precio_custom = esCustom;
         }
         const msg = !esCustom
             ? 'Precio reseteado al predeterminado'
-            : `Precio especial: $${nuevoPrecio.toLocaleString('es-AR')}`;
+            : `Precio especial: $${precioFinal.toLocaleString('es-AR')}`;
         toast(msg, 'success', 2500);
         actualizarCarritoBar();
         if (window._renderCheckoutItems) window._renderCheckoutItems();

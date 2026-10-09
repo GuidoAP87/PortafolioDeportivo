@@ -263,6 +263,9 @@ class Foto(db.Model):
     url_original = db.Column(db.String(500), nullable=False)
     url_cover    = db.Column(db.String(500), nullable=True)   # portada limpia (sin marca, baja res)
     precio       = db.Column(db.Float, default=3200.0)
+    # True = el admin le puso un precio propio: se cobra ese y la foto queda
+    # fuera del descuento por cantidad. False = sigue la regla del evento.
+    precio_custom = db.Column(db.Boolean, default=False)
     evento_id    = db.Column(db.Integer, db.ForeignKey('evento.id'), nullable=False)
     subida_en    = db.Column(db.DateTime, server_default=db.func.now())
 
@@ -374,6 +377,12 @@ with app.app_context():
         db.session.rollback()
     try:
         db.session.execute(_sqltext('ALTER TABLE evento ADD COLUMN precios_json TEXT'))
+        db.session.commit()
+    except Exception:
+        db.session.rollback()
+    try:
+        db.session.execute(_sqltext(
+            'ALTER TABLE foto ADD COLUMN precio_custom BOOLEAN DEFAULT FALSE'))
         db.session.commit()
     except Exception:
         db.session.rollback()
@@ -516,6 +525,25 @@ def _total_por_regla(regla, n):
         pass
     return precio_escalera(n)
 
+def _regla_de_foto(foto, eventos=None, cfg=None):
+    """La regla de precios que le toca a una foto: la del evento, la de la
+    carpeta madre, o la general."""
+    cfg     = cfg or get_config()
+    eventos = eventos if eventos is not None else {e.id: e for e in Evento.query.all()}
+    ev      = eventos.get(foto.evento_id)
+    if ev is not None:
+        if ev.precios_json:
+            return json.loads(ev.precios_json)
+        if ev.parent_id and ev.parent_id in eventos and eventos[ev.parent_id].precios_json:
+            return json.loads(eventos[ev.parent_id].precios_json)
+    return json.loads(cfg.precios_json) if getattr(cfg, 'precios_json', None) else None
+
+
+def precio_default_foto(foto):
+    """Lo que saldría esta foto sola si no tuviera precio especial."""
+    return float(_total_por_regla(_regla_de_foto(foto), 1))
+
+
 def calcular_total(foto_ids, tipo='individual', cfg=None):
     """Calcula (total, items_mp). tipo: individual | pack_digital | pack_impresion."""
     cfg = cfg or get_config()
@@ -531,10 +559,15 @@ def calcular_total(foto_ids, tipo='individual', cfg=None):
     # Cada evento/album puede tener regla propia (fijo o escalera). Si no tiene,
     # hereda la del evento madre; si tampoco, usa el precio general.
     fotos_db = Foto.query.filter(Foto.id.in_(foto_ids)).all() if foto_ids else []
+    # Las fotos con precio especial se cobran a su precio y quedan fuera del
+    # descuento por cantidad: no suman para la escalera ni se benefician de ella.
+    con_precio_propio = [f for f in fotos_db if getattr(f, 'precio_custom', False)]
+    por_regla         = [f for f in fotos_db if not getattr(f, 'precio_custom', False)]
+    total_propios     = float(sum(float(f.precio or 0) for f in con_precio_propio))
     eventos  = {e.id: e for e in Evento.query.all()}
     regla_global = json.loads(cfg.precios_json) if getattr(cfg, 'precios_json', None) else None
     grupos = {}
-    for f in fotos_db:
+    for f in por_regla:
         clave, regla = 'global', regla_global
         ev = eventos.get(f.evento_id)
         if ev is not None:
@@ -545,7 +578,8 @@ def calcular_total(foto_ids, tipo='individual', cfg=None):
                 clave, regla = f'ev:{padre.id}', json.loads(padre.precios_json)
         g = grupos.setdefault(clave, {'n': 0, 'regla': regla})
         g['n'] += 1
-    total = float(sum(_total_por_regla(g['regla'], g['n']) for g in grupos.values())) if grupos else float(precio_escalera(cantidad))
+    total = total_propios + float(sum(_total_por_regla(g['regla'], g['n'])
+                                      for g in grupos.values()))
     return total, [{'title': f'Nacho Lingua — {cantidad} foto(s)', 'quantity': 1,
                     'unit_price': float(total), 'currency_id': 'ARS'}]
 
@@ -1192,7 +1226,8 @@ def serializar_evento(e):
         # Sin url_original: /obtener-eventos es publico y ademas se cachea, asi
         # que la ruta del original no tiene que salir del servidor. El front no
         # la usa; para descargar esta get_download_url(), que firma el acceso.
-        'fotos': [{'id': f.id, 'url_preview': f.url_preview, 'precio': f.precio}
+        'fotos': [{'id': f.id, 'url_preview': f.url_preview, 'precio': f.precio,
+                   'precio_custom': bool(getattr(f, 'precio_custom', False))}
                   for f in e.fotos],
         'subcarpetas': [serializar_evento(s) for s in
                         sorted(e.subcarpetas, key=lambda x: x.id)]
@@ -1367,13 +1402,29 @@ def subir_foto():
 
     return jsonify({'ok': True, 'id': foto_id_guardado, 'url_preview': url_preview})
 
-@app.route('/editar-precio/<int:foto_id>', methods=['PATCH'])
+@app.route('/foto/<int:foto_id>/precio', methods=['PATCH'])
+@app.route('/editar-precio/<int:foto_id>', methods=['PATCH'])   # nombre viejo
 def editar_precio(foto_id):
+    """Precio especial para una foto. Si se manda el precio por defecto (o nada),
+    la foto vuelve a la regla del evento."""
     if not session.get('admin'): return jsonify({'error': 'No autorizado'}), 403
-    foto = Foto.query.get_or_404(foto_id)
-    foto.precio = float(request.json.get('precio', foto.precio))
+    foto    = Foto.query.get_or_404(foto_id)
+    pedido  = (request.json or {}).get('precio', None)
+    default = precio_default_foto(foto)
+    try:
+        pedido = float(pedido) if pedido not in (None, '') else 0.0
+    except (TypeError, ValueError):
+        return jsonify({'error': 'Precio inválido'}), 400
+
+    if pedido <= 0 or abs(pedido - default) < 0.01:
+        foto.precio, foto.precio_custom = default, False
+    else:
+        foto.precio, foto.precio_custom = pedido, True
     db.session.commit()
-    return jsonify({'ok': True, 'precio': foto.precio})
+    invalidar_cache_publica()
+    return jsonify({'ok': True, 'precio': foto.precio,
+                    'precio_custom': bool(foto.precio_custom),
+                    'precio_default': default})
 
 @app.route('/borrar-foto/<int:foto_id>', methods=['DELETE'])
 def borrar_foto(foto_id):
