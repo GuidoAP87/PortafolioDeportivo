@@ -967,6 +967,98 @@ def enviar_fotos_email(compra_id):
     except Exception as e:
         print(f'✗ Error email: {e}'); return False
 
+
+# ── "MIS FOTOS": el cliente recupera sus galerías por mail ───────────────────
+#  A propósito NO se muestran las fotos en pantalla con solo poner un mail:
+#  cualquiera que conozca el mail de un cliente vería sus fotos. Se mandan los
+#  links a la casilla, que es la única prueba de que el mail es suyo.
+_ULTIMO_PEDIDO_GALERIAS = {}     # mail -> momento del último pedido
+
+
+def _enviar_mail(destino, asunto, html):
+    """Mail suelto por Resend. Devuelve True/False y nunca lanza excepción."""
+    if not RESEND_API_KEY:
+        print('✗ Mail: falta RESEND_API_KEY')
+        return False
+    try:
+        req = urllib.request.Request(
+            "https://api.resend.com/emails",
+            data    = json.dumps({"from": MAIL_FROM, "to": [destino],
+                                  "subject": asunto, "html": html}).encode('utf-8'),
+            headers = {"Content-Type":  "application/json",
+                       "Authorization": f"Bearer {RESEND_API_KEY}",
+                       "User-Agent":    "nacholingua-mailer/1.0"},
+            method  = "POST")
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            resp.read()
+        return True
+    except urllib.error.HTTPError as e:
+        print(f'✗ Mail a {destino} (HTTP {e.code}): {e.read().decode("utf-8", "ignore")}')
+        return False
+    except Exception as e:
+        print(f'✗ Mail a {destino}: {e}')
+        return False
+
+
+def _mandar_galerias(email):
+    """Le manda a ese mail los links de todas sus compras aprobadas."""
+    with app.app_context():
+        compras = (Compra.query
+                   .filter(db.func.lower(Compra.email_cliente) == email,
+                           Compra.estado == 'approved',
+                           Compra.token_galeria.isnot(None))
+                   .order_by(Compra.id.desc()).all())
+        if not compras:
+            print(f'[mis-fotos] {email}: sin compras, no se manda nada')
+            return
+
+        filas = ''
+        for c in compras:
+            cuantas = len(json.loads(c.foto_ids or '[]'))
+            fecha   = c.creada_en.strftime('%d/%m/%Y') if c.creada_en else ''
+            filas += (
+                f'<tr><td style="padding:12px 0;border-bottom:1px solid #222;color:#ddd">'
+                f'{fecha} · {cuantas} foto{"s" if cuantas != 1 else ""}</td>'
+                f'<td style="padding:12px 0;border-bottom:1px solid #222;text-align:right">'
+                f'<a href="{url_galeria(c.token_galeria)}" '
+                f'style="color:#D4A843;font-weight:600;text-decoration:none">Ver mis fotos →</a>'
+                f'</td></tr>')
+
+        html = f'''<div style="background:#06060A;color:#f2f2f2;font-family:Arial,sans-serif;padding:28px">
+  <h2 style="color:#D4A843;margin:0 0 6px">Tus galerías</h2>
+  <p style="color:#999;font-size:14px;margin:0 0 18px">
+    Estas son las compras hechas con este mail. Los links no vencen:
+    podés volver cuando quieras.</p>
+  <table style="width:100%;border-collapse:collapse;font-size:14px">{filas}</table>
+  <p style="color:#666;font-size:12px;margin-top:22px">
+    Si no pediste esto, podés ignorar el mensaje: nadie ve tus fotos sin este mail.</p>
+  <p style="color:#666;font-size:12px">Nacho Lingua Fotografía · Córdoba</p>
+</div>'''
+        ok = _enviar_mail(email, 'Tus galerías — Nacho Lingua Fotografía', html)
+        print(f'[mis-fotos] {email}: {len(compras)} galería(s), enviado={ok}')
+
+
+@app.route('/recuperar-galerias', methods=['POST'])
+def recuperar_galerias():
+    """El cliente pone su mail y le llegan sus galerías. La respuesta es
+    siempre la misma, haya compras o no: así nadie puede usar el formulario
+    para averiguar quién le compró a Nacho."""
+    email = ((request.json or {}).get('email') or '').strip().lower()
+    if not re.match(r'^[^@\s]+@[^@\s]+\.[^@\s]+$', email):
+        return jsonify({'error': 'Escribí un mail válido'}), 400
+
+    misma_respuesta = jsonify({'ok': True, 'mensaje':
+        'Si ese mail tiene compras, en un minuto te llegan los links.'})
+
+    # Un pedido cada 3 minutos por mail, para que nadie moleste a otro
+    ahora = _time.time()
+    if ahora - _ULTIMO_PEDIDO_GALERIAS.get(email, 0) < 180:
+        return misma_respuesta
+    _ULTIMO_PEDIDO_GALERIAS[email] = ahora
+
+    threading.Thread(target=_mandar_galerias, args=(email,), daemon=True).start()
+    return misma_respuesta
+
 # ── RUTAS ESTÁTICAS ───────────────────────────────────────────────────────────
 @app.route('/')
 def index(): return send_from_directory('.', 'index.html')

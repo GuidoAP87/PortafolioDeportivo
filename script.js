@@ -2581,3 +2581,56 @@ function initHeroParallax() {
         }
     }, { passive: true });
 }
+// ════════════════════════════════════════════════════════════════════════════
+// "MIS FOTOS" — el cliente recupera sus galerías por mail
+// ════════════════════════════════════════════════════════════════════════════
+// No se muestran las fotos en pantalla con solo poner un mail: los links van
+// a la casilla, que es la única prueba de que ese mail es suyo.
+async function recuperarGalerias() {
+    const { value: email } = await Swal.fire({
+        title: 'Mis fotos',
+        background: 'var(--ink-2)', color: 'var(--text)',
+        html: `
+            <p style="font-size:14px;color:var(--text-dim);margin-bottom:14px;line-height:1.6">
+                Poné el mail con el que compraste y te mandamos ahí los links
+                a todas tus galerías.
+            </p>
+            <input id="mis-fotos-email" class="swal2-input" type="email"
+                placeholder="tumail@ejemplo.com" autocomplete="email"
+                style="background:var(--ink-4);color:var(--text);border:1px solid var(--ink-5);
+                       font-family:Inter,sans-serif;font-size:15px;width:85%">`,
+        focusConfirm: false,
+        showCancelButton: true,
+        confirmButtonText: 'Mandame mis fotos',
+        confirmButtonColor: '#D4A843',
+        cancelButtonText: 'Cancelar',
+        cancelButtonColor: '#555',
+        preConfirm: () => {
+            const val = (document.getElementById('mis-fotos-email').value || '').trim();
+            if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(val)) {
+                Swal.showValidationMessage('Escribí un mail válido');
+                return false;
+            }
+            return val;
+        }
+    });
+    if (!email) return;
+
+    try {
+        const res  = await fetch('/recuperar-galerias', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ email })
+        });
+        const data = await res.json();
+        await Swal.fire({
+            title: 'Listo',
+            text: data.mensaje || 'Si ese mail tiene compras, en un minuto te llegan los links.',
+            icon: 'success',
+            background: 'var(--ink-2)', color: 'var(--text)',
+            confirmButtonColor: '#D4A843'
+        });
+    } catch (e) {
+        toast('No se pudo enviar. Probá de nuevo en un rato.', 'error', 3000);
+    }
+}
