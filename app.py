@@ -20,6 +20,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import text as _sqltext
 from sqlalchemy.dialects.postgresql import insert as _pg_insert
+from html import escape as _escape
 import cloudinary, cloudinary.uploader
 import boto3
 from botocore.client import Config
@@ -1341,6 +1342,68 @@ def crear_evento():
                 parent_id=parent_id)
     db.session.add(ev); db.session.commit()
     return jsonify({'id': ev.id, 'mensaje': 'Carpeta creada'})
+
+def _portada_de_evento(ev):
+    """La imagen que representa a una carpeta: su portada elegida, la primera
+    foto, o la primera foto de alguna subcarpeta."""
+    if ev.cover_foto_id:
+        f = Foto.query.get(ev.cover_foto_id)
+        if f:
+            return f.url_cover or f.url_preview
+    f = Foto.query.filter_by(evento_id=ev.id).first()
+    if f:
+        return f.url_cover or f.url_preview
+    for sub in (ev.subcarpetas or []):
+        f = Foto.query.filter_by(evento_id=sub.id).first()
+        if f:
+            return f.url_cover or f.url_preview
+    return f'{PUBLIC_BASE_URL}/nacho_lingua_web.jpg'
+
+
+@app.route('/evento/<int:ev_id>', methods=['GET'])
+def compartir_evento(ev_id):
+    """Link propio de cada carpeta, para mandarle a cada club o categoría el suyo.
+
+    Esta página chica existe por un motivo: WhatsApp y Facebook leen la vista
+    previa del link que uno comparte, y necesitan encontrar acá el título y la
+    portada de ESTA carpeta. Después manda al visitante al sitio con la carpeta
+    ya abierta."""
+    ev = Evento.query.get(ev_id)
+    if not ev:
+        return send_from_directory('.', '404.html'), 404
+
+    titulo  = _escape(ev.titulo or 'Galería')
+    deporte = _escape(ev.deporte or '')
+    fecha   = _escape(ev.fecha or '')
+    detalle = ' · '.join([x for x in (deporte, fecha) if x])
+    desc    = _escape(ev.descripcion or '') or (
+        f'{detalle} · Mirá las fotos y llevate las tuyas en alta resolución.'
+        if detalle else 'Mirá las fotos y llevate las tuyas en alta resolución.')
+    portada = _escape(_portada_de_evento(ev))
+    destino = f'{PUBLIC_BASE_URL}/#ev={ev.id}'
+
+    return f'''<!DOCTYPE html>
+<html lang="es"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{titulo} — Nacho Lingua Fotografía</title>
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Nacho Lingua Fotografía">
+<meta property="og:url" content="{PUBLIC_BASE_URL}/evento/{ev.id}">
+<meta property="og:title" content="{titulo}">
+<meta property="og:description" content="{desc}">
+<meta property="og:image" content="{portada}">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="canonical" href="{destino}">
+<meta http-equiv="refresh" content="0; url={destino}">
+<script>location.replace("{destino}");</script>
+</head>
+<body style="background:#06060A;color:#f2f2f2;font-family:system-ui,sans-serif;
+             text-align:center;padding:60px 20px">
+  <p style="color:#888">Abriendo <strong style="color:#D4A843">{titulo}</strong>…</p>
+  <p><a href="{destino}" style="color:#D4A843">Entrar a la galería</a></p>
+</body></html>'''
+
 
 @app.route('/obtener-eventos', methods=['GET'])
 def obtener_eventos():

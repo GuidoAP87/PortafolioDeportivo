@@ -312,6 +312,7 @@ async function cargarEventos() {
 
         renderEventos();
         configurarFiltros();
+        abrirDesdeLink();     // si llegó por el link de una carpeta, la abre
     } catch {
         grid.innerHTML = '<div class="empty-state"><i class="fa-solid fa-triangle-exclamation" style="font-size:28px;color:var(--text-dim);margin-bottom:12px"></i><p>No se pudieron cargar las galerías.</p></div>';
     }
@@ -648,6 +649,10 @@ function abrirEvento(eventoId) {
     const ev = buscarEvento(eventoId, eventosData);
     if (!ev) return;
 
+    // La dirección del navegador acompaña a la carpeta abierta, así lo que el
+    // visitante copia de la barra ya es el link de ESA carpeta.
+    try { history.replaceState(null, '', '#ev=' + eventoId); } catch (e) {}
+
     // Guardar la posición de scroll de la vista que dejamos
     scrollMem[vistaKey] = window.scrollY;
 
@@ -807,6 +812,10 @@ function renderVistaEvento(ev) {
                         <i class="fa-regular fa-calendar" style="color:var(--gold);margin-right:6px"></i>${ev.fecha}
                     </div>` : ''}
                 </div>
+                <button class="back-btn" onclick="compartirCarpeta(${ev.id})"
+                        title="Compartir el link de esta galería">
+                    <i class="fa-solid fa-share-nodes"></i> Compartir
+                </button>
             </div>
             <div class="selection-info">
                 <i class="fa-solid fa-circle-info"></i>
@@ -873,6 +882,10 @@ function mostrarSubcarpetas(ev) {
                         ${breadcrumbHTML}
                     </div>
                 </div>
+                <button class="back-btn" onclick="compartirCarpeta(${ev.id})"
+                        title="Compartir el link de esta carpeta">
+                    <i class="fa-solid fa-share-nodes"></i> Compartir
+                </button>
                 ${adminBtns}
             </div>
             <div class="selection-info">
@@ -943,6 +956,7 @@ async function crearSubcarpeta(parentId) {
 
 function cerrarEvento() {
     eventoActual = null;
+    try { history.replaceState(null, '', location.pathname); } catch (e) {}
     document.getElementById('event-view').style.display = 'none';
     document.getElementById('portfolio').style.removeProperty('display');
     document.getElementById('about').style.removeProperty('display');
@@ -2632,5 +2646,65 @@ async function recuperarGalerias() {
         });
     } catch (e) {
         toast('No se pudo enviar. Probá de nuevo en un rato.', 'error', 3000);
+    }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// LINK PROPIO DE CADA CARPETA
+// ════════════════════════════════════════════════════════════════════════════
+// Cada carpeta tiene su direccion: nacholingua.com/evento/<id>. Al compartirla
+// por WhatsApp muestra la portada y el nombre de ESA carpeta, porque el
+// servidor devuelve una pagina con esas etiquetas y despues manda al sitio.
+
+function linkDeCarpeta(id) {
+    return `${location.origin}/evento/${id}`;
+}
+
+// Si el visitante llego con #ev=123, abrimos esa carpeta.
+function abrirDesdeLink() {
+    const m = (location.hash || '').match(/^#ev=(\d+)/);
+    if (!m) return;
+    const id = parseInt(m[1], 10);
+    if (buscarEvento(id, eventosData)) {
+        setTimeout(() => abrirEvento(id), 60);
+    } else {
+        toast('Esa galería ya no está disponible', 'error', 3000);
+        try { history.replaceState(null, '', location.pathname); } catch (e) {}
+    }
+}
+
+async function compartirCarpeta(id, titulo) {
+    // El título se busca acá y no se pasa por el onclick: un nombre con
+    // comillas rompería el HTML del botón.
+    if (!titulo) {
+        const ev = buscarEvento(id, eventosData);
+        titulo = (ev && ev.titulo) || 'Galería';
+    }
+    const url = linkDeCarpeta(id);
+
+    // En el celular abre el menu de compartir del sistema (WhatsApp, Instagram...)
+    if (navigator.share) {
+        try {
+            await navigator.share({ title: titulo || 'Galería', url });
+            return;
+        } catch (e) {
+            if (e && e.name === 'AbortError') return;   // la cerró a propósito
+        }
+    }
+    try {
+        await navigator.clipboard.writeText(url);
+        toast('Link copiado: ' + url, 'success', 3500);
+    } catch (e) {
+        await Swal.fire({
+            title: 'Link de esta galería',
+            html: `<p style="font-size:13px;color:var(--text-dim);margin-bottom:10px">
+                     Copialo y mandáselo a quien quieras.</p>
+                   <input class="swal2-input" readonly value="${url}"
+                     onclick="this.select()"
+                     style="background:var(--ink-4);color:var(--text);
+                            border:1px solid var(--ink-5);width:90%;font-size:13px">`,
+            background: 'var(--ink-2)', color: 'var(--text)',
+            confirmButtonColor: '#D4A843', confirmButtonText: 'Listo'
+        });
     }
 }
