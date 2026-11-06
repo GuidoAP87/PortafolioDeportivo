@@ -2719,5 +2719,22 @@ def diag_wasabi():
     return jsonify(info)
 
 
+def _precalentar_catalogo():
+    """Arma el catálogo apenas arranca el servidor.
+
+    Sin esto, los primeros visitantes después de cada publicación esperan los
+    segundos que tarda armarlo, porque el cache arranca vacío."""
+    try:
+        with app.app_context():
+            raices = Evento.query.filter_by(parent_id=None).order_by(Evento.id.desc()).all()
+            _cache_set('eventos', [serializar_evento(e) for e in raices])
+            print('✓ Catálogo precalentado')
+    except Exception as e:
+        print(f'[cache] no pude precalentar el catálogo: {e}')
+
+
+threading.Thread(target=_precalentar_catalogo, daemon=True).start()
+
+
 if __name__ == '__main__':
     app.run(debug=True, port=5000)
