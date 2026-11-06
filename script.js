@@ -1305,12 +1305,28 @@ async function subirFotos(event, eventoId) {
         return;
     }
 
-    for (let i = 0; i < files.length; i++) {
-        const labelStr = `Subiendo ${i+1} de ${files.length} — ${files[i].name.substring(0,30)}`;
-        if (label)    label.textContent = labelStr;
-        if (progText) progText.textContent = labelStr;
-        if (progBar)  progBar.style.width = `${(i/files.length)*100}%`;
+    // Se suben de a SUBIDAS_EN_PARALELO. Antes iba de a una: subía la foto,
+    // esperaba a que el servidor terminara de procesarla y recién ahí empezaba
+    // la siguiente. Como el cuello de botella es el viaje de los 10 MB de cada
+    // original, mandar varias a la vez aprovecha el ancho de banda y el tiempo
+    // total baja casi en proporción.
+    //
+    // Van en tandas y no todas juntas a propósito: cada registro ocupa un
+    // lugar de atención del servidor mientras arma la marca de agua, y no hay
+    // que comerse todos los lugares mientras hay gente mirando el sitio.
+    const SUBIDAS_EN_PARALELO = 3;
+    let terminadas = 0;
 
+    const actualizarProgreso = (nombre) => {
+        const txt = `Subiendo ${Math.min(terminadas + 1, files.length)} de ${files.length}`
+                  + (nombre ? ` — ${nombre.substring(0, 30)}` : '');
+        if (label)    label.textContent = txt;
+        if (progText) progText.textContent = txt;
+        if (progBar)  progBar.style.width = `${(terminadas / files.length) * 100}%`;
+    };
+    actualizarProgreso(files[0] && files[0].name);
+
+    const subirUna = async (i) => {
         try {
             // 1. Subir directo a Cloudinary desde el browser (sin pasar por Railway)
             const fd = new FormData();
@@ -1329,27 +1345,41 @@ async function subirFotos(event, eventoId) {
             );
             const cloudData = await cloudRes.json();
 
-            if (!cloudData.secure_url) { errores++; continue; }
-
-            // 2. Registrar en BD (solo envía la URL, no la foto)
-            const regRes = await fetch('/registrar-foto', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    url_preview: cloudData.secure_url,
-                    evento_id:   eventoId,
-                    precio:      PRECIO_BASE,
-                    public_id:   cloudData.public_id
-                }),
-                credentials: 'include'
-            });
-            if (regRes.ok) exitosas++;
-            else errores++;
+            if (!cloudData.secure_url) {
+                errores++;
+            } else {
+                // 2. Registrar en BD (solo envía la URL, no la foto)
+                const regRes = await fetch('/registrar-foto', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        url_preview: cloudData.secure_url,
+                        evento_id:   eventoId,
+                        precio:      PRECIO_BASE,
+                        public_id:   cloudData.public_id
+                    }),
+                    credentials: 'include'
+                });
+                if (regRes.ok) exitosas++;
+                else errores++;
+            }
 
         } catch(e) { errores++; }
 
-        if (progBar) progBar.style.width = `${((i+1)/files.length)*100}%`;
+        terminadas++;
+        actualizarProgreso(files[Math.min(terminadas, files.length - 1)]?.name);
+    };
+
+    // De a tandas y no con un pool continuo: así el orden de las fotos dentro
+    // de la carpeta se mantiene salvo por el desorden chico de cada tanda.
+    for (let i = 0; i < files.length; i += SUBIDAS_EN_PARALELO) {
+        const tanda = [];
+        for (let j = i; j < Math.min(i + SUBIDAS_EN_PARALELO, files.length); j++) {
+            tanda.push(subirUna(j));
+        }
+        await Promise.all(tanda);
     }
+    if (progBar) progBar.style.width = '100%';
 
     setTimeout(() => {
         if (progWrap) progWrap.style.display = 'none';
