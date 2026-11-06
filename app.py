@@ -436,6 +436,43 @@ def _cache_set(clave, data):
 def invalidar_cache_publica():
     _CACHE_PUB.clear()
 
+
+_CACHE_REFRESCANDO = set()
+
+def _cache_swr(clave, ttl, calcular):
+    """Igual que el cache de arriba, pero cuando vence NO hace esperar a nadie:
+    devuelve lo viejo y recalcula atrás.
+
+    Con 2.000 fotos cargadas, rearmar el catálogo tarda unos segundos. Antes,
+    cada 30 segundos un visitante pagaba esa espera completa. Ahora ese
+    visitante recibe la versión anterior al instante y el recálculo ocurre en
+    otro hilo: lo peor que puede ver es un catálogo unos segundos viejo."""
+    v     = _CACHE_PUB.get(clave)
+    ahora = _time.time()
+    if v and (ahora - v[0]) < ttl:
+        return v[1]
+
+    if v:
+        if clave not in _CACHE_REFRESCANDO:
+            _CACHE_REFRESCANDO.add(clave)
+
+            def tarea():
+                try:
+                    with app.app_context():
+                        _cache_set(clave, calcular())
+                except Exception as e:
+                    print(f'[cache] no pude refrescar "{clave}": {e}')
+                finally:
+                    _CACHE_REFRESCANDO.discard(clave)
+
+            threading.Thread(target=tarea, daemon=True).start()
+        return v[1]
+
+    # Primera vez (o después de invalidar): no hay nada viejo que servir.
+    datos = calcular()
+    _cache_set(clave, datos)
+    return datos
+
 def get_config():
     """Devuelve la fila de configuración, creándola con defaults si no existe."""
     cfg = ConfigPrecios.query.get(1)
@@ -1410,11 +1447,11 @@ def obtener_eventos():
     # Esta ruta la pide la portada al cargar: sirve de medida de visitas.
     contar('visitas')
     # Solo raíces (sin padre) — las subcarpetas van anidadas dentro
-    datos = _cache_get('eventos')
-    if datos is None:
+    def armar():
         raices = Evento.query.filter_by(parent_id=None).order_by(Evento.id.desc()).all()
-        datos  = _cache_set('eventos', [serializar_evento(e) for e in raices])
-    return jsonify(datos)
+        return [serializar_evento(e) for e in raices]
+
+    return jsonify(_cache_swr('eventos', 30, armar))
 
 @app.route('/editar-evento/<int:ev_id>', methods=['PATCH'])
 def editar_evento(ev_id):

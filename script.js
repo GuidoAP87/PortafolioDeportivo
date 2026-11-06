@@ -672,6 +672,7 @@ function abrirEvento(eventoId) {
         view.querySelectorAll('.reveal').forEach(el => el.classList.add('visible'));
 
         initDragDrop(ev.id);
+        observarScrollFotos();     // carga la tanda siguiente al llegar abajo
         actualizarCarritoBar();
     }
 
@@ -751,52 +752,32 @@ function renderVistaEvento(ev) {
         </div>
         <div class="upload-progress-text" id="uptext-${ev.id}"></div>` : '';
 
+    // Las fotos se dibujan de a tandas. Antes, una carpeta de 500 fotos armaba
+    // las 500 tarjetas de una sola vez y el celular se arrastraba.
+    _fotosDelEvento    = fotos;
+    _eventoRender      = ev;
+    _fotosRenderizadas = Math.min(LOTE_FOTOS, fotos.length);
+
     const fotosHTML = fotos.length
-        ? fotos.map((f, idx) => {
-            const sel = carrito.has(f.id);
-            return `
-            <div class="photo-item${sel?' selected':''}" id="photo-${f.id}" onclick="abrirLightbox(${idx})" style="cursor: pointer;">
-                <img src="${thumbUrl(f.url_preview, 600)}" alt="Foto deportiva" loading="lazy"
-                     title="Clic para ampliar">
-                <div class="photo-item-overlay">
-                    <div class="photo-select-icon" onclick="event.stopPropagation(); toggleFoto(${f.id})" title="Agregar/quitar del carrito">
-                        <i class="fa-solid ${sel?'fa-check':'fa-cart-shopping'}"></i>
-                    </div>
-                </div>
-                <div class="photo-check-badge"><i class="fa-solid fa-check"></i></div>
-                ${isAdmin ? `
-                <button onclick="event.stopPropagation();borrarFoto(${f.id})"
-                    title="Eliminar foto"
-                    style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.75);
-                           border:none;color:var(--red);width:28px;height:28px;border-radius:50%;
-                           font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:auto;">
-                    <i class="fa-solid fa-xmark"></i>
-                </button>
-                <button onclick="event.stopPropagation();elegirPortada(${ev.id},${f.id},this)"
-                    title="${ev.cover_foto_id===f.id ? 'Portada actual' : 'Usar como portada'}"
-                    id="cover-btn-${f.id}"
-                    style="position:absolute;top:8px;left:44px;
-                           background:${ev.cover_foto_id===f.id ? 'var(--gold)' : 'rgba(0,0,0,0.75)'};
-                           border:none;color:${ev.cover_foto_id===f.id ? '#000' : 'var(--gold)'};
-                           width:28px;height:28px;border-radius:50%;
-                           font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:auto;">
-                    <i class="fa-solid fa-image"></i>
-                </button>
-                <button onclick="event.stopPropagation();editarPrecioFoto(${f.id},${f.precio||PRECIO_BASE},${!!f.precio_custom})"
-                    title="${f.precio_custom ? 'Precio especial: $'+f.precio.toLocaleString('es-AR') : 'Editar precio'}"
-                    style="position:absolute;top:44px;left:8px;
-                           background:${f.precio_custom ? 'var(--gold)' : 'rgba(0,0,0,0.75)'};
-                           border:none;color:${f.precio_custom ? '#000' : '#aaa'};
-                           width:28px;height:28px;border-radius:50%;
-                           font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:auto;">
-                    <i class="fa-solid fa-tag"></i>
-                </button>` : ''}
-            </div>`;
-          }).join('')
+        ? htmlLoteFotos(0, _fotosRenderizadas)
         : `<div class="empty-state" style="grid-column:1/-1">
                <i class="fa-solid fa-camera-slash" style="font-size:28px;margin-bottom:12px;color:var(--text-dim)"></i>
                <p>Aún no hay fotos en este evento.</p>
            </div>`;
+
+    const verMasHTML = fotos.length > _fotosRenderizadas ? `
+        <div id="ver-mas-wrap" style="text-align:center;padding:26px 0 44px">
+            <div id="centinela-fotos" style="height:1px"></div>
+            <button id="btn-ver-mas" onclick="cargarMasFotos()"
+                style="display:inline-flex;align-items:center;gap:9px;height:42px;padding:0 24px;
+                       font-size:11px;letter-spacing:2px;text-transform:uppercase;
+                       color:var(--gold);border:1px solid var(--gold-dim);background:none;
+                       cursor:pointer;font-family:Inter,sans-serif;">
+                <i class="fa-solid fa-circle-chevron-down"></i>
+                <span id="ver-mas-texto">Ver más fotos (${fotos.length - _fotosRenderizadas} restantes)</span>
+            </button>
+        </div>` : '';
+
 
     return `
         <div class="event-view-header">
@@ -828,7 +809,8 @@ function renderVistaEvento(ev) {
         </div>
         ${adminBar}
         
-        <div class="photos-grid">${fotosHTML}</div>`;
+        <div class="photos-grid">${fotosHTML}</div>
+        ${verMasHTML}`;
 }
 
 function mostrarSubcarpetas(ev) {
@@ -1264,7 +1246,7 @@ async function editarEvento(eventoId) {
     if (res.ok) {
         await cargarEventos();
         const evActualizado = buscarEvento(eventoId, eventosData);
-        if (evActualizado) { eventoActual = evActualizado; document.getElementById('event-view').innerHTML = renderVistaEvento(evActualizado); initDragDrop(eventoId); }
+        if (evActualizado) { eventoActual = evActualizado; document.getElementById('event-view').innerHTML = renderVistaEvento(evActualizado); initDragDrop(eventoId); observarScrollFotos(); }
         toast('Evento actualizado', 'success');
     } else { toast('Error al guardar', 'error'); }
 }
@@ -2707,4 +2689,97 @@ async function compartirCarpeta(id, titulo) {
             confirmButtonColor: '#D4A843', confirmButtonText: 'Listo'
         });
     }
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// FOTOS POR TANDAS
+// ════════════════════════════════════════════════════════════════════════════
+// Una carpeta de 500 fotos armaba las 500 tarjetas de golpe: el navegador
+// tenia que crear miles de elementos antes de mostrar nada, y en el celular
+// eso se nota muchisimo. Ahora entran de a 60 y el resto se agrega al bajar.
+var LOTE_FOTOS         = 60;
+var _fotosDelEvento    = [];
+var _eventoRender      = null;
+var _fotosRenderizadas = 0;
+var _observadorFotos   = null;
+
+function cardFotoHTML(f, idx, ev) {
+    const sel = carrito.has(f.id);
+    return `
+            <div class="photo-item${sel?' selected':''}" id="photo-${f.id}" onclick="abrirLightbox(${idx})" style="cursor: pointer;">
+                <img src="${thumbUrl(f.url_preview, 600)}" alt="Foto deportiva" loading="lazy"
+                     title="Clic para ampliar">
+                <div class="photo-item-overlay">
+                    <div class="photo-select-icon" onclick="event.stopPropagation(); toggleFoto(${f.id})" title="Agregar/quitar del carrito">
+                        <i class="fa-solid ${sel?'fa-check':'fa-cart-shopping'}"></i>
+                    </div>
+                </div>
+                <div class="photo-check-badge"><i class="fa-solid fa-check"></i></div>
+                ${isAdmin ? `
+                <button onclick="event.stopPropagation();borrarFoto(${f.id})"
+                    title="Eliminar foto"
+                    style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,0.75);
+                           border:none;color:var(--red);width:28px;height:28px;border-radius:50%;
+                           font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:auto;">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+                <button onclick="event.stopPropagation();elegirPortada(${ev.id},${f.id},this)"
+                    title="${ev.cover_foto_id===f.id ? 'Portada actual' : 'Usar como portada'}"
+                    id="cover-btn-${f.id}"
+                    style="position:absolute;top:8px;left:44px;
+                           background:${ev.cover_foto_id===f.id ? 'var(--gold)' : 'rgba(0,0,0,0.75)'};
+                           border:none;color:${ev.cover_foto_id===f.id ? '#000' : 'var(--gold)'};
+                           width:28px;height:28px;border-radius:50%;
+                           font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:auto;">
+                    <i class="fa-solid fa-image"></i>
+                </button>
+                <button onclick="event.stopPropagation();editarPrecioFoto(${f.id},${f.precio||PRECIO_BASE},${!!f.precio_custom})"
+                    title="${f.precio_custom ? 'Precio especial: $'+f.precio.toLocaleString('es-AR') : 'Editar precio'}"
+                    style="position:absolute;top:44px;left:8px;
+                           background:${f.precio_custom ? 'var(--gold)' : 'rgba(0,0,0,0.75)'};
+                           border:none;color:${f.precio_custom ? '#000' : '#aaa'};
+                           width:28px;height:28px;border-radius:50%;
+                           font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;z-index:5;pointer-events:auto;">
+                    <i class="fa-solid fa-tag"></i>
+                </button>` : ''}
+            </div>`;
+}
+
+function htmlLoteFotos(desde, hasta) {
+    let html = '';
+    for (let i = desde; i < hasta; i++) {
+        html += cardFotoHTML(_fotosDelEvento[i], i, _eventoRender);
+    }
+    return html;
+}
+
+function cargarMasFotos() {
+    const grid = document.querySelector('.photos-grid');
+    if (!grid || _fotosRenderizadas >= _fotosDelEvento.length) return;
+
+    const hasta = Math.min(_fotosRenderizadas + LOTE_FOTOS, _fotosDelEvento.length);
+    grid.insertAdjacentHTML('beforeend', htmlLoteFotos(_fotosRenderizadas, hasta));
+    _fotosRenderizadas = hasta;
+
+    const faltan = _fotosDelEvento.length - _fotosRenderizadas;
+    const wrap   = document.getElementById('ver-mas-wrap');
+    const texto  = document.getElementById('ver-mas-texto');
+    if (faltan <= 0) {
+        if (_observadorFotos) { _observadorFotos.disconnect(); _observadorFotos = null; }
+        if (wrap) wrap.remove();
+    } else if (texto) {
+        texto.textContent = `Ver más fotos (${faltan} restantes)`;
+    }
+}
+
+// Carga sola al llegar abajo; el boton queda igual por si el navegador no
+// soporta esto o si alguien prefiere tocarlo.
+function observarScrollFotos() {
+    if (_observadorFotos) { _observadorFotos.disconnect(); _observadorFotos = null; }
+    const centinela = document.getElementById('centinela-fotos');
+    if (!centinela || !('IntersectionObserver' in window)) return;
+    _observadorFotos = new IntersectionObserver(entradas => {
+        if (entradas.some(e => e.isIntersecting)) cargarMasFotos();
+    }, { rootMargin: '600px' });
+    _observadorFotos.observe(centinela);
 }
